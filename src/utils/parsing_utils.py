@@ -134,13 +134,13 @@ class DatasetParser:
     @staticmethod
     def detect_time_format(time_input: Union[float, int, str]) -> str:
         """
-        Detect if a float represents Unix epoch time or MATLAB datenum.
+        Detect if a time input represents Unix epoch time, MATLAB datenum, or a datestring
 
         Args:
             time_input (float): The input float to test.
 
         Returns:
-            str: 'epoch', 'matlab', or 'unknown'
+            str: "datestring", "epoch", "matlab". Raises an exception if there is no match
         """
 
         # Rough numeric ranges as of 2020s:
