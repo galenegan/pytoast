@@ -1,10 +1,11 @@
 import glob
+import itertools
 import numpy as np
 import os
 import scipy.signal as sig
 import xarray as xr
 from sklearn.linear_model import LinearRegression
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Tuple
 from utils.parsing_utils import DatasetParser
 from utils.interp_utils import naninterp_pd
 from utils.spectral_utils import psd, csd
@@ -19,6 +20,9 @@ class ADV:
             return self.ds[name]
         return getattr(self.ds, name)
 
+    def __getitem__(self, key):
+        return getattr(self, key)
+
     def __setattr__(self, name, value):
         if "ds" in self.__dict__ and name in self.ds.variables:
             # Assign to dataset variable if it already exists
@@ -28,9 +32,69 @@ class ADV:
             super().__setattr__(name, value)
 
     @staticmethod
-    def validate_inputs(files, name_map, fs, z):
-        # TODO: validate all inputs to from_raw
-        pass
+    def validate_inputs(
+        files: Union[str, List],
+        name_map: dict,
+        fs: Optional[Union[int, float]] = None,
+        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        zarr_save_path: Optional[str] = None,
+        overwrite: Optional[bool] = False,
+    ):
+        # Validate "files"
+        if isinstance(files, str):
+            if not files.lower().endswith((".nc", ".mat", ".zarr")):
+                raise ValueError(f"If files is a string, it must be a .nc, .mat, or .zarr file. Got: {files}")
+            if not os.path.exists(files):
+                raise FileNotFoundError(f"The specified file does not exist: {files}")
+
+        elif isinstance(files, list):
+            valid_extensions = (".npy", ".mat", ".csv")
+            for file in files:
+                if not isinstance(file, str) or not file.lower().endswith(valid_extensions):
+                    raise ValueError(
+                        f"Each element in the files list must be a path ending in {valid_extensions}. Got: {file}"
+                    )
+                if not os.path.exists(file):
+                    raise FileNotFoundError(f"The specified file does not exist: {file}")
+        else:
+            raise TypeError("`files` must be a string or a list of strings")
+
+        # Validate "name_map"
+        required_keys = ["u", "v", "w"]
+
+        if not isinstance(name_map, dict):
+            raise TypeError("`name_map` must be a dictionary")
+
+        for key in required_keys:
+            if key not in name_map:
+                raise ValueError(f"`name_map` must include a mapping for '{key}'")
+
+        if "time" not in name_map and fs is None:
+            raise ValueError("You must specify either 'time' in name_map or provide 'fs'")
+
+        # Validate "z"
+        if z is not None:
+            if not isinstance(z, (float, int, list)):
+                raise TypeError("`z` must be either a float, int, or a list of floats/ints")
+            if isinstance(z, list) and not all(isinstance(zi, (float, int)) for zi in z):
+                raise TypeError("All elements of the `z` list must be floats or ints")
+
+        # Validate "fs"
+        if fs is not None and not isinstance(fs, (int, float)):
+            raise TypeError("`fs` must be either an int or a float")
+
+        # Validate "zarr_save_path"
+        if zarr_save_path is not None:
+            if not isinstance(zarr_save_path, str):
+                raise TypeError("`zarr_save_path` must be a string")
+            if os.path.exists(zarr_save_path) and not overwrite:
+                raise FileExistsError(
+                    f"The specified zarr_save_path already exists: {zarr_save_path}. Set overwrite=True to overwrite it."
+                )
+
+        # Validate "overwrite"
+        if not isinstance(overwrite, bool):
+            raise TypeError("`overwrite` must be a boolean")
 
     @classmethod
     def from_raw(
@@ -38,7 +102,7 @@ class ADV:
         files: Union[str, List],
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, List[float]]] = None,
+        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         zarr_save_path: Optional[str] = None,
         overwrite: Optional[bool] = False,
     ):
@@ -69,12 +133,18 @@ class ADV:
             frequency is also not specified. Lists should be provided if data from multiple instruments is stored
             in multiple variables (as opposed to a 2d array).
 
-         z : float or List[float]
-            mean height above the bed (m) for each instrument
+         z : float, int or List[float, int], optional
+            mean height above the bed (m) for each instrument. If not specified, the height coordinate in the resulting
+            ADV object will be integer indices.
 
-        fs : int or float
-            sampling frequency (Hz), will be inferred (and rounded to an integer) from name_map["time"] values
-            if not specified
+        fs : int or float, optional
+            sampling frequency (Hz). If not specified, will be inferred (and rounded to an integer)
+            from name_map["time"] values
+
+
+        Returns
+        -------
+        ADV object
 
         """
         ADV.validate_inputs(files, name_map, fs, z)
@@ -87,13 +157,27 @@ class ADV:
 
     @classmethod
     def from_saved_zarr(cls, zarr_path: str):
+        """
+        Load an ADV object from a zarr store that was previously saved to disk by pyToast.
+        If you are want to initialize an ADV object from your own zarr store for the first
+        time, you should use ADV.from_raw(files="path/to/zarr", ...)
+
+        Parameters
+        ----------
+        zarr_path : string
+            Path to zarr store on local disk
+
+        Returns
+        -------
+        ADV object
+        """
         ds = xr.open_zarr(zarr_path)
         return cls(ds)
 
     def despike(self, threshold: int = 5, max_iter: int = 10, chunk_size: int = 100):
         """
-        Implements the Goring & Nikora (2002) phase-space de-spiking algorithm, modifying self.u, self.v, and self.w
-        in-place.
+        Implements the Goring & Nikora (2002) phase-space de-spiking algorithm,
+        modifying self.u, self.v, and self.w in-place.
 
         Parameters
         ----------
@@ -106,8 +190,9 @@ class ADV:
         chunk_size : int
             Chunk size for Dask parallelization
 
-        Returns:
-            None
+        Returns
+        -------
+        None
         """
 
         def flag_bad_indices(u: np.ndarray) -> np.ndarray:
@@ -216,6 +301,22 @@ class ADV:
             output_dtypes=[self.w.dtype],
         )
 
+    def get_wavenumber(self, omega: Union[float, np.ndarray], h: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+        # Returns wavenumber from the surface gravity wave dispersion relation
+        # using Newton's method
+
+        g = 9.81
+        k = omega / np.sqrt(g * h)
+
+        f = g * k * np.tanh(k * h) - omega ** 2
+
+        while np.max(np.abs(f)) > 1e-10:
+            dfdk = g * k * h * ((1 / np.cosh(k * h)) ** 2) + g * np.tanh(k * h)
+            k = k - f / dfdk
+            f = g * k * np.tanh(k * h) - omega ** 2
+        k[omega == 0] = 0
+        return k
+
     def get_principal_axis(self) -> xr.DataArray:
         """
         Calculates the direction of maximum variance from the u and v velocities (Thomson & Emery, 4.52b).
@@ -265,13 +366,7 @@ class ADV:
 
         return vel_maj, vel_min
 
-    def dissipation(
-        self,
-        f_low: float,
-        f_high: float,
-        chunk_size: int = 100,
-        **kwargs
-    ) -> (float, float, int):
+    def dissipation(self, f_low: float, f_high: float, chunk_size: int = 100, **kwargs) -> (float, float, int):
         """
         Estimate the dissipation rate of TKE using the Gerbi et al. (2009)
         spectral curve fitting method. This is nearly equivalent to the
@@ -357,7 +452,7 @@ class ADV:
 
             return J33
 
-        def spectral_fit(u, v, w, fs):
+        def spectral_fit(u, v, w):
             """
             Carries out the spectral curve fit, applied through apply_ufunc
             """
@@ -367,12 +462,7 @@ class ADV:
             alpha = 1.5
 
             w_prime = sig.detrend(w, type="linear")
-            fw, Pw = psd(
-                w_prime,
-                fs,
-                onesided=False,
-                **kwargs
-            )
+            fw, Pw = psd(w_prime, onesided=False, **kwargs)
 
             omega = 2 * np.pi * fw
 
@@ -404,20 +494,219 @@ class ADV:
             return eps, noise, quality_flag
 
         ds_chunked = self.chunk({"burst": chunk_size})
-
         (eps, noise, quality_flag) = xr.apply_ufunc(
             spectral_fit,
             ds_chunked.u,
             ds_chunked.v,
             ds_chunked.w,
-            ds_chunked.fs,
-            input_core_dims=[["time"], ["time"], ["time"], []],
+            input_core_dims=[["time"], ["time"], ["time"]],
             output_core_dims=[[], [], []],
             vectorize=True,
             dask="parallelized",
             output_dtypes=[self.w.dtype, self.w.dtype, int],
         )
         return eps, noise, quality_flag
+
+    def benilov_decomposition(
+        self,
+        u: np.ndarray,
+        v: np.ndarray,
+        w: np.ndarray,
+        p: np.ndarray,
+        mab: float,
+        rho: float,
+        f_low: Optional[float] = None,
+        f_high: Optional[float] = None,
+        **kwargs,
+    ):
+
+        u = sig.detrend(u)
+        v = sig.detrend(v)
+        w = sig.detrend(w)
+        p = sig.detrend(p)
+        g = 9.81
+
+        h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth
+
+        # Getting sea surface elevation spectrum
+        f, S_pp = psd(p, **kwargs)
+        df = np.max(np.diff(f))
+        omega = 2 * np.pi * f
+        k = self.get_wavenumber(omega, h)
+        attenuation_correction = 1e4 * np.cosh(k * h) / (rho * g * np.cosh(k * mab))
+        S_etaeta = S_pp * (attenuation_correction**2)
+
+        # All the velocity components
+        _, S_uu = psd(u, **kwargs)
+        _, S_up = csd(u, p, **kwargs)
+        S_ueta = S_up * attenuation_correction
+
+        _, S_vv = psd(v, **kwargs)
+        _, S_vp = csd(v, p, **kwargs)
+        S_veta = S_vp * attenuation_correction
+
+        _, S_ww = psd(w, **kwargs)
+        _, S_wp = csd(w, p, **kwargs)
+        S_weta = S_wp * attenuation_correction
+
+        # Velocity cross spectra
+        _, S_uw = csd(u, w, **kwargs)
+        _, S_vw = csd(v, w, **kwargs)
+        _, S_uv = csd(u, v, **kwargs)
+
+        # Defining frequency range
+        if f_low:
+            start_index = np.argmin(np.abs(f - f_low))
+        else:
+            start_index = 0
+
+        if f_high:
+            end_index = np.argmin(np.abs(f - f_high))
+        else:
+            end_index = len(f)
+
+
+        # Calculating wave spectra
+        S_uwave_uwave = S_ueta * np.conj(S_ueta) / S_etaeta
+        S_vwave_vwave = S_veta * np.conj(S_veta / S_etaeta)
+        S_wwave_wwave = S_weta * np.conj(S_weta / S_etaeta)
+        S_uwave_wwave = S_ueta * np.conj(S_weta) / S_etaeta
+        S_uwave_vwave = S_ueta * np.conj(S_veta) / S_etaeta
+        S_vwave_wwave = S_veta * np.conj(S_weta) / S_etaeta
+
+
+        # Calculating turbulent spectra
+        S_ut_ut = S_uu - S_uwave_uwave
+        S_ut_wt = S_uw - S_uwave_wwave
+        S_ut_vt = S_uv - S_uwave_vwave
+        S_vt_vt = S_vv - S_vwave_vwave
+        S_vt_wt = S_vw - S_vwave_wwave
+        S_wt_wt = S_ww - S_wwave_wwave
+
+        # Summing them to get Reynolds stresses
+        uu_turb = np.nansum(np.real(S_ut_ut[start_index:end_index]) * df)
+        uu_wave = np.nansum(np.real(S_uwave_uwave[start_index:end_index]) * df)
+        vv_turb = np.nansum(np.real(S_vt_vt[start_index:end_index]) * df)
+        vv_wave = np.nansum(np.real(S_vwave_vwave[start_index:end_index]) * df)
+        ww_turb = np.nansum(np.real(S_wt_wt[start_index:end_index]) * df)
+        ww_wave = np.nansum(np.real(S_wwave_wwave[start_index:end_index]) * df)
+        uw_turb = np.nansum(np.real(S_ut_wt[start_index:end_index]) * df)
+        uw_wave = np.nansum(np.real(S_uwave_wwave[start_index:end_index]) * df)
+        vw_turb = np.nansum(np.real(S_vt_wt[start_index:end_index]) * df)
+        vw_wave = np.nansum(np.real(S_vwave_wwave[start_index:end_index]) * df)
+        uv_turb = np.nansum(np.real(S_ut_vt[start_index:end_index]) * df)
+        uv_wave = np.nansum(np.real(S_uwave_vwave[start_index:end_index]) * df)
+
+        # Tuple output which will get restructured in the call to ADV.covariances
+        out = (
+            uu_turb, uu_wave, vv_turb, vv_wave, ww_turb, ww_wave, uw_turb, uw_wave, vw_turb, vw_wave, uv_turb, uv_wave
+        )
+        return out
+
+    def phase_decomposition(
+        self,
+        u: np.ndarray,
+        v: np.ndarray,
+        w: np.ndarray,
+        f_low: Optional[float] = None,
+        f_high: Optional[float] = None,
+        **kwargs,
+    ):
+        pass
+
+    def covariance(
+        self,
+        method: str = "cov",
+        f_low: Optional[float] = None,
+        f_high: Optional[float] = None,
+        rho: float = 1020,
+        chunk_size: int = 100,
+        **kwargs,
+    ) -> dict:
+        """Benilov method wave turbulence decomposition"""
+        if method == "cov":
+            out = {}
+            components_to_return = [elem for elem in itertools.combinations_with_replacement(("u", "v", "w"), 2)]
+            for component_pair in components_to_return:
+                key = component_pair[0] + component_pair[1]
+                out[key] = xr.cov(self[component_pair[0]], self[component_pair[1]], dim="time")
+            return out
+        elif method == "benilov":
+            ds_chunked = self.chunk({"burst": chunk_size})
+            out = xr.apply_ufunc(
+                self.benilov_decomposition,
+                ds_chunked.u,
+                ds_chunked.v,
+                ds_chunked.w,
+                ds_chunked.p,
+                ds_chunked.height,
+                rho,
+                f_low,
+                f_high,
+                kwargs=kwargs,
+                input_core_dims=[["time"], ["time"], ["time"], ["time"], [], [], [], []],
+                output_core_dims=[[], [], [], [], [], [], [], [], [], [], [], []],
+                output_dtypes=[float] * 12,
+                vectorize=True,
+                dask="parallelized",
+            )
+            # Turning into a dict to match format of "cov" method
+            keys = [
+                "uu_turb",
+                "uu_wave",
+                "vv_turb",
+                "vv_wave",
+                "ww_turb",
+                "ww_wave",
+                "uw_turb",
+                "uw_wave",
+                "vw_turb",
+                "vw_wave",
+                "uv_turb",
+                "uv_wave",
+            ]
+
+            out_dict = {key: da for key, da in zip(keys, out)}
+            return out_dict
+        elif method == "phase":
+            ds_chunked = self.chunk({"burst": chunk_size})
+            out = xr.apply_ufunc(
+                self.phase_decomposition,
+                ds_chunked.u,
+                ds_chunked.v,
+                ds_chunked.w,
+                ds_chunked.p,
+                ds_chunked.height,
+                rho,
+                f_low,
+                f_high,
+                kwargs=kwargs,
+                input_core_dims=[["time"], ["time"], ["time"], ["time"], [], [], [], []],
+                output_core_dims=[[], [], [], [], [], [], [], [], [], [], [], []],
+                output_dtypes=[float] * 12,
+                vectorize=True,
+                dask="parallelized",
+            )
+            # Turning into a dict to match format of "cov" method
+            keys = [
+                "uu_turb",
+                "uu_wave",
+                "vv_turb",
+                "vv_wave",
+                "ww_turb",
+                "ww_wave",
+                "uw_turb",
+                "uw_wave",
+                "vw_turb",
+                "vw_wave",
+                "uv_turb",
+                "uv_wave",
+            ]
+
+            out_dict = {key: da for key, da in zip(keys, out)}
+            return out_dict
+        else:
+            raise IOError(f"Unrecognized method {method}")
 
 
 if __name__ == "__main__":
@@ -431,7 +720,7 @@ if __name__ == "__main__":
     # Testing this out
     files = glob.glob("/Users/ea-gegan/Documents/gitrepos/tke-budget/data/adv_fall/*.mat")
     files.sort()
-    files = files[:20]
+    files = files[:100]
 
     # Name map:
     name_map = {"u": "E", "v": "N", "w": "w", "p": "P2", "time": "dn"}
@@ -441,10 +730,28 @@ if __name__ == "__main__":
     vel_maj, vel_min = adv.rotate_velocity(theta)
     adv.u, adv.v = vel_maj, vel_min
 
-    eps, noise, quality_flag = adv.dissipation(f_low=1.2, f_high=15)
-    print(eps.values[:, 0])
-    t1 = time.time()
-    print(f"finished processing 20 files in {t1 - t0:.2f} seconds")
+    # eps, noise, quality_flag = adv.dissipation(f_low=1.2, f_high=15, fs=32)
+    # print(eps.values[:, 0])
+    cov = adv.covariance(
+        method="benilov",
+        f_low=(1/200),
+        f_high=0.5,
+        fs=32,
+    )
+    cov0 = (cov["uw_turb"][:, 4].values + cov["uw_wave"][:, 4].values)
+    cov2 = adv.covariance(
+        method="cov"
+    )
+    cov20 = cov2["uw"][:, 4].values
+
+    import matplotlib.pyplot as plt
+    one = np.linspace(np.nanmin(cov20), np.nanmax(cov20), 100)
+    plt.plot(cov20, cov0, 'o')
+    plt.plot(one ,one, '-')
+    plt.show()
+    # print(cov.values)
+    # t1 = time.time()
+    # print(f"finished processing 20 files in {t1 - t0:.2f} seconds")
     # adv0 = ADV.from_saved_zarr("~/Desktop/adv_zarr_test")
     # test2_0 = adv0.u[9, 0, :].values
 

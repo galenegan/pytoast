@@ -13,7 +13,7 @@ def get_window_len(N: int, num_windows: int) -> int:
 def psd(x, fs, num_windows=8, window_type="hamming", window_len=None, nfft=None, detrend=False, onesided=True):
     # TODO: here and in csd, need some error handling in case window_len and nfft are incompatible. Though can
     # maybe rely on scipy's error handling?
-    N = len(x)
+    N = x.shape[-1]
     if window_len is None:
         window_len = get_window_len(N, num_windows)
     if nfft is None:
