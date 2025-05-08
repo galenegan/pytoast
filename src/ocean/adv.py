@@ -518,7 +518,36 @@ class ADV:
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
         **kwargs,
-    ):
+    ) -> Tuple[float]:
+        """
+        Benilov wave-turbulence decomposition to estimate wave and turbulence
+        components of the Reynolds stress. (Benilov & Filyushkin, 1970)
+
+        Parameters
+        ----------
+        u : np.ndarray
+            x-component of velocity (m/s)
+        v : np.ndarray
+            y-component of velocity (m/s)
+        w : np.ndarray
+            z-component of velocity (m/s)
+        p: : np.ndarray
+            pressure (dbar)
+        mab : float
+            meters above bed for pressure sensor
+        rho : float
+            fluid density (kg / m^3)
+        f_low : float, optional
+            lower frequency bound of spectral sum
+        f_high : float, optional
+            upper frequency bound of spectral sum
+        kwargs: Additional arguments passed to spectral_utils.psd.
+                See spectral_utils.psd for parameter definitions.
+
+        Returns
+        -------
+        Tuple of turbulent and wave momentum flux components
+        """
 
         u = sig.detrend(u)
         v = sig.detrend(v)
@@ -610,9 +639,147 @@ class ADV:
         w: np.ndarray,
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
-        **kwargs,
+        **kwargs
     ):
-        pass
+
+        u = sig.detrend(u)
+        v = sig.detrend(v)
+        w = sig.detrend(w)
+
+        # All the velocity components
+        _, S_uu = psd(u, **kwargs)
+        _, S_vv = psd(v, **kwargs)
+        _, S_ww = psd(w, **kwargs)
+
+        # Velocity cross spectra
+        _, S_uw = csd(u, w, **kwargs)
+        _, S_vw = csd(v, w, **kwargs)
+        f, S_uv = csd(u, v, **kwargs)
+
+        phase_uw = np.arctan2(np.imag(S_uw), np.real(S_uw))
+        phase_vw = np.arctan2(np.imag(S_vw), np.real(S_vw))
+        phase_uv = np.arctan2(np.imag(S_uv), np.real(S_uv))
+        df = np.nanmax(np.diff(f))
+
+        # Searching for the wave peak within a reasonable range of frequencies --
+        # adjust this for each data set
+        if f_low and f_high:
+            waverange = np.where(((f > f_low) & (f < f_high)))[0]
+        else:
+            f_offset = 0.07  # Assume wave peak is not below this value
+            width_ratio_low = 0.35  # Wave range below the wave peak (fraction of peak frequency)
+            width_ratio_high = 0.8  # Wave range above the peak
+            offset = np.sum(f <= f_offset)
+            u_idx_max = np.argmax(S_uu[(f > f_offset) & (f < 1)]) + offset
+            f_max = f[u_idx_max]
+            waverange = np.arange(
+                max(u_idx_max - (f_max * width_ratio_low) // df, 0), min(u_idx_max + (f_max * width_ratio_high) // df, len(f) - 1)
+            ).astype(int)
+        interprange = np.arange(1, np.nanargmin(np.abs(f - 1))).astype(int)
+
+        # Separating the turbulent portion from the full spectrum
+        Suu_turb = S_uu[interprange]
+        fuu = f[interprange]
+        Suu_turb = np.delete(Suu_turb, waverange - interprange[0])
+        fuu = np.delete(fuu, waverange - interprange[0])
+        Suu_turb = Suu_turb[fuu > 0]
+        fuu = fuu[fuu > 0]
+
+        Svv_turb = S_vv[interprange]
+        fvv = f[interprange]
+        Svv_turb = np.delete(Svv_turb, waverange - interprange[0])
+        fvv = np.delete(fvv, waverange - interprange[0])
+        Svv_turb = Svv_turb[fvv > 0]
+        fvv = fvv[fvv > 0]
+
+        Sww_turb = S_ww[interprange]
+        fww = f[interprange]
+        Sww_turb = np.delete(Sww_turb, waverange - interprange[0])
+        fww = np.delete(fww, waverange - interprange[0])
+        Sww_turb = Sww_turb[fww > 0]
+        fww = fww[fww > 0]
+
+        # Linear interpolation over turbulent spectra
+        F = np.log(fuu)
+        S = np.log(Suu_turb)
+        Puu = np.polyfit(F, S, deg=1)
+        Puuhat = np.exp(np.polyval(Puu, np.log(f)))
+
+        F = np.log(fvv)
+        S = np.log(Svv_turb)
+        Pvv = np.polyfit(F, S, deg=1)
+        Pvvhat = np.exp(np.polyval(Pvv, np.log(f)))
+
+        F = np.log(fww)
+        S = np.log(Sww_turb)
+        Pww = np.polyfit(F, S, deg=1)
+        Pwwhat = np.exp(np.polyval(Pww, np.log(f)))
+
+        # # Plotting to test the code
+        # if plot:
+        #     plt.figure()
+        #     plt.loglog(fuu, Suu_turb, "k*")
+        #     plt.loglog(f[waverange], Suu[waverange], "r-")
+        #     plt.loglog(f, Puuhat, "b-")
+        #     plt.title("Suu")
+        #     plt.show()
+        #
+        #     plt.figure()
+        #     plt.loglog(fww, Sww_turb, "k*")
+        #     plt.loglog(f[waverange], Sww[waverange], "r-")
+        #     plt.loglog(f, Pwwhat, "b-")
+        #     plt.title("Sww")
+        #     plt.show()
+
+        # Wave spectra strictly above the interpolation line
+        Suu_wave = S_uu[waverange] - Puuhat[waverange]
+        Suu_wave[Suu_wave < 0] = 0
+        Svv_wave = S_vv[waverange] - Pvvhat[waverange]
+        Svv_wave[Svv_wave < 0] = 0
+        Sww_wave = S_ww[waverange] - Pwwhat[waverange]
+        Sww_wave[Sww_wave < 0] = 0
+
+        # Wave Fourier components
+        Amu_wave = np.sqrt((Suu_wave + 0j) * df)
+        Amv_wave = np.sqrt((Svv_wave + 0j) * df)
+        Amw_wave = np.sqrt((Sww_wave + 0j) * df)
+
+        # Wave Magnitudes
+        Um_wave = np.sqrt(np.real(Amu_wave) ** 2 + np.imag(Amu_wave) ** 2)
+        Vm_wave = np.sqrt(np.real(Amv_wave) ** 2 + np.imag(Amv_wave) ** 2)
+        wm_wave = np.sqrt(np.real(Amw_wave) ** 2 + np.imag(Amw_wave) ** 2)
+
+        # Wave reynolds stress
+        uw_wave = np.nansum(Um_wave * wm_wave * np.cos(phase_uw[waverange]))
+        uv_wave = np.nansum(Um_wave * Vm_wave * np.cos(phase_uv[waverange]))
+        vw_wave = np.nansum(Vm_wave * wm_wave * np.cos(phase_vw[waverange]))
+
+        uu_wave = np.nansum(Suu_wave * df)
+        vv_wave = np.nansum(Svv_wave * df)
+        ww_wave = np.nansum(Sww_wave * df)
+
+        # Full reynolds stresses
+        uu = np.nansum(np.real(S_uu) * df)
+        uv = np.nansum(np.real(S_uv) * df)
+        uw = np.nansum(np.real(S_uw) * df)
+        vv = np.nansum(np.real(S_vv) * df)
+        vw = np.nansum(np.real(S_vw) * df)
+        ww = np.nansum(np.real(S_ww) * df)
+
+        # Turbulent reynolds stresses
+
+        uu_turb = uu - uu_wave
+        vv_turb = vv - vv_wave
+        ww_turb = ww - ww_wave
+        uw_turb = uw - uw_wave
+        uv_turb = uv - uv_wave
+        vw_turb = vw - vw_wave
+
+        # Tuple output which will get restructured in the call to ADV.covariances
+        out = (
+            uu_turb, uu_wave, vv_turb, vv_wave, ww_turb, ww_wave, uw_turb, uw_wave, vw_turb, vw_wave, uv_turb, uv_wave
+        )
+        return out
 
     def covariance(
         self,
@@ -675,13 +842,10 @@ class ADV:
                 ds_chunked.u,
                 ds_chunked.v,
                 ds_chunked.w,
-                ds_chunked.p,
-                ds_chunked.height,
-                rho,
                 f_low,
                 f_high,
                 kwargs=kwargs,
-                input_core_dims=[["time"], ["time"], ["time"], ["time"], [], [], [], []],
+                input_core_dims=[["time"], ["time"], ["time"], [], []],
                 output_core_dims=[[], [], [], [], [], [], [], [], [], [], [], []],
                 output_dtypes=[float] * 12,
                 vectorize=True,
@@ -720,7 +884,7 @@ if __name__ == "__main__":
     # Testing this out
     files = glob.glob("/Users/ea-gegan/Documents/gitrepos/tke-budget/data/adv_fall/*.mat")
     files.sort()
-    files = files[:100]
+    files = files[:50]
 
     # Name map:
     name_map = {"u": "E", "v": "N", "w": "w", "p": "P2", "time": "dn"}
@@ -734,19 +898,18 @@ if __name__ == "__main__":
     # print(eps.values[:, 0])
     cov = adv.covariance(
         method="benilov",
-        f_low=(1/200),
-        f_high=0.5,
         fs=32,
     )
-    cov0 = (cov["uw_turb"][:, 4].values + cov["uw_wave"][:, 4].values)
-    cov2 = adv.covariance(
-        method="cov"
+    cov0 = cov["uw_turb"][:, 4].values
+    cov = adv.covariance(
+        method="phase",
+        fs=32
     )
-    cov20 = cov2["uw"][:, 4].values
+    cov1 = cov["uw_turb"][:, 4].values
 
     import matplotlib.pyplot as plt
-    one = np.linspace(np.nanmin(cov20), np.nanmax(cov20), 100)
-    plt.plot(cov20, cov0, 'o')
+    one = np.linspace(np.nanmin(cov1), np.nanmax(cov1), 100)
+    plt.plot(cov1, cov0, 'o')
     plt.plot(one ,one, '-')
     plt.show()
     # print(cov.values)

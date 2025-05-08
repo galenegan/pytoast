@@ -1,5 +1,6 @@
+import numpy as np
 import scipy.signal as sig
-
+from typing import Optional
 
 def get_window_len(N: int, num_windows: int) -> int:
     """
@@ -10,9 +11,7 @@ def get_window_len(N: int, num_windows: int) -> int:
     return int(2 * N / (num_windows + 1))
 
 
-def psd(x, fs, num_windows=8, window_type="hamming", window_len=None, nfft=None, detrend=False, onesided=True):
-    # TODO: here and in csd, need some error handling in case window_len and nfft are incompatible. Though can
-    # maybe rely on scipy's error handling?
+def psd(x: np.ndarray, fs: float, num_windows=8, window_type="hamming", window_len=None, nfft=None, detrend=False, onesided=True):
     N = x.shape[-1]
     if window_len is None:
         window_len = get_window_len(N, num_windows)
@@ -26,7 +25,7 @@ def psd(x, fs, num_windows=8, window_type="hamming", window_len=None, nfft=None,
     return f, Pxx
 
 
-def csd(x, y, fs, num_windows=8, window_type="hamming", window_len=None, nfft=None, detrend=False, onesided=True):
+def csd(x: np.ndarray, y: np.ndarray, fs: float, num_windows=8, window_type="hamming", window_len=None, nfft=None, detrend=False, onesided=True):
     N = len(x)
     if window_len is None:
         window_len = get_window_len(N, num_windows)
