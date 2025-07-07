@@ -4,32 +4,16 @@ import numpy as np
 import os
 import scipy.signal as sig
 import xarray as xr
+from scipy.stats import median_abs_deviation
 from sklearn.linear_model import LinearRegression
 from typing import Optional, Union, List, Tuple
-from utils.parsing_utils import DatasetParser
-from utils.interp_utils import naninterp_pd
-from utils.spectral_utils import psd, csd
+from src.utils.parsing_utils import DatasetParser
+from src.utils.interp_utils import naninterp_pd
+from src.utils.spectral_utils import psd, csd
+from src.utils.base_instrument import BaseInstrument
 
 
-class ADV:
-    def __init__(self, dataset: xr.Dataset):
-        super().__setattr__("ds", dataset)
-
-    def __getattr__(self, name):
-        if name in self.ds.variables:
-            return self.ds[name]
-        return getattr(self.ds, name)
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def __setattr__(self, name, value):
-        if "ds" in self.__dict__ and name in self.ds.variables:
-            # Assign to dataset variable if it already exists
-            self.ds[name] = value
-        else:
-            # Otherwise, assign normally (e.g., during __init__)
-            super().__setattr__(name, value)
+class ADV(BaseInstrument):
 
     @staticmethod
     def validate_inputs(
@@ -40,61 +24,16 @@ class ADV:
         zarr_save_path: Optional[str] = None,
         overwrite: Optional[bool] = False,
     ):
-        # Validate "files"
-        if isinstance(files, str):
-            if not files.lower().endswith((".nc", ".mat", ".zarr")):
-                raise ValueError(f"If files is a string, it must be a .nc, .mat, or .zarr file. Got: {files}")
-            if not os.path.exists(files):
-                raise FileNotFoundError(f"The specified file does not exist: {files}")
 
-        elif isinstance(files, list):
-            valid_extensions = (".npy", ".mat", ".csv")
-            for file in files:
-                if not isinstance(file, str) or not file.lower().endswith(valid_extensions):
-                    raise ValueError(
-                        f"Each element in the files list must be a path ending in {valid_extensions}. Got: {file}"
-                    )
-                if not os.path.exists(file):
-                    raise FileNotFoundError(f"The specified file does not exist: {file}")
-        else:
-            raise TypeError("`files` must be a string or a list of strings")
+        # General validation
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z, zarr_save_path, overwrite)
 
-        # Validate "name_map"
+        # Instrument-specific requirements
         required_keys = ["u", "v", "w"]
-
-        if not isinstance(name_map, dict):
-            raise TypeError("`name_map` must be a dictionary")
 
         for key in required_keys:
             if key not in name_map:
                 raise ValueError(f"`name_map` must include a mapping for '{key}'")
-
-        if "time" not in name_map and fs is None:
-            raise ValueError("You must specify either 'time' in name_map or provide 'fs'")
-
-        # Validate "z"
-        if z is not None:
-            if not isinstance(z, (float, int, list)):
-                raise TypeError("`z` must be either a float, int, or a list of floats/ints")
-            if isinstance(z, list) and not all(isinstance(zi, (float, int)) for zi in z):
-                raise TypeError("All elements of the `z` list must be floats or ints")
-
-        # Validate "fs"
-        if fs is not None and not isinstance(fs, (int, float)):
-            raise TypeError("`fs` must be either an int or a float")
-
-        # Validate "zarr_save_path"
-        if zarr_save_path is not None:
-            if not isinstance(zarr_save_path, str):
-                raise TypeError("`zarr_save_path` must be a string")
-            if os.path.exists(zarr_save_path) and not overwrite:
-                raise FileExistsError(
-                    f"The specified zarr_save_path already exists: {zarr_save_path}. Set overwrite=True to overwrite it."
-                )
-
-        # Validate "overwrite"
-        if not isinstance(overwrite, bool):
-            raise TypeError("`overwrite` must be a boolean")
 
     @classmethod
     def from_raw(
@@ -155,26 +94,7 @@ class ADV:
 
         return cls(ds)
 
-    @classmethod
-    def from_saved_zarr(cls, zarr_path: str):
-        """
-        Load an ADV object from a zarr store that was previously saved to disk by pyToast.
-        If you are want to initialize an ADV object from your own zarr store for the first
-        time, you should use ADV.from_raw(files="path/to/zarr", ...)
-
-        Parameters
-        ----------
-        zarr_path : string
-            Path to zarr store on local disk
-
-        Returns
-        -------
-        ADV object
-        """
-        ds = xr.open_zarr(zarr_path)
-        return cls(ds)
-
-    def despike(self, threshold: int = 5, max_iter: int = 10, chunk_size: int = 100):
+    def despike(self, threshold: int = 5, max_iter: int = 10, chunk_size: int = 100, robust_statistics: bool = False):
         """
         Implements the Goring & Nikora (2002) phase-space de-spiking algorithm,
         modifying self.u, self.v, and self.w in-place.
@@ -190,6 +110,11 @@ class ADV:
         chunk_size : int
             Chunk size for Dask parallelization
 
+        robust_statistics : bool
+            If True, ellipsoid centers will be based on the median and axis lengths will be based on median absolute
+            deviation as suggested by Wahl (2003). If False, mean and standard deviation are used, consistent with the
+            original Goring & Nikora implementation.
+
         Returns
         -------
         None
@@ -200,15 +125,26 @@ class ADV:
             du = np.gradient(u) / 2
             du2 = np.gradient(du) / 2
 
-            # Standard deviation
-            sigma_u = np.nanstd(u)
-            sigma_du = np.nanstd(du)
-            sigma_du2 = np.nanstd(du2)
+            if robust_statistics:
+                # Standard deviation
+                sigma_u = median_abs_deviation(u, nan_policy="omit")
+                sigma_du = median_abs_deviation(du, nan_policy="omit")
+                sigma_du2 = median_abs_deviation(du2, nan_policy="omit")
 
-            # Mean
-            u_bar = np.nanmean(u)
-            du_bar = np.nanmean(du)
-            du2_bar = np.nanmean(du2)
+                # Median
+                u_bar = np.nanmedian(u)
+                du_bar = np.nanmedian(du)
+                du2_bar = np.nanmedian(du2)
+            else:
+                # Standard deviation
+                sigma_u = np.nanstd(u)
+                sigma_du = np.nanstd(du)
+                sigma_du2 = np.nanstd(du2)
+
+                # Mean
+                u_bar = np.nanmean(u)
+                du_bar = np.nanmean(du)
+                du2_bar = np.nanmean(du2)
 
             # Expected absolute maximum
             n = len(u)
@@ -308,12 +244,12 @@ class ADV:
         g = 9.81
         k = omega / np.sqrt(g * h)
 
-        f = g * k * np.tanh(k * h) - omega ** 2
+        f = g * k * np.tanh(k * h) - omega**2
 
         while np.max(np.abs(f)) > 1e-10:
             dfdk = g * k * h * ((1 / np.cosh(k * h)) ** 2) + g * np.tanh(k * h)
             k = k - f / dfdk
-            f = g * k * np.tanh(k * h) - omega ** 2
+            f = g * k * np.tanh(k * h) - omega**2
         k[omega == 0] = 0
         return k
 
@@ -594,7 +530,6 @@ class ADV:
         else:
             end_index = len(f)
 
-
         # Calculating wave spectra
         S_uwave_uwave = S_ueta * np.conj(S_ueta) / S_etaeta
         S_vwave_vwave = S_veta * np.conj(S_veta / S_etaeta)
@@ -602,7 +537,6 @@ class ADV:
         S_uwave_wwave = S_ueta * np.conj(S_weta) / S_etaeta
         S_uwave_vwave = S_ueta * np.conj(S_veta) / S_etaeta
         S_vwave_wwave = S_veta * np.conj(S_weta) / S_etaeta
-
 
         # Calculating turbulent spectra
         S_ut_ut = S_uu - S_uwave_uwave
@@ -628,7 +562,18 @@ class ADV:
 
         # Tuple output which will get restructured in the call to ADV.covariances
         out = (
-            uu_turb, uu_wave, vv_turb, vv_wave, ww_turb, ww_wave, uw_turb, uw_wave, vw_turb, vw_wave, uv_turb, uv_wave
+            uu_turb,
+            uu_wave,
+            vv_turb,
+            vv_wave,
+            ww_turb,
+            ww_wave,
+            uw_turb,
+            uw_wave,
+            vw_turb,
+            vw_wave,
+            uv_turb,
+            uv_wave,
         )
         return out
 
@@ -639,7 +584,7 @@ class ADV:
         w: np.ndarray,
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
-        **kwargs
+        **kwargs,
     ):
 
         u = sig.detrend(u)
@@ -673,7 +618,8 @@ class ADV:
             u_idx_max = np.argmax(S_uu[(f > f_offset) & (f < 1)]) + offset
             f_max = f[u_idx_max]
             waverange = np.arange(
-                max(u_idx_max - (f_max * width_ratio_low) // df, 0), min(u_idx_max + (f_max * width_ratio_high) // df, len(f) - 1)
+                max(u_idx_max - (f_max * width_ratio_low) // df, 0),
+                min(u_idx_max + (f_max * width_ratio_high) // df, len(f) - 1),
             ).astype(int)
         interprange = np.arange(1, np.nanargmin(np.abs(f - 1))).astype(int)
 
@@ -777,7 +723,18 @@ class ADV:
 
         # Tuple output which will get restructured in the call to ADV.covariances
         out = (
-            uu_turb, uu_wave, vv_turb, vv_wave, ww_turb, ww_wave, uw_turb, uw_wave, vw_turb, vw_wave, uv_turb, uv_wave
+            uu_turb,
+            uu_wave,
+            vv_turb,
+            vv_wave,
+            ww_turb,
+            ww_wave,
+            uw_turb,
+            uw_wave,
+            vw_turb,
+            vw_wave,
+            uv_turb,
+            uv_wave,
         )
         return out
 
@@ -900,17 +857,15 @@ if __name__ == "__main__":
         method="benilov",
         fs=32,
     )
-    cov0 = cov["uw_turb"][:, 4].values
-    cov = adv.covariance(
-        method="phase",
-        fs=32
-    )
-    cov1 = cov["uw_turb"][:, 4].values
+    cov0 = cov["uw_wave"][:, 4].values
+    cov = adv.covariance(method="phase", fs=32)
+    cov1 = cov["uw_wave"][:, 4].values
 
     import matplotlib.pyplot as plt
+
     one = np.linspace(np.nanmin(cov1), np.nanmax(cov1), 100)
-    plt.plot(cov1, cov0, 'o')
-    plt.plot(one ,one, '-')
+    plt.plot(cov1, cov0, "o")
+    plt.plot(one, one, "-")
     plt.show()
     # print(cov.values)
     # t1 = time.time()

@@ -2,6 +2,7 @@ import numpy as np
 import scipy.signal as sig
 from typing import Optional
 
+
 def get_window_len(N: int, num_windows: int) -> int:
     """
     Returns the welch method window length
@@ -11,7 +12,16 @@ def get_window_len(N: int, num_windows: int) -> int:
     return int(2 * N / (num_windows + 1))
 
 
-def psd(x: np.ndarray, fs: float, num_windows=8, window_type="hamming", window_len=None, nfft=None, detrend=False, onesided=True):
+def psd(
+    x: np.ndarray,
+    fs: float,
+    num_windows=8,
+    window_type="hamming",
+    window_len=None,
+    nfft=None,
+    detrend=False,
+    onesided=True,
+) -> (np.ndarray, np.ndarray):
     N = x.shape[-1]
     if window_len is None:
         window_len = get_window_len(N, num_windows)
@@ -25,7 +35,17 @@ def psd(x: np.ndarray, fs: float, num_windows=8, window_type="hamming", window_l
     return f, Pxx
 
 
-def csd(x: np.ndarray, y: np.ndarray, fs: float, num_windows=8, window_type="hamming", window_len=None, nfft=None, detrend=False, onesided=True):
+def csd(
+    x: np.ndarray,
+    y: np.ndarray,
+    fs: float,
+    num_windows=8,
+    window_type="hamming",
+    window_len=None,
+    nfft=None,
+    detrend=False,
+    onesided=True,
+) -> (np.ndarray, np.ndarray):
     N = len(x)
     if window_len is None:
         window_len = get_window_len(N, num_windows)

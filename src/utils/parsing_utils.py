@@ -114,7 +114,7 @@ class DatasetParser:
     def parse_netcdf(self):
         pass
 
-    def process_time(self, time_array: np.ndarray) -> (np.ndarray, float):
+    def process_time(self, time_array: np.ndarray) -> np.ndarray:
         # Test on the first element
         flattened_time = time_array.flatten()
         format = self.detect_time_format(flattened_time[0])
@@ -126,8 +126,8 @@ class DatasetParser:
             datetime_array = pd.to_datetime(flattened_time, unit="s").values
 
         if not self.fs:
-            # Assume it's an integer
-            self.fs = np.round(1 / ((datetime_array[1] - datetime_array[0]).astype(int) / 10**9))
+            # Round to nearest two decimal places
+            self.fs = np.round(1 / ((datetime_array[1] - datetime_array[0]).astype(int) / 10**9), 2)
 
         return datetime_array.reshape(time_array.shape)
 
