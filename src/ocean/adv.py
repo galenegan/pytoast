@@ -7,10 +7,10 @@ import xarray as xr
 from scipy.stats import median_abs_deviation
 from sklearn.linear_model import LinearRegression
 from typing import Optional, Union, List, Tuple
-from src.utils.parsing_utils import DatasetParser
-from src.utils.interp_utils import naninterp_pd
-from src.utils.spectral_utils import psd, csd
-from src.utils.base_instrument import BaseInstrument
+from utils.parsing_utils import DatasetParser
+from utils.interp_utils import naninterp_pd
+from utils.spectral_utils import psd, csd
+from utils.base_instrument import BaseInstrument
 
 
 class ADV(BaseInstrument):
@@ -743,11 +743,39 @@ class ADV(BaseInstrument):
         method: str = "cov",
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
-        rho: float = 1020,
-        chunk_size: int = 100,
+        rho: Optional[float] = 1020,
+        chunk_size: Optional[int] = 100,
         **kwargs,
     ) -> dict:
-        """Benilov method wave turbulence decomposition"""
+        """
+        Calculate components of the covariance matrix.
+
+        Parameters
+        ----------
+        method : str
+            Method to calculate covariances. Options are:
+            - 'cov': Standard covariance calculation
+            - 'benilov': Benilov wave-turbulence decomposition
+            - 'phase':  Bricker & Monismith phase-method wave-turbulence decomposition
+        f_low : float, optional
+            Lower frequency bound (Hz) for wave band, by default None
+        f_high : float, optional 
+            Upper frequency bound (Hz) for wave band, by default None
+        rho : float, optional
+            Water density (kg/m^3), by default 1020
+        chunk_size : int, optional
+            Size of chunks for parallel processing, by default 100
+        **kwargs
+            Additional arguments passed to spectral calculations
+
+        Returns
+        -------
+        dict
+            Dictionary containing covariance components. For method='cov', keys are
+            velocity component pairs (e.g. 'uu','uv','uw'). For wave decomposition
+            methods, keys include turbulent and wave components (e.g. 'uu_turb',
+            'uu_wave').
+        """
         if method == "cov":
             out = {}
             components_to_return = [elem for elem in itertools.combinations_with_replacement(("u", "v", "w"), 2)]

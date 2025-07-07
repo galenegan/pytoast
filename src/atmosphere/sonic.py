@@ -109,24 +109,6 @@ class Sonic(BaseInstrument):
 
         return cls(ds)
 
-    @classmethod
-    def from_saved_zarr(cls, zarr_path: str):
-        """
-        Load a Sonic object from a zarr store that was previously saved to disk by pyToast.
-        If you are want to initialize a Sonic object from your own zarr store for the first
-        time, you should use Sonic.from_raw(files="path/to/zarr", ...)
-
-        Parameters
-        ----------
-        zarr_path : string
-            Path to zarr store on local disk
-
-        Returns
-        -------
-        Sonic object
-        """
-        ds = xr.open_zarr(zarr_path)
-        return cls(ds)
 
     def align_velocity_with_wind(self) -> (xr.DataArray, xr.DataArray, xr.DataArray):
         """

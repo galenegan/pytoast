@@ -26,10 +26,6 @@ class BaseInstrument(ABC):
             # Otherwise, assign normally (e.g., during __init__)
             super().__setattr__(name, value)
 
-    @abstractmethod
-    def _get_required_variables(self) -> List[str]:
-        """Each instrument defines its required variables"""
-        pass
 
     @staticmethod
     def validate_common_inputs(
