@@ -109,7 +109,6 @@ class Sonic(BaseInstrument):
 
         return cls(ds)
 
-
     def align_velocity_with_wind(self) -> (xr.DataArray, xr.DataArray, xr.DataArray):
         """
         Rotates u, v, w velocities to minimize the burst-averaged v and w.

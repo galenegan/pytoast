@@ -12,6 +12,21 @@ def get_window_len(N: int, num_windows: int) -> int:
     return int(2 * N / (num_windows + 1))
 
 
+def get_frequency_range(f: np.ndarray, f_low: Optional[float] = None, f_high: Optional[float] = None) -> (int, int):
+
+    if f_low:
+        start_index = np.argmin(np.abs(f - f_low))
+    else:
+        start_index = 0
+
+    if f_high:
+        end_index = np.argmin(np.abs(f - f_high))
+    else:
+        end_index = len(f)
+
+    return start_index, end_index
+
+
 def psd(
     x: np.ndarray,
     fs: float,

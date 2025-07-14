@@ -26,7 +26,6 @@ class BaseInstrument(ABC):
             # Otherwise, assign normally (e.g., during __init__)
             super().__setattr__(name, value)
 
-
     @staticmethod
     def validate_common_inputs(
         files: Union[str, List],

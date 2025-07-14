@@ -9,7 +9,7 @@ from sklearn.linear_model import LinearRegression
 from typing import Optional, Union, List, Tuple
 from utils.parsing_utils import DatasetParser
 from utils.interp_utils import naninterp_pd
-from utils.spectral_utils import psd, csd
+from utils.spectral_utils import psd, csd, get_frequency_range
 from utils.base_instrument import BaseInstrument
 
 
@@ -238,9 +238,21 @@ class ADV(BaseInstrument):
         )
 
     def get_wavenumber(self, omega: Union[float, np.ndarray], h: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
-        # Returns wavenumber from the surface gravity wave dispersion relation
-        # using Newton's method
+        """
+        Calculate wavenumber from the surface gravity wave dispersion relation using Newton's method.
 
+        Parameters
+        ----------
+        omega : float or np.ndarray
+            Angular frequency (rad/s)
+        h : float or np.ndarray
+            Water depth (m)
+
+        Returns
+        -------
+        k : float or np.ndarray
+            Wavenumber (rad/m)
+        """
         g = 9.81
         k = omega / np.sqrt(g * h)
 
@@ -520,15 +532,7 @@ class ADV(BaseInstrument):
         _, S_uv = csd(u, v, **kwargs)
 
         # Defining frequency range
-        if f_low:
-            start_index = np.argmin(np.abs(f - f_low))
-        else:
-            start_index = 0
-
-        if f_high:
-            end_index = np.argmin(np.abs(f - f_high))
-        else:
-            end_index = len(f)
+        start_index, end_index = get_frequency_range(f, f_low, f_high)
 
         # Calculating wave spectra
         S_uwave_uwave = S_ueta * np.conj(S_ueta) / S_etaeta
@@ -584,6 +588,8 @@ class ADV(BaseInstrument):
         w: np.ndarray,
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
+        f_wave_low: Optional[float] = None,
+        f_wave_high: Optional[float] = None,
         **kwargs,
     ):
 
@@ -608,8 +614,8 @@ class ADV(BaseInstrument):
 
         # Searching for the wave peak within a reasonable range of frequencies --
         # adjust this for each data set
-        if f_low and f_high:
-            waverange = np.where(((f > f_low) & (f < f_high)))[0]
+        if f_wave_low and f_wave_high:
+            waverange = np.where(((f > f_wave_low) & (f < f_wave_high)))[0]
         else:
             f_offset = 0.07  # Assume wave peak is not below this value
             width_ratio_low = 0.35  # Wave range below the wave peak (fraction of peak frequency)
@@ -704,13 +710,16 @@ class ADV(BaseInstrument):
         vv_wave = np.nansum(Svv_wave * df)
         ww_wave = np.nansum(Sww_wave * df)
 
+        # Defining frequency range for full stress summation
+        start_index, end_index = get_frequency_range(f, f_low, f_high)
+
         # Full reynolds stresses
-        uu = np.nansum(np.real(S_uu) * df)
-        uv = np.nansum(np.real(S_uv) * df)
-        uw = np.nansum(np.real(S_uw) * df)
-        vv = np.nansum(np.real(S_vv) * df)
-        vw = np.nansum(np.real(S_vw) * df)
-        ww = np.nansum(np.real(S_ww) * df)
+        uu = np.nansum(np.real(S_uu[start_index:end_index]) * df)
+        uv = np.nansum(np.real(S_uv[start_index:end_index]) * df)
+        uw = np.nansum(np.real(S_uw[start_index:end_index]) * df)
+        vv = np.nansum(np.real(S_vv[start_index:end_index]) * df)
+        vw = np.nansum(np.real(S_vw[start_index:end_index]) * df)
+        ww = np.nansum(np.real(S_ww[start_index:end_index]) * df)
 
         # Turbulent reynolds stresses
 
@@ -738,6 +747,16 @@ class ADV(BaseInstrument):
         )
         return out
 
+    def spectral_covariance(
+        self, x: np.ndarray, y: np.ndarray, f_low: Optional[float] = None, f_high: Optional[float] = None, **kwargs
+    ):
+        f, Pxy = csd(x, y, **kwargs)
+        df = np.nanmax(np.diff(f))
+        start_index, end_index = get_frequency_range(f, f_low, f_high)
+
+        out = np.sum(np.real(Pxy[start_index:end_index]) * df)
+        return out
+
     def covariance(
         self,
         method: str = "cov",
@@ -745,6 +764,7 @@ class ADV(BaseInstrument):
         f_high: Optional[float] = None,
         rho: Optional[float] = 1020,
         chunk_size: Optional[int] = 100,
+        phase_kwargs: Optional[dict] = None,
         **kwargs,
     ) -> dict:
         """
@@ -754,27 +774,31 @@ class ADV(BaseInstrument):
         ----------
         method : str
             Method to calculate covariances. Options are:
-            - 'cov': Standard covariance calculation
+            - 'cov': Standard covariance calculation using the built-in xr.cov
+            - 'spectral_integral': Integrate the cross-spectrum over a specified frequency range
             - 'benilov': Benilov wave-turbulence decomposition
             - 'phase':  Bricker & Monismith phase-method wave-turbulence decomposition
         f_low : float, optional
-            Lower frequency bound (Hz) for wave band, by default None
-        f_high : float, optional 
-            Upper frequency bound (Hz) for wave band, by default None
+            Lower frequency bound (Hz) for spectral integration, by default None
+        f_high : float, optional
+            Upper frequency bound (Hz) for spectral integration, by default None
         rho : float, optional
             Water density (kg/m^3), by default 1020
         chunk_size : int, optional
             Size of chunks for parallel processing, by default 100
+        phase_kwargs : dict, optional
+            Additional arguments specific to phase decomposition method, by default None. If specified, should include
+            keys 'f_wave_low' and 'f_wave_high' to define the frequency range of the wave band.
         **kwargs
             Additional arguments passed to spectral calculations
 
         Returns
         -------
         dict
-            Dictionary containing covariance components. For method='cov', keys are
-            velocity component pairs (e.g. 'uu','uv','uw'). For wave decomposition
-            methods, keys include turbulent and wave components (e.g. 'uu_turb',
-            'uu_wave').
+            Dictionary containing covariance components. For method='cov' or
+            'spectral_integral', keys are velocity component pairs
+            (e.g. 'uu','uv','uw'). For wave decomposition methods, keys include
+            turbulent and wave components (e.g. 'uu_turb', 'uu_wave').
         """
         if method == "cov":
             out = {}
@@ -782,6 +806,27 @@ class ADV(BaseInstrument):
             for component_pair in components_to_return:
                 key = component_pair[0] + component_pair[1]
                 out[key] = xr.cov(self[component_pair[0]], self[component_pair[1]], dim="time")
+            return out
+        elif method == "spectral_integral":
+            out = {}
+            components_to_return = [elem for elem in itertools.combinations_with_replacement(("u", "v", "w"), 2)]
+            for component_pair in components_to_return:
+                key = component_pair[0] + component_pair[1]
+                ds_chunked = self.chunk({"burst": chunk_size})
+                ds_out = xr.apply_ufunc(
+                    self.spectral_covariance,
+                    ds_chunked[component_pair[0]],
+                    ds_chunked[component_pair[1]],
+                    f_low,
+                    f_high,
+                    kwargs=kwargs,
+                    input_core_dims=[["time"], ["time"], [], []],
+                    output_core_dims=[[]],
+                    output_dtypes=float,
+                    vectorize=True,
+                    dask="parallelized",
+                )
+                out[key] = ds_out
             return out
         elif method == "benilov":
             ds_chunked = self.chunk({"burst": chunk_size})
@@ -821,6 +866,10 @@ class ADV(BaseInstrument):
             out_dict = {key: da for key, da in zip(keys, out)}
             return out_dict
         elif method == "phase":
+            # Extract phase method-specific kwargs with error handling
+            f_wave_low = kwargs.pop("f_wave_low", None)
+            f_wave_high = kwargs.pop("f_wave_high", None)
+
             ds_chunked = self.chunk({"burst": chunk_size})
             out = xr.apply_ufunc(
                 self.phase_decomposition,
@@ -829,6 +878,8 @@ class ADV(BaseInstrument):
                 ds_chunked.w,
                 f_low,
                 f_high,
+                f_wave_low,
+                f_wave_high,
                 kwargs=kwargs,
                 input_core_dims=[["time"], ["time"], ["time"], [], []],
                 output_core_dims=[[], [], [], [], [], [], [], [], [], [], [], []],
@@ -869,7 +920,7 @@ if __name__ == "__main__":
     # Testing this out
     files = glob.glob("/Users/ea-gegan/Documents/gitrepos/tke-budget/data/adv_fall/*.mat")
     files.sort()
-    files = files[:50]
+    files = files[:10]
 
     # Name map:
     name_map = {"u": "E", "v": "N", "w": "w", "p": "P2", "time": "dn"}
@@ -882,12 +933,12 @@ if __name__ == "__main__":
     # eps, noise, quality_flag = adv.dissipation(f_low=1.2, f_high=15, fs=32)
     # print(eps.values[:, 0])
     cov = adv.covariance(
-        method="benilov",
+        method="cov",
         fs=32,
     )
-    cov0 = cov["uw_wave"][:, 4].values
-    cov = adv.covariance(method="phase", fs=32)
-    cov1 = cov["uw_wave"][:, 4].values
+    cov0 = cov["uw"][:, 4].values
+    cov = adv.covariance(method="spectral_integral", fs=32)
+    cov1 = cov["uw"][:, 4].values
 
     import matplotlib.pyplot as plt
 
