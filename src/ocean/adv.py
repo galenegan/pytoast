@@ -11,7 +11,8 @@ from utils.parsing_utils import DatasetParser
 from utils.interp_utils import naninterp_pd
 from utils.spectral_utils import psd, csd, get_frequency_range
 from utils.base_instrument import BaseInstrument
-
+from utils.constants import GRAVITATIONAL_ACCELERATION as g
+from utils.wave_utils import get_wavenumber
 
 class ADV(BaseInstrument):
 
@@ -236,34 +237,6 @@ class ADV(BaseInstrument):
             dask="parallelized",
             output_dtypes=[self.w.dtype],
         )
-
-    def get_wavenumber(self, omega: Union[float, np.ndarray], h: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
-        """
-        Calculate wavenumber from the surface gravity wave dispersion relation using Newton's method.
-
-        Parameters
-        ----------
-        omega : float or np.ndarray
-            Angular frequency (rad/s)
-        h : float or np.ndarray
-            Water depth (m)
-
-        Returns
-        -------
-        k : float or np.ndarray
-            Wavenumber (rad/m)
-        """
-        g = 9.81
-        k = omega / np.sqrt(g * h)
-
-        f = g * k * np.tanh(k * h) - omega**2
-
-        while np.max(np.abs(f)) > 1e-10:
-            dfdk = g * k * h * ((1 / np.cosh(k * h)) ** 2) + g * np.tanh(k * h)
-            k = k - f / dfdk
-            f = g * k * np.tanh(k * h) - omega**2
-        k[omega == 0] = 0
-        return k
 
     def get_principal_axis(self) -> xr.DataArray:
         """
@@ -501,7 +474,6 @@ class ADV(BaseInstrument):
         v = sig.detrend(v)
         w = sig.detrend(w)
         p = sig.detrend(p)
-        g = 9.81
 
         h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth
 
@@ -509,7 +481,7 @@ class ADV(BaseInstrument):
         f, S_pp = psd(p, **kwargs)
         df = np.max(np.diff(f))
         omega = 2 * np.pi * f
-        k = self.get_wavenumber(omega, h)
+        k = get_wavenumber(omega, h)
         attenuation_correction = 1e4 * np.cosh(k * h) / (rho * g * np.cosh(k * mab))
         S_etaeta = S_pp * (attenuation_correction**2)
 
@@ -748,13 +720,34 @@ class ADV(BaseInstrument):
         return out
 
     def spectral_covariance(
-        self, x: np.ndarray, y: np.ndarray, f_low: Optional[float] = None, f_high: Optional[float] = None, **kwargs
-    ):
-        f, Pxy = csd(x, y, **kwargs)
-        df = np.nanmax(np.diff(f))
-        start_index, end_index = get_frequency_range(f, f_low, f_high)
+            self,
+            u: np.ndarray,
+            v: np.ndarray,
+            w: np.ndarray,
+            f_low: Optional[float] = None,
+            f_high: Optional[float] = None,
+            **kwargs,
+    ) -> Tuple[float]:
 
-        out = np.sum(np.real(Pxy[start_index:end_index]) * df)
+        # Power spectral densities
+        f, S_uu = psd(u, **kwargs)
+        f, S_vv = psd(v, **kwargs)
+        f, S_ww = psd(w, **kwargs)
+        f, S_uw = csd(u, w, **kwargs)
+        f, S_vw = csd(v, w, **kwargs)
+        f, S_uv = csd(u, v, **kwargs)
+
+        start_index, end_index = get_frequency_range(f, f_low, f_high)
+        df = np.nanmax(np.diff(f))
+
+        out = (
+            np.sum(np.real(S_uu[start_index:end_index]) * df),
+            np.sum(np.real(S_vv[start_index:end_index]) * df),
+            np.sum(np.real(S_ww[start_index:end_index]) * df),
+            np.sum(np.real(S_uw[start_index:end_index]) * df),
+            np.sum(np.real(S_vw[start_index:end_index]) * df),
+            np.sum(np.real(S_uv[start_index:end_index]) * df)
+        )
         return out
 
     def covariance(
@@ -808,26 +801,24 @@ class ADV(BaseInstrument):
                 out[key] = xr.cov(self[component_pair[0]], self[component_pair[1]], dim="time")
             return out
         elif method == "spectral_integral":
-            out = {}
-            components_to_return = [elem for elem in itertools.combinations_with_replacement(("u", "v", "w"), 2)]
-            for component_pair in components_to_return:
-                key = component_pair[0] + component_pair[1]
-                ds_chunked = self.chunk({"burst": chunk_size})
-                ds_out = xr.apply_ufunc(
-                    self.spectral_covariance,
-                    ds_chunked[component_pair[0]],
-                    ds_chunked[component_pair[1]],
-                    f_low,
-                    f_high,
-                    kwargs=kwargs,
-                    input_core_dims=[["time"], ["time"], [], []],
-                    output_core_dims=[[]],
-                    output_dtypes=float,
-                    vectorize=True,
-                    dask="parallelized",
-                )
-                out[key] = ds_out
-            return out
+            ds_chunked = self.chunk({"burst": chunk_size})
+            out = xr.apply_ufunc(
+                self.spectral_covariance,
+                ds_chunked.u,
+                ds_chunked.v,
+                ds_chunked.w,
+                f_low,
+                f_high,
+                kwargs=kwargs,
+                input_core_dims=[["time"], ["time"], ["time"], [], []],
+                output_core_dims=[[], [], [], [], [], []],
+                output_dtypes=[float] * 6,
+                vectorize=True,
+                dask="parallelized",
+            )
+            keys = ["uu", "vv", "ww", "uw", "vw", "uv"]
+            out_dict = {key: da for key, da in zip(keys, out)}
+            return out_dict
         elif method == "benilov":
             ds_chunked = self.chunk({"burst": chunk_size})
             out = xr.apply_ufunc(
@@ -867,8 +858,8 @@ class ADV(BaseInstrument):
             return out_dict
         elif method == "phase":
             # Extract phase method-specific kwargs with error handling
-            f_wave_low = kwargs.pop("f_wave_low", None)
-            f_wave_high = kwargs.pop("f_wave_high", None)
+            f_wave_low = phase_kwargs.pop("f_wave_low", None)
+            f_wave_high = phase_kwargs.pop("f_wave_high", None)
 
             ds_chunked = self.chunk({"burst": chunk_size})
             out = xr.apply_ufunc(
@@ -908,7 +899,359 @@ class ADV(BaseInstrument):
         else:
             raise IOError(f"Unrecognized method {method}")
 
+    def directional_wave_statistics(
+        self,
+        u: np.ndarray,
+        v: np.ndarray,
+        p: np.ndarray,
+        mab: float,
+        rho: float,
+        band_definitions: Optional[dict] = None,
+        direction_method: Optional[int] = 0,
+        sea_correction: Optional[bool] = True,
+        **kwargs
+    ):
+        """
+        Calculate directional wave statistics from velocity and pressure measurements.
 
+        This method computes comprehensive wave statistics including wave height, direction,
+        spreading, period, and energy flux using the cross-spectral method. The analysis
+        includes separate calculations for different wave bands (infragravity, swell, sea)
+        and applies depth corrections for pressure measurements.
+
+        Parameters
+        ----------
+        u : np.ndarray
+            Horizontal velocity component in x-direction (m/s)
+        v : np.ndarray
+            Horizontal velocity component in y-direction (m/s)
+        p : np.ndarray
+            Pressure measurements (dbar)
+        mab : float
+            Height of pressure sensor above bed (m)
+        rho : float
+            Water density (kg/m³)
+        band_definitions : dict, optional
+            Dictionary defining frequency bands for spectral sums of the form
+             {"infragravity": (f_low, f_high), "swell": (f_low, f_high), "sea": (f_low, f_high)}
+             If None, uses default bands:
+            - infragravity: 1/250 to 1/25 Hz
+            - swell: 1/25 to 0.2 Hz
+            - sea: 0.2 to 0.5 Hz
+            Statistics for the full frequency range ("all") will be calculated as well.
+        direction_method : int, optional
+            Method for calculating wave direction (0 or 1), by default 0
+            - 0: Uses cross-spectral method with u,v velocities
+            - 1: Uses alternative directional method
+        sea_correction : bool, optional
+            Whether to apply Jones-Monismith correction for sea waves, by default True
+        **kwargs
+            Additional arguments passed to spectral analysis functions
+
+        Returns
+        -------
+        dict
+            Dictionary containing wave statistics with keys including:
+            - 'Hsig_all', 'Hsig_swell', 'Hsig_sea', 'Hsig_ig': Significant wave heights (m)
+            - 'Hrms_all', 'Hrms_swell', 'Hrms_sea', 'Hrms_ig': RMS wave heights (m)
+            - 'Tp_all', 'Tp_swell', 'Tp_sea', 'Tp_ig': Peak periods (s)
+            - 'Tm_all', 'Tm_swell', 'Tm_sea', 'Tm_ig': Mean periods (s)
+            - 'dir_all1', 'dir_swell1', 'dir_sea1', 'dir_ig1': Wave directions (degrees)
+            - 'spread_all1', 'spread_swell1', 'spread_sea1', 'spread_ig1': Directional spread (degrees)
+            - 'Us_bulk', 'Vs_bulk': Bulk Stokes drift velocities (m/s)
+            - 'Us_spec', 'Vs_spec': Spectral Stokes drift velocities (m/s)
+            - 'Sxx_swell', 'Syy_swell', 'Sxy_swell': Radiation stress components (N/m)
+            - 'ub_var', 'ub_spec': Bottom orbital velocity statistics (m/s)
+
+        Notes
+        -----
+        This method implements the cross-spectral directional wave analysis technique,
+        which uses the coherence and phase relationships between pressure and velocity
+        measurements to determine wave direction and spreading characteristics.
+
+        The method applies depth corrections to convert pressure measurements to sea
+        surface elevation using linear wave theory, accounting for the attenuation
+        of pressure fluctuations with depth.
+        """
+
+
+        h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth
+
+        # Sanity check to make sure average depth is positive
+        if h < 0:
+            raise ValueError("Average water depth must be positive to calculate directional wave statistics.")
+
+        # Calculating spectra
+        f, S_uu = psd(u, **kwargs)
+        f, S_vv = psd(v, **kwargs)
+        f, S_pp = psd(p, **kwargs)
+        f, S_uv = csd(u, v, **kwargs)
+        f, S_pu = csd(p, u, **kwargs)
+        f, S_pv = csd(p, v, **kwargs)
+
+        # Depth correction and spectral weighted averages
+        if band_definitions is None:
+            fbands = {
+                "infragravity": ((f > 1 / 250) & (f <= 1 / 25)),
+                "swell": ((f > 1 / 25) & (f <= 0.2)),
+                "sea": ((f > 0.2) & (f <= 0.5)),
+                "all": np.ones_like(f).astype(bool)
+            }
+        else:
+            fbands = {
+                "infragravity": (
+                            (f > band_definitions["infragravity"][0]) & (f <= band_definitions["infragravity"][1])),
+                "swell": ((f > band_definitions["swell"][0]) & (f <= band_definitions["swell"][1])),
+                "sea": ((f > band_definitions["sea"][0]) & (f <= band_definitions["sea"][1])),
+                "all": np.ones_like(f).astype(bool)
+            }
+
+        # Getting sea surface elevation spectrum
+        df = np.max(np.diff(f))
+        omega = 2 * np.pi * f
+        k = get_wavenumber(omega, h)
+        attenuation_correction = 1e4 * np.cosh(k * h) / (rho * g * np.cosh(k * mab))
+        S_etaeta = S_pp * (attenuation_correction ** 2)
+
+        if sea_correction:
+            S_etaeta = jones_monismith_correction(S_etaeta, S_pp, f, fc)
+
+        SSEt = SSE[i_all]
+        Suut = Suu[i_all]
+        Svvt = Svv[i_all]
+        Suvt = Suv[i_all]
+
+        fmt = fm[i_all]
+
+        UUpres = Suu * (convert ** 2)  # converting to "equivalent pressure" for comparison with pressure
+        VVpres = Svv * (convert ** 2)
+        UVpres = Suv * (convert ** 2)
+
+        PUpres = Spu * convert
+        PVpres = Spv * convert
+
+        # Cospectrum and quadrature
+        coPUpres = np.real(PUpres)
+        quPUpres = np.imag(PUpres)
+
+        coPVpres = np.real(PVpres)
+        quPVpres = np.imag(PVpres)
+
+        coUVpres = np.real(UVpres)
+        quUVpres = np.imag(UVpres)
+
+        # coherence and phase
+        cohPUpres = np.sqrt((coPUpres ** 2 + quPUpres ** 2) / (Spp * UUpres))
+        phPUpres = (180 / np.pi) * np.arctan2(quPUpres, coPUpres)
+        cohPVpres = np.sqrt((coPVpres ** 2 + quPVpres ** 2) / (Spp * VVpres))
+        phPVpres = (180 / np.pi) * np.arctan2(quPVpres, coPVpres)
+        cohUVpres = np.sqrt((coUVpres ** 2 + quUVpres ** 2) / (UUpres * VVpres))
+        phUVpres = (180 / np.pi) * np.arctan2(quUVpres, coUVpres)
+
+        a1 = coPUpres / np.sqrt(Spp * (UUpres + VVpres))
+        b1 = coPVpres / np.sqrt(Spp * (UUpres + VVpres))
+        dir1 = np.degrees(np.arctan2(b1, a1))
+        spread1 = np.degrees(np.sqrt(2 * (1 - (a1 * np.cos(np.radians(dir1)) + b1 * np.sin(np.radians(dir1))))))
+
+        a2 = (UUpres - VVpres) / (UUpres + VVpres)
+        b2 = 2 * coUVpres / (UUpres + VVpres)
+
+        dir2 = np.degrees(np.arctan2(b2, a2) / 2)
+        spread2 = np.degrees(
+            np.sqrt(np.abs(0.5 - 0.5 * (a2 * np.cos(2 * np.radians(dir2)) + b2 * np.sin(2 * np.radians(dir2)))))
+        )
+
+        # Energy flux
+        C = omega / k
+        Cg = get_cg(k, dbar)
+
+        const = g * Cg * ((np.cosh(k * dbar)) ** 2) / ((np.cosh(k * doffp)) ** 2)
+
+        # Energy flux by freq in cartesian coordinates
+        posX = const * (0.5 * (np.abs(Spp) + (UUpres - VVpres) + np.real(PUpres)))
+        negX = const * (0.5 * (np.abs(Spp) + (UUpres - VVpres) - np.real(PUpres)))
+        posY = const * (0.5 * (np.abs(Spp) + (VVpres - UUpres) + np.real(PVpres)))
+        negY = const * (0.5 * (np.abs(Spp) + (VVpres - UUpres) - np.real(PVpres)))
+
+        posX2 = g * Cg * a1 * SSE
+        posY2 = g * Cg * b1 * SSE
+
+        Eflux = np.stack((posX2, posX, negX, posY2, posY, negY))
+
+        Eflux_swell = np.nansum(Eflux[:, i_swell], axis=1) * df
+        Eflux_ig = np.nansum(Eflux[:, i_ig], axis=1) * df
+
+        # Significant wave height
+        Hsigt = 4 * np.sqrt(SSE[i_all] * df)
+        Hsig_swell = 4 * np.sqrt(np.nansum(SSE[i_swell] * df))
+        Hsig_sea = 4 * np.sqrt(np.nansum(SSE[i_sea] * df))
+        Hsig_ig = 4 * np.sqrt(np.nansum(SSE[i_ig] * df))
+        Hsig_all = 4 * np.sqrt(np.nansum(SSE[i_all] * df))
+
+        Hrmst = np.sqrt(8 * SSE[i_all] * df)
+        Hrms_sea = np.sqrt(8 * np.nansum(SSE[i_sea] * df))
+        Hrms_swell = np.sqrt(8 * np.nansum(SSE[i_swell] * df))
+        Hrms_ig = np.sqrt(8 * np.nansum(SSE[i_ig] * df))
+        Hrms_all = np.sqrt(8 * np.nansum(SSE[i_all] * df))
+
+        dirt = np.stack((dir1[i_all], dir2[i_all]))
+        spreadt = np.stack((spread1[i_all], spread2[i_all]))
+
+        dir_calc = dirt[dirmethod, :]
+
+        a1t = a1[i_all]
+        a2t = a2[i_all]
+        b1t = b1[i_all]
+        b2t = b2[i_all]
+
+        # Total
+        a1_all = np.nansum(a1t * SSEt) / np.nansum(SSEt)
+        b1_all = np.nansum(b1t * SSEt) / np.nansum(SSEt)
+        a2_all = np.nansum(a2t * SSEt) / np.nansum(SSEt)
+        b2_all = np.nansum(b2t * SSEt) / np.nansum(SSEt)
+
+        dir_all1 = np.degrees(np.arctan2(b1_all, a1_all))
+        spread_all1 = np.degrees(np.sqrt(2 * (1 - np.sqrt(a1_all ** 2 + b1_all ** 2))))
+
+        dir_all2 = np.degrees(np.arctan2(b2_all, a2_all))
+        spread_all2 = np.degrees(np.sqrt(2 * (1 - np.sqrt(a2_all ** 2 + b2_all ** 2))))
+
+        # Centroid frequency
+        fcentroid_all = np.nansum(fmt * SSEt) / np.nansum(SSEt)
+        Tm_all = 1.0 / fcentroid_all
+
+        # peak frequency
+        indx = np.argmax(SSEt)
+        Tp_all = 1.0 / fmt[indx]
+        if np.size(Tp_all) == 0:
+            Tp_all = np.nan
+
+        # Sea
+        a1_sea = np.nansum(a1[i_sea] * SSE[i_sea]) / np.nansum(SSE[i_sea])
+        b1_sea = np.nansum(b1[i_sea] * SSE[i_sea]) / np.nansum(SSE[i_sea])
+        a2_sea = np.nansum(a2[i_sea] * SSE[i_sea]) / np.nansum(SSE[i_sea])
+        b2_sea = np.nansum(b2[i_sea] * SSE[i_sea]) / np.nansum(SSE[i_sea])
+
+        dir_sea1 = np.degrees(np.arctan2(b1_sea, a1_sea))
+        spread_sea1 = np.degrees(np.sqrt(2 * (1 - np.sqrt(a1_sea ** 2 + b1_sea ** 2))))
+
+        dir_sea2 = np.degrees(np.arctan2(b2_sea, a2_sea))
+        spread_sea2 = np.degrees(np.sqrt(2 * (1 - np.sqrt(a2_sea ** 2 + b2_sea ** 2))))
+
+        # Centroid frequency
+        fcentroid_sea = np.nansum(fm[i_sea] * SSE[i_sea]) / np.nansum(SSE[i_sea])
+        Tm_sea = 1.0 / fcentroid_sea
+
+        # peak frequency
+        indx = np.argmax(SSE[i_sea])
+        temp = fmt[i_sea]
+        Tp_sea = 1.0 / temp[indx]
+        if np.size(Tp_sea) == 0:
+            Tp_sea = np.nan
+
+        # Swell
+        a1_swell = np.nansum(a1[i_swell] * SSE[i_swell]) / np.nansum(SSE[i_swell])
+        b1_swell = np.nansum(b1[i_swell] * SSE[i_swell]) / np.nansum(SSE[i_swell])
+        a2_swell = np.nansum(a2[i_swell] * SSE[i_swell]) / np.nansum(SSE[i_swell])
+        b2_swell = np.nansum(b2[i_swell] * SSE[i_swell]) / np.nansum(SSE[i_swell])
+
+        dir_swell1 = np.degrees(np.arctan2(b1_swell, a1_swell))
+        spread_swell1 = np.degrees(np.sqrt(2 * (1 - np.sqrt(a1_swell ** 2 + b1_swell ** 2))))
+
+        dir_swell2 = np.degrees(np.arctan2(b2_swell, a2_swell))
+        spread_swell2 = np.degrees(np.sqrt(2 * (1 - np.sqrt(a2_swell ** 2 + b2_swell ** 2))))
+
+        # Centroid frequency
+        fcentroid_swell = np.nansum(fm[i_swell] * SSE[i_swell]) / np.nansum(SSE[i_swell])
+        Tm_swell = 1.0 / fcentroid_swell
+
+        # peak frequency
+        indx = np.argmax(SSE[i_swell])
+        temp = fmt[i_swell]
+        Tp_swell = 1.0 / temp[indx]
+        if np.size(Tp_swell) == 0:
+            Tp_swell = np.nan
+
+        # IG
+        a1_ig = np.nansum(a1[i_ig] * SSE[i_ig]) / np.nansum(SSE[i_ig])
+        b1_ig = np.nansum(b1[i_ig] * SSE[i_ig]) / np.nansum(SSE[i_ig])
+        a2_ig = np.nansum(a2[i_ig] * SSE[i_ig]) / np.nansum(SSE[i_ig])
+        b2_ig = np.nansum(b2[i_ig] * SSE[i_ig]) / np.nansum(SSE[i_ig])
+
+        dir_ig1 = np.degrees(np.arctan2(b1_ig, a1_ig))
+        spread_ig1 = np.degrees(np.sqrt(2 * (1 - np.sqrt(a1_ig ** 2 + b1_ig ** 2))))
+
+        dir_ig2 = np.degrees(np.arctan2(b2_ig, a2_ig))
+        spread_ig2 = np.degrees(np.sqrt(2 * (1 - np.sqrt(a2_ig ** 2 + b2_ig ** 2))))
+
+        # Centroid frequency
+        fcentroid_ig = np.nansum(fm[i_ig] * SSE[i_ig]) / np.nansum(SSE[i_ig])
+        Tm_ig = 1.0 / fcentroid_ig
+
+        # peak frequency
+        indx = np.argmax(SSE[i_ig])
+        temp = fmt[i_ig]
+        Tp_ig = 1.0 / temp[indx]
+        if np.size(Tp_ig) == 0:
+            Tp_ig = np.nan
+
+        # Radiation stress
+        Sxx = rho * g * ((1.5 + 0.5 * a2) * (Cg / C) - 0.5) * SSE
+        Syy = rho * g * ((1.5 - 0.5 * a2) * (Cg / C) - 0.5) * SSE
+        Sxy = rho * g * 0.5 * b2 * (Cg / C) * SSE
+
+        Sxx_swell = np.nansum(Sxx[i_swell]) * df
+        Syy_swell = np.nansum(Syy[i_swell]) * df
+        Sxy_swell = np.nansum(Sxy[i_swell]) * df
+
+        Cpu_swell = np.nansum(cohPUpres[i_swell] * SSE[i_swell]) / np.nansum(SSE[i_swell])
+
+        # Bulk Stokes drift
+        omega_peak = 2 * np.pi / Tp_all
+        k_peak = get_wavenumber(omega_peak, dbar)
+        Us_bulk = (
+                (Hsig_all ** 2 * omega_peak * k_peak / 16)
+                * np.cosh(2 * k_peak * doffp)
+                / (np.sinh(k_peak * dbar) ** 2)
+                * np.cos(np.radians(dir_all1))
+        )
+        Vs_bulk = (
+                (Hsig_all ** 2 * omega_peak * k_peak / 16)
+                * np.cosh(2 * k_peak * doffp)
+                / (np.sinh(k_peak * dbar) ** 2)
+                * np.sin(np.radians(dir_all1))
+        )
+
+        # Spectral
+        kt = k[i_all]
+        omegat = omega[i_all]
+        d_omega = omegat[1] - omegat[0]
+        Us_spec = np.nansum(
+            (SSEt / (2 * np.pi))
+            * omegat
+            * kt
+            * (np.cosh(2 * kt * doffp) / (np.sinh(kt * dbar) ** 2))
+            * np.cos(np.radians(dir_calc))
+            * d_omega
+        )
+        Vs_spec = np.nansum(
+            (SSEt / (2 * np.pi))
+            * omegat
+            * kt
+            * (np.cosh(2 * kt * doffp) / (np.sinh(kt * dbar) ** 2))
+            * np.sin(np.radians(dir_calc))
+            * d_omega
+        )
+
+        # Bottom wave orbital velocity
+        # Time domain calculation
+        u_prime = U - np.nanmean(U)
+        v_prime = V - np.nanmean(V)
+        ub_var = np.sqrt((np.nanvar(u_prime) + np.nanvar(v_prime)))
+
+        # Spectral calculation
+        Suv_b = Suut + Svvt
+        ub_spec = np.sqrt(np.nansum(Suv_b * df))
 if __name__ == "__main__":
     import time
 
