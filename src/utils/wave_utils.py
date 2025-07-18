@@ -26,12 +26,36 @@ def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray])
         dfdk = g * k * h * ((1 / np.cosh(k * h)) ** 2) + g * np.tanh(k * h)
         k = k - f / dfdk
         f = g * k * np.tanh(k * h) - omega**2
-    k[omega == 0] = 0
+
+    # Handling the zero case
+    if np.isscalar(k):
+        k = 0 if omega == 0 else k
+    else:
+        k[omega == 0] = 0
+
     return k
 
-def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.ndarray, f_cutoff: Optional[float] = None):
+def get_cg(k, h):
     """
-    Apply Jones & Monismith (2008) correction to remove contamination...
+    Returns the group velocity from the linear wave theory dispersion relation
+    Parameters
+    ----------
+    k
+    h
+
+    Returns
+    -------
+
+    """
+    g = 9.81
+    Cp = np.sqrt((g / k) * np.tanh(k * h))
+    Cg = 0.5 * Cp * (1 + (k * h) * (1 - (np.tanh(k * h)) ** 2) / np.tanh(k * h))
+
+    return Cg
+
+def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.ndarray, f_cutoff: Optional[float] = 0.5):
+    """
+    Apply Jones & Monismith (2008) correction for high frequency noise introduced by the pressure attenuation
 
     Parameters
     ----------
@@ -49,7 +73,7 @@ def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.nda
     -------
     S_etaeta_corrected : np.ndarray
         Corrected sea surface elevation power spectral density with
-        f^-4 tail applied above the cutoff frequency
+        f^-4 tail applied above 1.1 f_p
 
     Notes
     -----
@@ -73,10 +97,7 @@ def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.nda
     df = np.max(np.diff(f))
     noise_floor = np.mean(S_pp[f < 3 * df])
 
-    if f_cutoff is None:
-        global_cutoff = len(f)
-    else:
-        global_cutoff = np.argmin(np.abs(f - f_cutoff))
+    global_cutoff = np.argmin(np.abs(f - f_cutoff))
     index_peak = np.argmax(S_pp[:global_cutoff])
     index_cutoff = np.argmin(np.abs(S_pp[index_peak:] - noise_floor * 12)) + index_peak
 
