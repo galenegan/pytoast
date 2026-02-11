@@ -2,6 +2,7 @@ import numpy as np
 from typing import Optional, Union
 from utils.constants import GRAVITATIONAL_ACCELERATION as g
 
+
 def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     """
     Calculate wavenumber from the surface gravity wave dispersion relation using Newton's method.
@@ -35,6 +36,7 @@ def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray])
 
     return k
 
+
 def get_cg(k, h):
     """
     Returns the group velocity from the linear wave theory dispersion relation
@@ -53,6 +55,7 @@ def get_cg(k, h):
 
     return Cg
 
+
 def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.ndarray, f_cutoff: Optional[float] = 0.5):
     """
     Apply Jones & Monismith (2008) correction for high frequency noise introduced by the pressure attenuation
@@ -61,7 +64,7 @@ def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.nda
     ----------
     S_etaeta : np.ndarray
         Sea surface elevation power spectral density (m²/Hz)
-    S_pp : np.ndarray  
+    S_pp : np.ndarray
         Pressure power spectral density (dbar²/Hz)
     f : np.ndarray
         Frequency array (Hz)
@@ -89,8 +92,8 @@ def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.nda
 
     References
     ----------
-    Jones, N. L., & Monismith, S. G. (2008). The influence of whitecapping 
-    on wave height and period statistics. Journal of Physical Oceanography, 
+    Jones, N. L., & Monismith, S. G. (2008). The influence of whitecapping
+    on wave height and period statistics. Journal of Physical Oceanography,
     38(7), 1473-1490.
     """
     # Finding peak and cutoff frequency

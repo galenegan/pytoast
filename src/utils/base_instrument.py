@@ -1,58 +1,104 @@
-from abc import ABC, abstractmethod
+from abc import ABC
+import numpy as np
 import os
+from typing import List, Union, Optional, Dict, Any
+from collections.abc import Mapping
+import scipy.io as sio
+import pandas as pd
 import xarray as xr
-from typing import Union, List, Optional
+from dataclasses import dataclass
+
+
+@dataclass
+class InstrumentMetadata:
+    """Metadata for instrument configuration"""
+
+    files: List[str]
+    file_type: str
+    name_map: Dict[str, Union[str, List[str]]]
+    fs: float
+    heights: np.ndarray
+    num_bursts: int
+    num_heights: int
+    num_samples_per_burst: int
 
 
 class BaseInstrument(ABC):
-    """Abstract base class for instruments, defining shared methods and attributes"""
+    """Abstract base class containing data loading and parsing methods that are used across instruments"""
 
-    def __init__(self, dataset: xr.Dataset):
-        super().__setattr__("ds", dataset)
+    def __init__(
+        self,
+        files: Union[str, List[str]],
+        name_map: dict,
+        fs: Optional[float] = None,
+        z: Optional[Union[float, List[float]]] = None,
+    ):
+        """
+        Initialize data manager.
 
-    def __getattr__(self, name):
-        if name in self.ds.variables:
-            return self.ds[name]
-        return getattr(self.ds, name)
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def __setattr__(self, name, value):
-        if "ds" in self.__dict__ and name in self.ds.variables:
-            # Assign to dataset variable if it already exists
-            self.ds[name] = value
-        else:
-            # Otherwise, assign normally (e.g., during __init__)
-            super().__setattr__(name, value)
+        Parameters
+        ----------
+        files : str or List[str]
+            Path(s) to data files
+        name_map : dict
+            Mapping of variable names
+        fs : float, optional
+            Sampling frequency
+        z : float or List[float], optional
+            Height coordinates
+        """
+        files = files if isinstance(files, list) else [files]  # Map to a list to simplify validation
+        self.validate_common_inputs(files, name_map, fs, z)
+        self.files = files
+        self.name_map = name_map
+        self.fs = fs
+        self.z = z
+        self._cached_idx = None
+        self._cached_data = None
+        self.metadata = self._build_metadata()
 
     @staticmethod
     def validate_common_inputs(
-        files: Union[str, List],
+        files: List[str],
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        zarr_save_path: Optional[str] = None,
-        overwrite: Optional[bool] = False,
     ):
-        # Validate "files"
-        if isinstance(files, str):
-            if not files.lower().endswith((".nc", ".mat", ".zarr")):
-                raise ValueError(f"If files is a string, it must be a .nc, .mat, or .zarr file. Got: {files}")
-            if not os.path.exists(files):
-                raise FileNotFoundError(f"The specified file does not exist: {files}")
+        """
+        Validate common input parameters shared across all instruments.
 
-        elif isinstance(files, list):
-            valid_extensions = (".npy", ".mat", ".csv")
+        Parameters
+        ----------
+        files : List[str]
+            Input files
+        name_map : dict
+            Variable name mapping
+        fs : float, optional
+            Sampling frequency
+        z : float or List[float], optional
+            Height coordinates
+
+        Raises
+        ------
+        ValueError
+            If input parameters are invalid
+        TypeError
+            If parameter types are incorrect
+        FileNotFoundError
+            If specified files don't exist
+        """
+        # Validate "files"
+        valid_extensions = (".npy", ".mat", ".csv", ".nc")
+        if isinstance(files, list):
             for file in files:
                 if not isinstance(file, str) or not file.lower().endswith(valid_extensions):
                     raise ValueError(
-                        f"Each element in the files list must be a path ending in {valid_extensions}. Got: {file}"
+                        f"Each element in files list must be a path ending in one of {valid_extensions}. Got: {file}"
                     )
                 if not os.path.exists(file):
                     raise FileNotFoundError(f"The specified file does not exist: {file}")
         else:
-            raise TypeError("`files` must be a string or a list of strings")
+            raise TypeError("`files` must be a list")
 
         if not isinstance(name_map, dict):
             raise TypeError("`name_map` must be a dictionary")
@@ -71,34 +117,215 @@ class BaseInstrument(ABC):
         if fs is not None and not isinstance(fs, (int, float)):
             raise TypeError("`fs` must be either an int or a float")
 
-        # Validate "zarr_save_path"
-        if zarr_save_path is not None:
-            if not isinstance(zarr_save_path, str):
-                raise TypeError("`zarr_save_path` must be a string")
-            if os.path.exists(zarr_save_path) and not overwrite:
-                raise FileExistsError(
-                    f"The specified zarr_save_path already exists: {zarr_save_path}. Set overwrite=True to overwrite it."
-                )
+    def _build_metadata(self) -> InstrumentMetadata:
+        """Build metadata by examining first file in list"""
 
-        # Validate "overwrite"
-        if not isinstance(overwrite, bool):
-            raise TypeError("`overwrite` must be a boolean")
+        if not self.files:
+            raise ValueError("No files provided")
 
-    @classmethod
-    def from_saved_zarr(cls, zarr_path: str):
+        suffix = self.files[0].split(".")[-1].lower()
+        if suffix == "mat":
+            data = sio.loadmat(self.files[0], simplify_cells=True)
+            file_type = "mat"
+        elif suffix == "npy":
+            data = np.load(self.files[0], allow_pickle=True).item()
+            file_type = "npy"
+        elif suffix == "csv":
+            data = pd.read_csv(self.files[0])
+            file_type = "csv"
+        elif suffix == "nc":
+            data = xr.load_dataarray(self.files[0])
+            file_type = "nc"
+        else:
+            raise Exception(f"Unrecognized file type .{suffix} for filepath input")
+
+        metadata = self.parse_data(data)
+        metadata.file_type = file_type
+
+        return metadata
+
+    def parse_data(self, data: Mapping[str, Any]) -> InstrumentMetadata:
+
+        # TODO: Test this to make sure it's generalizable to xarray DA, numpy array, and pandas df
+        # Determine heights
+        if self.z is not None:
+            heights = np.array(self.z) if isinstance(self.z, list) else np.array([self.z])
+        else:
+            # Infer from dimensions of the first non-time data variable
+            non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
+            if isinstance(non_time_key, str):
+                data_var = data[non_time_key]
+                if data_var.ndim > 1:
+                    num_rows, num_cols = data_var.shape
+                    if num_rows > num_cols:
+                        data_var = data_var.T
+                    heights = np.arange(data_var.shape[0])
+                else:
+                    heights = np.array([0])
+            else:
+                heights = np.arange(len(non_time_key))
+
+            self.z = heights
+
+        # Parsing time
+        if "time" not in self.name_map:
+            data_var = data[list(self.name_map.keys())[0]]
+            num_rows, num_cols = data_var.shape
+            num_samples = max(num_rows, num_cols)
+        else:
+            num_samples = len(data[self.name_map["time"]])
+            if self.fs is None:
+                time_array = data[self.name_map["time"]]
+                datetime_array = self.process_time(time_array)
+                self.fs = np.round(1 / ((datetime_array[1] - datetime_array[0]).astype(int) / 10**9), 2)
+
+        return InstrumentMetadata(
+            files=self.files,
+            name_map=self.name_map,
+            fs=self.fs,
+            heights=heights,
+            num_bursts=len(self.files),
+            num_heights=len(heights),
+            num_samples_per_burst=num_samples,
+        )
+
+    def process_time(self, time_array: np.ndarray) -> np.ndarray:
         """
-        Load an object from a zarr store that was previously saved to disk by pyToast.
-        If you are want to initialize an object from your own zarr store for the first
-        time, you should use {InstrumentClass}.from_raw(files="path/to/zarr", ...)
+        Docstring tbw
 
         Parameters
         ----------
-        zarr_path : string
-            Path to zarr store on local disk
+        time_array
 
         Returns
         -------
-        BaseInstrument object
+
         """
-        ds = xr.open_zarr(zarr_path)
-        return cls(ds)
+        flattened_time = time_array.flatten()
+        format = self.detect_time_format(flattened_time[0])
+        if format == "datestring":
+            datetime_array = pd.to_datetime(flattened_time).values
+        elif format == "matlab":
+            datetime_array = pd.to_datetime(flattened_time - 719529, unit="D").values
+        elif format == "epoch":
+            datetime_array = pd.to_datetime(flattened_time, unit="s").values
+
+        return datetime_array.reshape(time_array.shape)
+
+    @staticmethod
+    def detect_time_format(time_input: Union[float, int, str]) -> str:
+        """
+        Detect if a time input represents Unix epoch time, MATLAB datenum, or a datestring
+
+        Args:
+            time_input (float): The input float to test.
+
+        Returns:
+            str: "datestring", "epoch", "matlab". Raises an exception if there is no match
+        """
+
+        # Rough numeric ranges as of 2020s:
+        # Epoch: ~1.5e9 (1970-2020s)
+        # MATLAB: ~7.3e5 (year ~2000), currently ~7.4e5 to ~7.5e5 in the 2020s
+
+        if isinstance(time_input, str):
+            return "datestring"
+        elif 1e9 < time_input < 2e9:
+            return "epoch"
+        elif 7e5 < time_input < 8.5e5:
+            return "matlab"
+        else:
+            raise IOError(f"Unrecognized time input {time_input} with type {type(time_input)}")
+
+    def load_burst(self, burst_idx: int) -> Dict[str, np.ndarray]:
+        """
+        Load data for a single burst.
+
+        Parameters
+        ----------
+        burst_idx : int
+            Index of burst to load
+
+        Returns
+        -------
+        Dict[str, np.ndarray]
+            Dictionary containing burst data
+        """
+        if burst_idx >= len(self.files):
+            raise IndexError(f"Burst index {burst_idx} out of range")
+
+        if self._cached_idx == burst_idx:
+            return self._cached_data
+
+        file_path = self.files[burst_idx]
+        try:
+            if self.metadata.file_type == "mat":
+                data = sio.loadmat(file_path, simplify_cells=True)
+            elif self.metadata.file_type == "npy":
+                data = np.load(file_path, allow_pickle=True).item()
+            elif self.metadata.file_type == "csv":
+                data = pd.read_csv(file_path)
+            elif self.metadata.file_type == "nc":
+                data = xr.load_dataarray(file_path)
+        except Exception as e:
+            raise IOError(f"Failed to load {file_path}: {e}")
+
+        # Extract and organize data
+        burst_data = {}
+        for out_key, in_key in self.name_map.items():
+            if isinstance(in_key, list):
+                # Multiple variables (e.g., from different instruments)
+                var_data = np.array([data[k] for k in in_key])
+            else:
+                # Single variable
+                var_data = data[in_key]
+                if var_data.ndim > 1:
+                    # Transpose if needed (time should be last dimension)
+                    if var_data.shape[0] > var_data.shape[1]:
+                        var_data = var_data.T
+                else:
+                    var_data = np.expand_dims(var_data, axis=0)  # 2D even if only one height
+
+            burst_data[out_key] = var_data
+
+        pre_processed_burst_data = self._apply_preprocessing(burst_data)
+
+        self._cached_idx = burst_idx
+        self._cached_data = pre_processed_burst_data
+
+        return pre_processed_burst_data
+
+    def _apply_preprocessing(self, burst_data):
+        """Override in subclasses to add preprocessing steps."""
+        return burst_data
+
+    def load_burst_range(self, start_idx: int, end_idx: int) -> Dict[str, np.ndarray]:
+        """
+        Load data for a range of bursts.
+
+        Parameters
+        ----------
+        start_idx : int
+            Starting burst index
+        end_idx : int
+            Ending burst index (exclusive)
+
+        Returns
+        -------
+        Dict[str, np.ndarray]
+            Dictionary containing burst data with shape (n_bursts, n_heights, n_samples)
+        """
+        burst_data_list = []
+        for i in range(start_idx, end_idx):
+            burst_data_list.append(self.load_burst(i))
+
+        # Stack bursts
+        stacked_data = {}
+        for key in burst_data_list[0].keys():
+            stacked_data[key] = np.stack([bd[key] for bd in burst_data_list], axis=0)
+
+        return stacked_data
+
+    def subsample(self, start_idx: int, end_idx: int):
+        files = self.files[start_idx:end_idx]
+        return self.__class__(files, self.name_map, self.fs, self.z)

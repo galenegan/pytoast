@@ -1,21 +1,21 @@
-import glob
-import itertools
 import numpy as np
-import os
 import scipy.signal as sig
-import xarray as xr
-from scipy.stats import median_abs_deviation
+from typing import Optional, Union, List, Dict, Any
 from sklearn.linear_model import LinearRegression
-from typing import Optional, Union, List, Tuple
-from utils.parsing_utils import DatasetParser
-from utils.interp_utils import naninterp_pd
-from utils.spectral_utils import psd, csd, get_frequency_range
 from utils.base_instrument import BaseInstrument
+from utils.interp_utils import naninterp_pd
+from utils.wave_utils import get_wavenumber, get_cg, jones_monismith_correction
+from scipy.stats import median_abs_deviation
+
+from utils.spectral_utils import psd, csd, get_frequency_range
 from utils.constants import GRAVITATIONAL_ACCELERATION as g
-from utils.wave_utils import get_wavenumber, jones_monismith_correction, get_cg
 
 
 class ADV(BaseInstrument):
+    """
+    Refactored ADV class with numpy-based processing and on-demand data loading.
+    No longer stores raw data in xarray, instead uses efficient numpy processing.
+    """
 
     @staticmethod
     def validate_inputs(
@@ -23,12 +23,10 @@ class ADV(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        zarr_save_path: Optional[str] = None,
-        overwrite: Optional[bool] = False,
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, zarr_save_path, overwrite)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z)
 
         # Instrument-specific requirements
         required_keys = ["u", "v", "w"]
@@ -44,8 +42,6 @@ class ADV(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        zarr_save_path: Optional[str] = None,
-        overwrite: Optional[bool] = False,
     ):
         """
         Initializes a new ADV object from data files.
@@ -89,17 +85,57 @@ class ADV(BaseInstrument):
 
         """
         ADV.validate_inputs(files, name_map, fs, z)
-        parser = DatasetParser(files, name_map, fs, z)
-        ds = parser.parse_input()
-        if zarr_save_path and (overwrite or not os.path.exists(os.path.expanduser(zarr_save_path))):
-            ds.to_zarr(zarr_save_path, consolidated=True)
+        return cls(files, name_map, fs, z)
 
-        return cls(ds)
+    def set_preprocess_opts(self, opts: Dict[str, Any]):
+        """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
 
-    def despike(self, threshold: int = 5, max_iter: int = 10, chunk_size: int = 100, robust_statistics: bool = False):
+        Parameters
+        ----------
+        opts : Dict[str, Any]
+            Options for preprocessing. Currently supports the following keys/values
+            {
+                "despike": bool
+                "despike_opts": {threshold: int, max_iter: int, robust_statistics: bool}
+                "rotate_horizontal": float or "principal"
+                "rotate_vertical": float or "minimize"
+        """
+
+        if isinstance(opts.get("rotate_vertical"), str) and opts.get("rotate_vertical") != "minimize":
+            raise ValueError("Only 'minimize' is supported for rotate_vertical")
+        if isinstance(opts.get("rotate_horizontal"), str) and opts.get("rotate_horizontal") != "principal":
+            raise ValueError("Only 'principal' is supported for rotate_horizontal")
+
+        self._despike = opts.get("despike", True)
+        self._despike_opts = opts.get("despike_opts", {})
+        self._rotate_vertical = opts.get("rotate_vertical", 0.0)
+        self._rotate_horizontal = opts.get("rotate_horizontal", 0.0)
+        self._cached_idx = None
+        self._cached_data = None
+
+    def _apply_preprocessing(self, burst_data):
+        if self._despike:
+            burst_data = self._apply_despike(burst_data, **self._despike_opts)
+
+        if isinstance(self._rotate_vertical, str):
+            theta_v = ADV._minimize_vertical_velocity(burst_data)
+        else:
+            theta_v = self._rotate_vertical
+
+        if isinstance(self._rotate_horizontal, str):
+            theta_h = ADV._get_principal_axis(burst_data)
+        else:
+            theta_h = self._rotate_horizontal
+
+        if theta_v != 0.0 or theta_h != 0.0:
+            burst_data = self._rotate_velocity(burst_data, theta_h, theta_v)
+
+        return burst_data
+
+    def _apply_despike(self, data, threshold: int = 5, max_iter: int = 10, robust_statistics: bool = False):
         """
         Implements the Goring & Nikora (2002) phase-space de-spiking algorithm,
-        modifying self.u, self.v, and self.w in-place.
+        returning data with modified data["u"], data["v"], and data["w"].
 
         Parameters
         ----------
@@ -109,9 +145,6 @@ class ADV(BaseInstrument):
         max_iter : int
             Maximum number of iterations
 
-        chunk_size : int
-            Chunk size for Dask parallelization
-
         robust_statistics : bool
             If True, ellipsoid centers will be based on the median and axis lengths will be based on median absolute
             deviation as suggested by Wahl (2003). If False, mean and standard deviation are used, consistent with the
@@ -119,8 +152,12 @@ class ADV(BaseInstrument):
 
         Returns
         -------
-        None
+        data : dict
+            Original data dictionary with "u", "v", and "w" velocity arrays despiked
+
         """
+
+        # TODO: Vectorize this so that it works on 2d arrays
 
         def flag_bad_indices(u: np.ndarray) -> np.ndarray:
             # Initializing gradient arrays
@@ -209,225 +246,9 @@ class ADV(BaseInstrument):
             u_out = naninterp_pd(u_out)
             return u_out
 
-        ds_chunked = self.chunk({"burst": chunk_size})
-
-        self.u = xr.apply_ufunc(
-            despike_worker,
-            ds_chunked.u,
-            input_core_dims=[["time"]],
-            output_core_dims=[["time"]],
-            vectorize=True,
-            dask="parallelized",
-            output_dtypes=[self.u.dtype],
-        )
-        self.v = xr.apply_ufunc(
-            despike_worker,
-            ds_chunked.v,
-            input_core_dims=[["time"]],
-            output_core_dims=[["time"]],
-            vectorize=True,
-            dask="parallelized",
-            output_dtypes=[self.v.dtype],
-        )
-        self.w = xr.apply_ufunc(
-            despike_worker,
-            ds_chunked.w,
-            input_core_dims=[["time"]],
-            output_core_dims=[["time"]],
-            vectorize=True,
-            dask="parallelized",
-            output_dtypes=[self.w.dtype],
-        )
-
-    def get_principal_axis(self) -> xr.DataArray:
-        """
-        Calculates the direction of maximum variance from the u and v velocities (Thomson & Emery, 4.52b).
-
-        Parameters
-        ----------
-
-        Returns
-        -------
-        theta : DataArray
-            (bursts, height) array containing the direction of maximum variance in degrees, CCW positive from east
-            assuming that u = eastward velocity, v = northward velocity
-        """
-        # Covariance matrix
-        u_var = self.u.var(dim="time")
-        v_var = self.v.var(dim="time")
-        cv = xr.cov(self.u, self.v, dim="time")
-
-        # Direction of maximum variance
-        theta = (180.0 / np.pi) * (0.5 * np.arctan2(2.0 * cv, (u_var - v_var)))
-
-        return theta
-
-    def rotate_velocity(self, theta: xr.DataArray) -> (xr.DataArray, xr.DataArray):
-        """
-        Rotates u, v velocities in direction theta
-
-        Parameters
-        ----------
-        theta: DataArray
-            Direction (degrees, CCW positive from east) in which velocites should be rotated.
-            This is often the output of adv.get_principal_axis
-
-        Returns
-        -------
-        vel_maj: DataArray
-            Major axis velocity (m/s) in the direction of the first principal component
-
-        vel_min: DataArray
-            Minor axis velocity (m/s) in the direction of the second principal component
-        """
-        # Storing as complex variable
-        U = self.u + 1j * self.v
-        U_rotated = U * np.exp(-1j * theta * np.pi / 180)
-        vel_maj = np.real(U_rotated)
-        vel_min = np.imag(U_rotated)
-
-        return vel_maj, vel_min
-
-    def dissipation(self, f_low: float, f_high: float, chunk_size: int = 100, **kwargs) -> (float, float, int):
-        """
-        Estimate the dissipation rate of TKE using the Gerbi et al. (2009)
-        spectral curve fitting method. This is nearly equivalent to the
-        Feddersen et al. (2007) method, but it uses a more efficient numerical
-        integration and estimates dissipation with a least squares fit rather
-        than a mean over the inertial range.
-
-        Parameters
-        ----------
-        f_low : float
-            Lower frequency bound (Hz) for inertial subrange where -5/3 law applies
-
-        f_high : float
-            Upper frequency bound (Hz) for inertial subrange where -5/3 law applies
-
-        chunk_size : int
-            Chunk size (in burst dimension) for Dask parallelization
-
-        **kwargs
-            Additional arguments passed to spectral_utils.psd.
-            See spectral_utils.psd for parameter definitions.
-
-        Returns
-        -------
-        eps : float
-            dissipation rate of TKE (m^2/s^3)
-        noise: float
-            intercept from dissipation linear regression
-        quality_flag: int
-            1 for good eps estimate, 0 for bad eps estimate.
-            Defined based on Gerbi Eq. X
-        """
-
-        def calcJ33(sig1, sig2, sig3, u1, u2):
-            """
-            Calculates J33, the output of equation A.13
-            """
-            # Initializing coordinate arrays
-            r_len = 120
-            r = np.logspace(-2, 4, r_len)
-            R = 1 / r
-            theta = np.linspace(0, np.pi, r_len // 4)
-            phi = np.linspace(0, 2 * np.pi, r_len // 4)
-
-            # Precompute trigonometric functions and associated variables
-            cos_theta = np.cos(theta)  # (Ntheta,)
-            sin_theta = np.sin(theta)  # (Ntheta,)
-            cos_phi = np.cos(phi)  # (Nphi,)
-            sin_phi = np.sin(phi)  # (Nphi,)
-
-            # Want shape (Ntheta, Nphi)
-            G_squared = (sin_theta**2)[:, np.newaxis] * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[
-                np.newaxis, :
-            ] + (cos_theta**2)[:, np.newaxis] / sig3**2
-
-            # Also shape (Ntheta, Nphi)
-            P33 = ((sin_theta**2)[:, np.newaxis] / G_squared) * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[
-                np.newaxis, :
-            ]
-            P33_3 = P33[..., np.newaxis]
-
-            # Defining k_squared (Ntheta, Nphi, Nr)
-            R_3 = R[np.newaxis, np.newaxis, :]
-            G_squared_3 = G_squared[..., np.newaxis]
-
-            # (Ntheta, Nphi)
-            R0 = (u1 / sig1) * sin_theta[:, np.newaxis] * cos_phi[np.newaxis, :] + (u2 / sig2) * sin_theta[
-                :, np.newaxis
-            ] * sin_phi[np.newaxis, :]
-            R0_3 = R0[..., np.newaxis]  # (Ntheta, Nphi, 1)
-
-            # Innermost integral
-            I3 = R_3 ** (2 / 3) * np.exp(-((R0_3 - R_3) ** 2) / 2)
-
-            # Middle integral
-            # Gets a negative sign so that we go from R = 0 -> infinity rather than R = infinity -> zero
-            I2 = -np.trapezoid(G_squared_3 ** (-11 / 6) * sin_theta[:, np.newaxis, np.newaxis] * P33_3 * I3, R, axis=2)
-
-            # Outer integral
-            I1 = np.trapezoid(I2, phi, axis=-1)
-
-            J33 = (1 / (2 * (2 * np.pi) ** (3 / 2))) * (1 / (sig1 * sig2 * sig3)) * np.trapezoid(I1, theta, axis=-1)
-
-            return J33
-
-        def spectral_fit(u, v, w):
-            """
-            Carries out the spectral curve fit, applied through apply_ufunc
-            """
-            if np.sum(np.isnan(u)) == len(u) or np.sum(np.isnan(v)) == len(v) or np.sum(np.isnan(w)) == len(w):
-                return np.nan, np.nan, 0
-            omega_range = [2 * np.pi * f_low, 2 * np.pi * f_high]
-            alpha = 1.5
-
-            w_prime = sig.detrend(w, type="linear")
-            fw, Pw = psd(w_prime, onesided=False, **kwargs)
-
-            omega = 2 * np.pi * fw
-
-            inertial_indices = (omega >= omega_range[0]) & (omega <= omega_range[1])
-            omega_inertial = omega[inertial_indices]
-            Pw_inertial = (Pw[inertial_indices]) / (2 * np.pi)
-
-            sig1 = np.nanstd(u)
-            sig2 = np.nanstd(v)
-            sig3 = np.nanstd(w)
-
-            u1 = np.nanmean(u)
-            u2 = np.nanmean(v)
-
-            J33 = calcJ33(sig1, sig2, sig3, u1, u2)
-
-            # linear regression
-            X = J33 * alpha * (omega_inertial ** (-5 / 3))
-            y = Pw_inertial
-            reg = LinearRegression().fit(X.reshape(-1, 1), y)
-            eps = reg.coef_[0] ** (3 / 2)
-            noise = reg.intercept_
-
-            if noise < J33 * alpha * (eps ** (2 / 3)) * (omega_range[0] ** (-5 / 3)):
-                quality_flag = 1
-            else:
-                quality_flag = 0
-
-            return eps, noise, quality_flag
-
-        ds_chunked = self.chunk({"burst": chunk_size})
-        (eps, noise, quality_flag) = xr.apply_ufunc(
-            spectral_fit,
-            ds_chunked.u,
-            ds_chunked.v,
-            ds_chunked.w,
-            input_core_dims=[["time"], ["time"], ["time"]],
-            output_core_dims=[[], [], []],
-            vectorize=True,
-            dask="parallelized",
-            output_dtypes=[self.w.dtype, self.w.dtype, int],
-        )
-        return eps, noise, quality_flag
+        data["u"] = despike_worker(data["u"])
+        data["v"] = despike_worker(data["v"])
+        data["w"] = despike_worker(data["w"])
 
     def benilov_decomposition(
         self,
@@ -440,7 +261,7 @@ class ADV(BaseInstrument):
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
         **kwargs,
-    ) -> Tuple[float]:
+    ) -> dict[str, float]:
         """
         Benilov wave-turbulence decomposition to estimate wave and turbulence
         components of the Reynolds stress. (Benilov & Filyushkin, 1970)
@@ -524,34 +345,20 @@ class ADV(BaseInstrument):
         S_wt_wt = S_ww - S_wwave_wwave
 
         # Summing them to get Reynolds stresses
-        uu_turb = np.nansum(np.real(S_ut_ut[start_index:end_index]) * df)
-        uu_wave = np.nansum(np.real(S_uwave_uwave[start_index:end_index]) * df)
-        vv_turb = np.nansum(np.real(S_vt_vt[start_index:end_index]) * df)
-        vv_wave = np.nansum(np.real(S_vwave_vwave[start_index:end_index]) * df)
-        ww_turb = np.nansum(np.real(S_wt_wt[start_index:end_index]) * df)
-        ww_wave = np.nansum(np.real(S_wwave_wwave[start_index:end_index]) * df)
-        uw_turb = np.nansum(np.real(S_ut_wt[start_index:end_index]) * df)
-        uw_wave = np.nansum(np.real(S_uwave_wwave[start_index:end_index]) * df)
-        vw_turb = np.nansum(np.real(S_vt_wt[start_index:end_index]) * df)
-        vw_wave = np.nansum(np.real(S_vwave_wwave[start_index:end_index]) * df)
-        uv_turb = np.nansum(np.real(S_ut_vt[start_index:end_index]) * df)
-        uv_wave = np.nansum(np.real(S_uwave_vwave[start_index:end_index]) * df)
+        out = {}
+        out["uu_turb"] = np.nansum(np.real(S_ut_ut[start_index:end_index]) * df)
+        out["uu_wave"] = np.nansum(np.real(S_uwave_uwave[start_index:end_index]) * df)
+        out["vv_turb"] = np.nansum(np.real(S_vt_vt[start_index:end_index]) * df)
+        out["vv_wave"] = np.nansum(np.real(S_vwave_vwave[start_index:end_index]) * df)
+        out["ww_turb"] = np.nansum(np.real(S_wt_wt[start_index:end_index]) * df)
+        out["ww_wave"] = np.nansum(np.real(S_wwave_wwave[start_index:end_index]) * df)
+        out["uw_turb"] = np.nansum(np.real(S_ut_wt[start_index:end_index]) * df)
+        out["uw_wave"] = np.nansum(np.real(S_uwave_wwave[start_index:end_index]) * df)
+        out["vw_turb"] = np.nansum(np.real(S_vt_wt[start_index:end_index]) * df)
+        out["vw_wave"] = np.nansum(np.real(S_vwave_wwave[start_index:end_index]) * df)
+        out["uv_turb"] = np.nansum(np.real(S_ut_vt[start_index:end_index]) * df)
+        out["uv_wave"] = np.nansum(np.real(S_uwave_vwave[start_index:end_index]) * df)
 
-        # Tuple output which will get restructured in the call to ADV.covariances
-        out = (
-            uu_turb,
-            uu_wave,
-            vv_turb,
-            vv_wave,
-            ww_turb,
-            ww_wave,
-            uw_turb,
-            uw_wave,
-            vw_turb,
-            vw_wave,
-            uv_turb,
-            uv_wave,
-        )
         return out
 
     def phase_decomposition(
@@ -565,6 +372,8 @@ class ADV(BaseInstrument):
         f_wave_high: Optional[float] = None,
         **kwargs,
     ):
+
+        out = {}
 
         u = sig.detrend(u)
         v = sig.detrend(v)
@@ -640,22 +449,6 @@ class ADV(BaseInstrument):
         Pww = np.polyfit(F, S, deg=1)
         Pwwhat = np.exp(np.polyval(Pww, np.log(f)))
 
-        # # Plotting to test the code
-        # if plot:
-        #     plt.figure()
-        #     plt.loglog(fuu, Suu_turb, "k*")
-        #     plt.loglog(f[waverange], Suu[waverange], "r-")
-        #     plt.loglog(f, Puuhat, "b-")
-        #     plt.title("Suu")
-        #     plt.show()
-        #
-        #     plt.figure()
-        #     plt.loglog(fww, Sww_turb, "k*")
-        #     plt.loglog(f[waverange], Sww[waverange], "r-")
-        #     plt.loglog(f, Pwwhat, "b-")
-        #     plt.title("Sww")
-        #     plt.show()
-
         # Wave spectra strictly above the interpolation line
         Suu_wave = S_uu[waverange] - Puuhat[waverange]
         Suu_wave[Suu_wave < 0] = 0
@@ -675,13 +468,13 @@ class ADV(BaseInstrument):
         wm_wave = np.sqrt(np.real(Amw_wave) ** 2 + np.imag(Amw_wave) ** 2)
 
         # Wave reynolds stress
-        uw_wave = np.nansum(Um_wave * wm_wave * np.cos(phase_uw[waverange]))
-        uv_wave = np.nansum(Um_wave * Vm_wave * np.cos(phase_uv[waverange]))
-        vw_wave = np.nansum(Vm_wave * wm_wave * np.cos(phase_vw[waverange]))
+        out["uw_wave"] = np.nansum(Um_wave * wm_wave * np.cos(phase_uw[waverange]))
+        out["uv_wave"] = np.nansum(Um_wave * Vm_wave * np.cos(phase_uv[waverange]))
+        out["vw_wave"] = np.nansum(Vm_wave * wm_wave * np.cos(phase_vw[waverange]))
 
-        uu_wave = np.nansum(Suu_wave * df)
-        vv_wave = np.nansum(Svv_wave * df)
-        ww_wave = np.nansum(Sww_wave * df)
+        out["uu_wave"] = np.nansum(Suu_wave * df)
+        out["vv_wave"] = np.nansum(Svv_wave * df)
+        out["ww_wave"] = np.nansum(Sww_wave * df)
 
         # Defining frequency range for full stress summation
         start_index, end_index = get_frequency_range(f, f_low, f_high)
@@ -695,69 +488,22 @@ class ADV(BaseInstrument):
         ww = np.nansum(np.real(S_ww[start_index:end_index]) * df)
 
         # Turbulent reynolds stresses
+        out["uu_turb"] = uu - out["uu_wave"]
+        out["vv_turb"] = vv - out["vv_wave"]
+        out["ww_turb"] = ww - out["ww_wave"]
+        out["uw_turb"] = uw - out["uw_wave"]
+        out["uv_turb"] = uv - out["uv_wave"]
+        out["vw_turb"] = vw - out["vw_wave"]
 
-        uu_turb = uu - uu_wave
-        vv_turb = vv - vv_wave
-        ww_turb = ww - ww_wave
-        uw_turb = uw - uw_wave
-        uv_turb = uv - uv_wave
-        vw_turb = vw - vw_wave
-
-        # Tuple output which will get restructured in the call to ADV.covariances
-        out = (
-            uu_turb,
-            uu_wave,
-            vv_turb,
-            vv_wave,
-            ww_turb,
-            ww_wave,
-            uw_turb,
-            uw_wave,
-            vw_turb,
-            vw_wave,
-            uv_turb,
-            uv_wave,
-        )
-        return out
-
-    def spectral_covariance(
-        self,
-        u: np.ndarray,
-        v: np.ndarray,
-        w: np.ndarray,
-        f_low: Optional[float] = None,
-        f_high: Optional[float] = None,
-        **kwargs,
-    ) -> Tuple[float]:
-
-        # Power spectral densities
-        f, S_uu = psd(u, **kwargs)
-        f, S_vv = psd(v, **kwargs)
-        f, S_ww = psd(w, **kwargs)
-        f, S_uw = csd(u, w, **kwargs)
-        f, S_vw = csd(v, w, **kwargs)
-        f, S_uv = csd(u, v, **kwargs)
-
-        start_index, end_index = get_frequency_range(f, f_low, f_high)
-        df = np.nanmax(np.diff(f))
-
-        out = (
-            np.sum(np.real(S_uu[start_index:end_index]) * df),
-            np.sum(np.real(S_vv[start_index:end_index]) * df),
-            np.sum(np.real(S_ww[start_index:end_index]) * df),
-            np.sum(np.real(S_uw[start_index:end_index]) * df),
-            np.sum(np.real(S_vw[start_index:end_index]) * df),
-            np.sum(np.real(S_uv[start_index:end_index]) * df),
-        )
         return out
 
     def covariance(
         self,
+        burst_data: Dict[str, np.ndarray],
         method: str = "cov",
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
         rho: Optional[float] = 1020,
-        chunk_size: Optional[int] = 100,
         phase_kwargs: Optional[dict] = None,
         **kwargs,
     ) -> dict:
@@ -766,9 +512,11 @@ class ADV(BaseInstrument):
 
         Parameters
         ----------
+        burst_data : dict
+            tbfi
         method : str
             Method to calculate covariances. Options are:
-            - 'cov': Standard covariance calculation using the built-in xr.cov
+            - 'cov': Standard covariance calculation using the built-in np.cov
             - 'spectral_integral': Integrate the cross-spectrum over a specified frequency range
             - 'benilov': Benilov wave-turbulence decomposition
             - 'phase':  Bricker & Monismith phase-method wave-turbulence decomposition
@@ -778,8 +526,6 @@ class ADV(BaseInstrument):
             Upper frequency bound (Hz) for spectral integration, by default None
         rho : float, optional
             Water density (kg/m^3), by default 1020
-        chunk_size : int, optional
-            Size of chunks for parallel processing, by default 100
         phase_kwargs : dict, optional
             Additional arguments specific to phase decomposition method, by default None. If specified, should include
             keys 'f_wave_low' and 'f_wave_high' to define the frequency range of the wave band.
@@ -792,147 +538,330 @@ class ADV(BaseInstrument):
             Dictionary containing covariance components. For method='cov' or
             'spectral_integral', keys are velocity component pairs
             (e.g. 'uu','uv','uw'). For wave decomposition methods, keys include
-            turbulent and wave components (e.g. 'uu_turb', 'uu_wave').
+            turbulence and wave components (e.g. 'uu_turb', 'uu_wave').
         """
+        out = {}
+        n_heights = self.metadata.num_heights
         if method == "cov":
-            out = {}
-            components_to_return = [elem for elem in itertools.combinations_with_replacement(("u", "v", "w"), 2)]
-            for component_pair in components_to_return:
-                key = component_pair[0] + component_pair[1]
-                out[key] = xr.cov(self[component_pair[0]], self[component_pair[1]], dim="time")
-            return out
+            cov_uu = np.cov(burst_data["u"])
+            cov_vv = np.cov(burst_data["v"])
+            cov_ww = np.cov(burst_data["w"])
+            cov_uv = np.cov(burst_data["u"], burst_data["v"])
+            cov_uw = np.cov(burst_data["u"], burst_data["w"])
+            cov_vw = np.cov(burst_data["v"], burst_data["w"])
+
+            if n_heights > 1:
+                out["uu"] = np.diag(cov_uu)[:n_heights]
+                out["vv"] = np.diag(cov_vv)[:n_heights]
+                out["ww"] = np.diag(cov_ww)[:n_heights]
+            else:
+                out["uu"] = cov_uu
+                out["vv"] = cov_vv
+                out["ww"] = cov_ww
+
+            out["uw"] = np.diag(cov_uw, n_heights)
+            out["vw"] = np.diag(cov_vw, n_heights)
+            out["uv"] = np.diag(cov_uv, n_heights)
+
         elif method == "spectral_integral":
-            ds_chunked = self.chunk({"burst": chunk_size})
-            out = xr.apply_ufunc(
-                self.spectral_covariance,
-                ds_chunked.u,
-                ds_chunked.v,
-                ds_chunked.w,
-                f_low,
-                f_high,
-                kwargs=kwargs,
-                input_core_dims=[["time"], ["time"], ["time"], [], []],
-                output_core_dims=[[], [], [], [], [], []],
-                output_dtypes=[float] * 6,
-                vectorize=True,
-                dask="parallelized",
-            )
+            out["uu"] = np.empty((n_heights,))
+            out["vv"] = np.empty((n_heights,))
+            out["ww"] = np.empty((n_heights,))
+            out["uw"] = np.empty((n_heights,))
+            out["vw"] = np.empty((n_heights,))
+            out["uv"] = np.empty((n_heights,))
 
-            keys = ["uu", "vv", "ww", "uw", "vw", "uv"]
-            out_dict = {key: da for key, da in zip(keys, out)}
-            return out_dict
+            for height_idx in range(n_heights):
+                u = burst_data["u"][height_idx, :]
+                v = burst_data["v"][height_idx, :]
+                w = burst_data["w"][height_idx, :]
+
+                # Power spectral densities
+                f, S_uu = psd(u, **kwargs)
+                f, S_vv = psd(v, **kwargs)
+                f, S_ww = psd(w, **kwargs)
+                f, S_uw = csd(u, w, **kwargs)
+                f, S_vw = csd(v, w, **kwargs)
+                f, S_uv = csd(u, v, **kwargs)
+
+                start_index, end_index = get_frequency_range(f, f_low, f_high)
+                df = np.nanmax(np.diff(f))
+
+                out["uu"][height_idx] = np.sum(np.real(S_uu[start_index:end_index]) * df)
+                out["uu"][height_idx] = np.sum(np.real(S_vv[start_index:end_index]) * df)
+                out["uu"][height_idx] = np.sum(np.real(S_ww[start_index:end_index]) * df)
+                out["uu"][height_idx] = np.sum(np.real(S_uw[start_index:end_index]) * df)
+                out["uu"][height_idx] = np.sum(np.real(S_vw[start_index:end_index]) * df)
+                out["uu"][height_idx] = np.sum(np.real(S_uv[start_index:end_index]) * df)
         elif method == "benilov":
-            ds_chunked = self.chunk({"burst": chunk_size})
-            out = xr.apply_ufunc(
-                self.benilov_decomposition,
-                ds_chunked.u,
-                ds_chunked.v,
-                ds_chunked.w,
-                ds_chunked.p,
-                ds_chunked.height,
-                rho,
-                f_low,
-                f_high,
-                kwargs=kwargs,
-                input_core_dims=[["time"], ["time"], ["time"], ["time"], [], [], [], []],
-                output_core_dims=[[], [], [], [], [], [], [], [], [], [], [], []],
-                output_dtypes=[float] * 12,
-                vectorize=True,
-                dask="parallelized",
-            )
-            # Turning into a dict to match format of "cov" method
-            keys = [
-                "uu_turb",
-                "uu_wave",
-                "vv_turb",
-                "vv_wave",
-                "ww_turb",
-                "ww_wave",
-                "uw_turb",
-                "uw_wave",
-                "vw_turb",
-                "vw_wave",
-                "uv_turb",
-                "uv_wave",
-            ]
+            out["uu_turb"] = np.empty((n_heights,))
+            out["vv_turb"] = np.empty((n_heights,))
+            out["ww_turb"] = np.empty((n_heights,))
+            out["uw_turb"] = np.empty((n_heights,))
+            out["vw_turb"] = np.empty((n_heights,))
+            out["uv_turb"] = np.empty((n_heights,))
 
-            out_dict = {key: da for key, da in zip(keys, out)}
-            return out_dict
+            out["uu_wave"] = np.empty((n_heights,))
+            out["vv_wave"] = np.empty((n_heights,))
+            out["ww_wave"] = np.empty((n_heights,))
+            out["uw_wave"] = np.empty((n_heights,))
+            out["vw_wave"] = np.empty((n_heights,))
+            out["uv_wave"] = np.empty((n_heights,))
+
+            for height_idx in range(n_heights):
+                u = burst_data["u"][height_idx, :]
+                v = burst_data["v"][height_idx, :]
+                w = burst_data["w"][height_idx, :]
+                p = burst_data["p"][height_idx, :]
+
+                b_out = self.benilov_decomposition(
+                    u=u,
+                    v=v,
+                    w=w,
+                    p=p,
+                    mab=self.metadata.heights[height_idx],
+                    rho=rho,
+                    f_low=f_low,
+                    f_high=f_high,
+                    **kwargs,
+                )
+
+                out["uu_turb"][height_idx] = b_out["uu_turb"]
+                out["vv_turb"][height_idx] = b_out["vv_turb"]
+                out["ww_turb"][height_idx] = b_out["ww_turb"]
+                out["uw_turb"][height_idx] = b_out["uw_turb"]
+                out["vw_turb"][height_idx] = b_out["vw_turb"]
+                out["uv_turb"][height_idx] = b_out["uv_turb"]
+
+                out["uu_wave"][height_idx] = b_out["uu_wave"]
+                out["vv_wave"][height_idx] = b_out["vv_wave"]
+                out["ww_wave"][height_idx] = b_out["ww_wave"]
+                out["uw_wave"][height_idx] = b_out["uw_wave"]
+                out["vw_wave"][height_idx] = b_out["vw_wave"]
+                out["uv_wave"][height_idx] = b_out["uv_wave"]
+
         elif method == "phase":
+
             # Extract phase method-specific kwargs with error handling
             f_wave_low = phase_kwargs.pop("f_wave_low", None)
             f_wave_high = phase_kwargs.pop("f_wave_high", None)
 
-            ds_chunked = self.chunk({"burst": chunk_size})
-            out = xr.apply_ufunc(
-                self.phase_decomposition,
-                ds_chunked.u,
-                ds_chunked.v,
-                ds_chunked.w,
-                f_low,
-                f_high,
-                f_wave_low,
-                f_wave_high,
-                kwargs=kwargs,
-                input_core_dims=[["time"], ["time"], ["time"], [], []],
-                output_core_dims=[[], [], [], [], [], [], [], [], [], [], [], []],
-                output_dtypes=[float] * 12,
-                vectorize=True,
-                dask="parallelized",
-            )
-            # Turning into a dict to match format of "cov" method
-            keys = [
-                "uu_turb",
-                "uu_wave",
-                "vv_turb",
-                "vv_wave",
-                "ww_turb",
-                "ww_wave",
-                "uw_turb",
-                "uw_wave",
-                "vw_turb",
-                "vw_wave",
-                "uv_turb",
-                "uv_wave",
-            ]
+            out["uu_turb"] = np.empty((n_heights,))
+            out["vv_turb"] = np.empty((n_heights,))
+            out["ww_turb"] = np.empty((n_heights,))
+            out["uw_turb"] = np.empty((n_heights,))
+            out["vw_turb"] = np.empty((n_heights,))
+            out["uv_turb"] = np.empty((n_heights,))
 
-            out_dict = {key: da for key, da in zip(keys, out)}
-            return out_dict
+            out["uu_wave"] = np.empty((n_heights,))
+            out["vv_wave"] = np.empty((n_heights,))
+            out["ww_wave"] = np.empty((n_heights,))
+            out["uw_wave"] = np.empty((n_heights,))
+            out["vw_wave"] = np.empty((n_heights,))
+            out["uv_wave"] = np.empty((n_heights,))
+
+            for height_idx in range(n_heights):
+                u = burst_data["u"][height_idx, :]
+                v = burst_data["v"][height_idx, :]
+                w = burst_data["w"][height_idx, :]
+
+                p_out = self.phase_decomposition(
+                    u=u,
+                    v=v,
+                    w=w,
+                    f_low=f_low,
+                    f_high=f_high,
+                    f_wave_low=f_wave_low,
+                    f_wave_high=f_wave_high,
+                    **kwargs,
+                )
+
+                out["uu_turb"][height_idx] = p_out["uu_turb"]
+                out["vv_turb"][height_idx] = p_out["vv_turb"]
+                out["ww_turb"][height_idx] = p_out["ww_turb"]
+                out["uw_turb"][height_idx] = p_out["uw_turb"]
+                out["vw_turb"][height_idx] = p_out["vw_turb"]
+                out["uv_turb"][height_idx] = p_out["uv_turb"]
+
+                out["uu_wave"][height_idx] = p_out["uu_wave"]
+                out["vv_wave"][height_idx] = p_out["vv_wave"]
+                out["ww_wave"][height_idx] = p_out["ww_wave"]
+                out["uw_wave"][height_idx] = p_out["uw_wave"]
+                out["vw_wave"][height_idx] = p_out["vw_wave"]
+                out["uv_wave"][height_idx] = p_out["uv_wave"]
         else:
             raise IOError(f"Unrecognized method {method}")
 
+        return out
+
+    def dissipation(self, burst_data: dict, f_low: float, f_high: float, **kwargs) -> (float, float, int):
+        """
+        Estimate the dissipation rate of TKE using the Gerbi et al. (2009)
+        spectral curve fitting method. This is nearly equivalent to the
+        Feddersen et al. (2007) method, but it uses a more efficient numerical
+        integration and estimates dissipation with a least squares fit rather
+        than a mean over the inertial range.
+
+        Parameters
+        ----------
+        f_low : float
+            Lower frequency bound (Hz) for inertial subrange where -5/3 law applies
+
+        f_high : float
+            Upper frequency bound (Hz) for inertial subrange where -5/3 law applies
+
+        **kwargs
+            Additional arguments passed to spectral_utils.psd.
+            See spectral_utils.psd for parameter definitions.
+
+        Returns
+        -------
+        eps : float
+            dissipation rate of TKE (m^2/s^3)
+        noise: float
+            intercept from dissipation linear regression
+        quality_flag: int
+            1 for good eps estimate, 0 for bad eps estimate.
+            Defined based on Gerbi Eq. X
+        """
+
+        def calcJ33(sig1, sig2, sig3, u1, u2):
+            """
+            Calculates J33, the output of equation A.13
+            """
+            # Initializing coordinate arrays
+            r_len = 120
+            r = np.logspace(-2, 4, r_len)
+            R = 1 / r
+            theta = np.linspace(0, np.pi, r_len // 4)
+            phi = np.linspace(0, 2 * np.pi, r_len // 4)
+
+            # Precompute trigonometric functions and associated variables
+            cos_theta = np.cos(theta)  # (Ntheta,)
+            sin_theta = np.sin(theta)  # (Ntheta,)
+            cos_phi = np.cos(phi)  # (Nphi,)
+            sin_phi = np.sin(phi)  # (Nphi,)
+
+            # Want shape (Ntheta, Nphi)
+            G_squared = (sin_theta ** 2)[:, np.newaxis] * (cos_phi ** 2 / sig1 ** 2 + sin_phi ** 2 / sig2 ** 2)[
+                np.newaxis, :
+            ] + (cos_theta ** 2)[:, np.newaxis] / sig3 ** 2
+
+            # Also shape (Ntheta, Nphi)
+            P33 = ((sin_theta ** 2)[:, np.newaxis] / G_squared) * (cos_phi ** 2 / sig1 ** 2 + sin_phi ** 2 / sig2 ** 2)[
+                np.newaxis, :
+            ]
+            P33_3 = P33[..., np.newaxis]
+
+            # Defining k_squared (Ntheta, Nphi, Nr)
+            R_3 = R[np.newaxis, np.newaxis, :]
+            G_squared_3 = G_squared[..., np.newaxis]
+
+            # (Ntheta, Nphi)
+            R0 = (u1 / sig1) * sin_theta[:, np.newaxis] * cos_phi[np.newaxis, :] + (u2 / sig2) * sin_theta[
+                :, np.newaxis
+            ] * sin_phi[np.newaxis, :]
+            R0_3 = R0[..., np.newaxis]  # (Ntheta, Nphi, 1)
+
+            # Innermost integral
+            I3 = R_3 ** (2 / 3) * np.exp(-((R0_3 - R_3) ** 2) / 2)
+
+            # Middle integral
+            # Gets a negative sign so that we go from R = 0 -> infinity rather than R = infinity -> zero
+            I2 = -np.trapezoid(G_squared_3 ** (-11 / 6) * sin_theta[:, np.newaxis, np.newaxis] * P33_3 * I3, R, axis=2)
+
+            # Outer integral
+            I1 = np.trapezoid(I2, phi, axis=-1)
+
+            J33 = (1 / (2 * (2 * np.pi) ** (3 / 2))) * (1 / (sig1 * sig2 * sig3)) * np.trapezoid(I1, theta, axis=-1)
+
+            return J33
+
+        def spectral_fit(u, v, w, f_low, f_high, **kwargs):
+            """
+            Carries out the spectral curve fit
+            """
+            if np.sum(np.isnan(u)) == len(u) or np.sum(np.isnan(v)) == len(v) or np.sum(np.isnan(w)) == len(w):
+                return np.nan, np.nan, 0
+            omega_range = [2 * np.pi * f_low, 2 * np.pi * f_high]
+            alpha = 1.5
+
+            w_prime = sig.detrend(w, type="linear")
+            fw, Pw = psd(w_prime, onesided=False, **kwargs)
+
+            omega = 2 * np.pi * fw
+
+            inertial_indices = (omega >= omega_range[0]) & (omega <= omega_range[1])
+            omega_inertial = omega[inertial_indices]
+            Pw_inertial = (Pw[inertial_indices]) / (2 * np.pi)
+
+            sig1 = np.nanstd(u)
+            sig2 = np.nanstd(v)
+            sig3 = np.nanstd(w)
+
+            u1 = np.nanmean(u)
+            u2 = np.nanmean(v)
+
+            J33 = calcJ33(sig1, sig2, sig3, u1, u2)
+
+            # linear regression
+            X = J33 * alpha * (omega_inertial ** (-5 / 3))
+            y = Pw_inertial
+            reg = LinearRegression().fit(X.reshape(-1, 1), y)
+            eps = reg.coef_[0] ** (3 / 2)
+            noise = reg.intercept_
+
+            if noise < J33 * alpha * (eps ** (2 / 3)) * (omega_range[0] ** (-5 / 3)):
+                quality_flag = 1
+            else:
+                quality_flag = 0
+
+            return eps, noise, quality_flag
+
+        out = {}
+        n_heights = self.metadata.num_heights
+        out["eps"] = np.empty((n_heights,))
+        out["noise"] = np.empty((n_heights,))
+        out["quality_flag"] = np.empty((n_heights,), dtype=int)
+        for height_idx in range(n_heights):
+            u = burst_data["u"][height_idx, :]
+            v = burst_data["v"][height_idx, :]
+            w = burst_data["w"][height_idx, :]
+            (eps, noise, quality_flag) = spectral_fit(u, v, w, f_low, f_high, **kwargs)
+            out["eps"][height_idx] = eps
+            out["noise"][height_idx] = noise
+            out["quality_flag"][height_idx] = quality_flag
+
+        return out
+
     def directional_wave_statistics(
-            self,
-            band_definitions: Optional[dict] = None,
-            sea_correction: Optional[bool] = True,
-            rho: Optional[float] = 1020,
-            chunk_size: Optional[int] = 100,
-            **kwargs
+        self,
+        burst_data: dict,
+        band_definitions: Optional[dict] = None,
+        sea_correction: Optional[bool] = True,
+        rho: Optional[float] = 1020,
+        **kwargs,
     ):
-        if "p" not in self.data_vars:
+        if "p" not in burst_data.keys():
             raise ValueError("Pressure must be included in dataset to calculate directional wave statistics")
 
-        ds_chunked = self.chunk({"burst": chunk_size})
-        out = xr.apply_ufunc(
-            self.wave_worker,
-            ds_chunked.u,
-            ds_chunked.v,
-            ds_chunked.p,
-            ds_chunked.height,
-            rho,
-            band_definitions,
-            sea_correction,
-            kwargs=kwargs,
-            input_core_dims=[["time"], ["time"], ["time"], [], [], [], []],
-            output_core_dims=[[]],
-            output_dtypes=[dict],
-            vectorize=True,
-            dask="parallelized",
-        )
-        test  = out.isel(burst=1, height=1)
-        print(test.values)
-        print("here")
-        return out
+        n_heights = self.metadata.num_heights
+        out = {}
+        for height_idx in range(n_heights):
+            u = burst_data["u"][height_idx, :]
+            v = burst_data["v"][height_idx, :]
+            p = burst_data["p"][height_idx, :]
+            out[height_idx] = self.wave_worker(
+                u=u,
+                v=v,
+                p=p,
+                mab=self.metadata.heights[height_idx],
+                rho=rho,
+                band_definitions=band_definitions,
+                sea_correction=sea_correction,
+                **kwargs,
+            )
+
 
     def wave_worker(
         self,
@@ -1026,7 +955,14 @@ class ADV(BaseInstrument):
                 "infragravity": ((f > 1 / 250) & (f <= 1 / 25)),
                 "swell": ((f > 1 / 25) & (f <= 0.2)),
                 "sea": ((f > 0.2) & (f <= 0.5)),
-                "all": np.concatenate(([False], np.ones((len(f) - 1),).astype(bool)))
+                "all": np.concatenate(
+                    (
+                        [False],
+                        np.ones(
+                            (len(f) - 1),
+                        ).astype(bool),
+                    )
+                ),
             }
         else:
             fbands = {
@@ -1035,7 +971,14 @@ class ADV(BaseInstrument):
                 ),
                 "swell": ((f > band_definitions["swell"][0]) & (f <= band_definitions["swell"][1])),
                 "sea": ((f > band_definitions["sea"][0]) & (f <= band_definitions["sea"][1])),
-                "all": np.concatenate(([False], np.ones((len(f) - 1),).astype(bool)))
+                "all": np.concatenate(
+                    (
+                        [False],
+                        np.ones(
+                            (len(f) - 1),
+                        ).astype(bool),
+                    )
+                ),
             }
 
         # Getting sea surface elevation spectrum
@@ -1172,70 +1115,163 @@ class ADV(BaseInstrument):
             # Spectral Stokes drift (unfortunately different from the bulk estimate -- see Kumar et al. 2017)
             out[f"Us_spec_{band_name}"] = np.sum(
                 S_etaeta[band_indices]
-                * spread1[band_indices]
+                * omega[band_indices]
                 * k[band_indices]
                 * (np.cosh(2 * k[band_indices] * mab) / (np.sinh(k[band_indices] * h) ** 2))
                 * np.cos(np.radians(dir1[band_indices]))
                 * df
             )
             out[f"Vs_spec_{band_name}"] = np.sum(
-                    S_etaeta[band_indices]
-                    * spread1[band_indices]
-                    * k[band_indices]
-                    * (np.cosh(2 * k[band_indices] * mab) / (np.sinh(k[band_indices] * h) ** 2))
-                    * np.sin(np.radians(dir1[band_indices]))
-                    * df
+                S_etaeta[band_indices]
+                * omega[band_indices]
+                * k[band_indices]
+                * (np.cosh(2 * k[band_indices] * mab) / (np.sinh(k[band_indices] * h) ** 2))
+                * np.sin(np.radians(dir1[band_indices]))
+                * df
             )
         return out
 
+    @staticmethod
+    def _get_principal_axis(data) -> float:
+        """
+        Calculates the direction of maximum variance from the u and v velocities (Thomson & Emery, 4.52b).
 
-if __name__ == "__main__":
-    import time
+        Parameters
+        ----------
 
-    t0 = time.time()
-    mean_depth = 13
-    m_below_surface = np.linspace(1.8, 7.2, 6)
-    mabs = [mean_depth - mbs for mbs in m_below_surface]
+        Returns
+        -------
+        theta : float
+            direction of maximum variance in degrees, CCW positive from east
+            assuming that u = eastward velocity, v = northward velocity
+        """
+        # Covariance matrix
+        u_var = np.nanvar(data["u"])
+        v_var = np.nanvar(data["v"])
+        cv = np.cov(data["u"], data["v"])[0, 1]
 
-    # Testing this out
-    files = glob.glob("/Users/ea-gegan/Documents/gitrepos/tke-budget/data/adv_fall/*.mat")
-    files.sort()
-    files = files[:5]
+        # Direction of maximum variance
+        theta = (180.0 / np.pi) * (0.5 * np.arctan2(2.0 * cv, (u_var - v_var)))
 
-    # Name map:
-    name_map = {"u": "E", "v": "N", "w": "w", "p": "P2", "time": "dn"}
-    adv = ADV.from_raw(files, name_map, fs=32, z=mabs, zarr_save_path="~/Desktop/adv_zarr_test")
-    adv.despike()
-    theta = adv.get_principal_axis()
-    vel_maj, vel_min = adv.rotate_velocity(theta)
-    adv.u, adv.v = vel_maj, vel_min
+        return theta
 
-    wavestats = adv.directional_wave_statistics()
+    @staticmethod
+    def _minimize_vertical_velocity(data) -> float:
+        """
 
-    # eps, noise, quality_flag = adv.dissipation(f_low=1.2, f_high=15, fs=32)
-    # print(eps.values[:, 0])
-    cov = adv.covariance(
-        method="cov",
-        fs=32,
-    )
-    cov0 = cov["uw"][:, 4].values
-    cov = adv.covariance(method="spectral_integral", parallel=False, fs=32)
-    cov1 = cov["uw"][:, 4].values
 
-    import matplotlib.pyplot as plt
+        Parameters
+        ----------
+        tbd
 
-    one = np.linspace(np.nanmin(cov1), np.nanmax(cov1), 100)
-    plt.plot(cov1, cov0, "o")
-    plt.plot(one, one, "-")
-    plt.show()
-    # print(cov.values)
-    # t1 = time.time()
-    # print(f"finished processing 20 files in {t1 - t0:.2f} seconds")
-    # adv0 = ADV.from_saved_zarr("~/Desktop/adv_zarr_test")
-    # test2_0 = adv0.u[9, 0, :].values
+        Returns
+        -------
+        theta : float
+            tbd
+        """
+        return 0.0
 
-    # import matplotlib.pyplot as plt
-    #
-    # plt.plot(vel_maj[9, 0, :].values)
-    # plt.plot(adv.u[9, 0, :].values)
-    # plt.show()
+    def _rotate_velocity(self, data: Dict[str, np.ndarray], theta_h: float, theta_v: float):
+        """
+        Rotates u, v, w velocites by directions defined by theta_h and theta_v
+
+        Parameters
+        ----------
+        data: dict
+            Dictionary containing "u", "v", and "w" velocity arrays to be rotated
+        theta_h: float
+            Direction (degrees, CCW positive from east) in which horizontal velocites should be rotated.
+            This is often the output of adv._get_principal_axis
+        theta_v: float
+            Direction (degrees, fill in) in which vertical velocities should be rotated.
+
+
+        Returns
+        -------
+        data: dict
+            Original data dictionary with "u", "v", and "w" velocity arrays rotated
+
+        """
+        theta_h = np.deg2rad(theta_h)
+        theta_v = np.deg2rad(theta_v)
+        u_rot = (
+            data["u"] * np.cos(theta_h) * np.cos(theta_v)
+            + data["v"] * np.sin(theta_h) * np.cos(theta_v)
+            + data["w"] * np.sin(theta_v)
+        )
+        v_rot = -data["u"] * np.sin(theta_h) + data["v"] * np.cos(theta_h)
+        w_rot = (
+            -data["u"] * np.cos(theta_h) * np.sin(theta_v)
+            - data["v"] * np.sin(theta_h) * np.sin(theta_v)
+            + data["w"] * np.cos(theta_v)
+        )
+        data["u"] = u_rot
+        data["v"] = v_rot
+        data["w"] = w_rot
+        return data
+
+    def to_xarray(self) -> "xr.Dataset":
+        """
+        Convert results to xarray Dataset.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset containing results
+        """
+        if self.results is None:
+            raise ValueError("No results available. Run process_all() first.")
+
+        return self.results.to_xarray()
+
+    def save_results(self, path: str, format: str = "zarr"):
+        """
+        Save results to file.
+
+        Parameters
+        ----------
+        path : str
+            Output path
+        format : str
+            Output format ('zarr' or 'netcdf')
+        """
+        if self.results is None:
+            raise ValueError("No results available. Run process_all() first.")
+
+        if format == "zarr":
+            self.results.save_to_zarr(path)
+        elif format == "netcdf":
+            self.results.save_to_netcdf(path)
+        else:
+            raise ValueError(f"Unknown format: {format}")
+
+    @property
+    def metadata(self):
+        """Get metadata from data manager"""
+        return self.data_manager.metadata
+
+    @property
+    def n_bursts(self):
+        """Number of bursts"""
+        return self.data_manager.metadata.n_bursts
+
+    @property
+    def n_heights(self):
+        """Number of heights"""
+        return self.data_manager.metadata.n_heights
+
+    @property
+    def fs(self):
+        """Sampling frequency"""
+        return self.data_manager.metadata.fs
+
+    @property
+    def heights(self):
+        """Height coordinates"""
+        return self.data_manager.metadata.heights
+
+    def __repr__(self):
+        return (
+            f"ADV(n_bursts={self.n_bursts}, n_heights={self.n_heights}, "
+            f"fs={self.fs}, has_results={self.results is not None})"
+        )
