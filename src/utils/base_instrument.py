@@ -17,7 +17,6 @@ class InstrumentMetadata:
     file_type: str
     name_map: Dict[str, Union[str, List[str]]]
     fs: float
-    heights: np.ndarray
     num_bursts: int
     num_heights: int
     num_samples_per_burst: int
@@ -147,9 +146,12 @@ class BaseInstrument(ABC):
     def parse_data(self, data: Mapping[str, Any]) -> InstrumentMetadata:
 
         # TODO: Test this to make sure it's generalizable to xarray DA, numpy array, and pandas df
-        # Determine heights
+        # Normalize self.z to a numpy array
         if self.z is not None:
-            heights = np.array(self.z) if isinstance(self.z, list) else np.array([self.z])
+            if isinstance(self.z, (int, float)):
+                self.z = np.array([self.z])
+            elif isinstance(self.z, list):
+                self.z = np.array(self.z)
         else:
             # Infer from dimensions of the first non-time data variable
             non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
@@ -159,13 +161,11 @@ class BaseInstrument(ABC):
                     num_rows, num_cols = data_var.shape
                     if num_rows > num_cols:
                         data_var = data_var.T
-                    heights = np.arange(data_var.shape[0])
+                    self.z = np.arange(data_var.shape[0])
                 else:
-                    heights = np.array([0])
+                    self.z = np.array([0])
             else:
-                heights = np.arange(len(non_time_key))
-
-            self.z = heights
+                self.z = np.arange(len(non_time_key))
 
         # Parsing time
         if "time" not in self.name_map:
@@ -181,11 +181,11 @@ class BaseInstrument(ABC):
 
         return InstrumentMetadata(
             files=self.files,
+            file_type="",
             name_map=self.name_map,
             fs=self.fs,
-            heights=heights,
             num_bursts=len(self.files),
-            num_heights=len(heights),
+            num_heights=len(self.z),
             num_samples_per_burst=num_samples,
         )
 

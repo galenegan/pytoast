@@ -70,7 +70,7 @@ class ADV(BaseInstrument):
             frequency is also not specified. Lists should be provided if data from multiple instruments is stored
             in multiple variables (as opposed to a 2d array).
 
-         z : float, int or List[float, int], optional
+        z : float, int or List[float, int], optional
             mean height above the bed (m) for each instrument. If not specified, the height coordinate in the resulting
             ADV object will be integer indices.
 
@@ -115,7 +115,7 @@ class ADV(BaseInstrument):
 
     def _apply_preprocessing(self, burst_data):
         if self._despike:
-            burst_data = self._apply_despike(burst_data, **self._despike_opts)
+            self._apply_despike(burst_data, **self._despike_opts)
 
         if isinstance(self._rotate_vertical, str):
             theta_v = ADV._minimize_vertical_velocity(burst_data)
@@ -157,93 +157,101 @@ class ADV(BaseInstrument):
 
         """
 
-        # TODO: Vectorize this so that it works on 2d arrays
-
         def flag_bad_indices(u: np.ndarray) -> np.ndarray:
-            # Initializing gradient arrays
-            du = np.gradient(u) / 2
-            du2 = np.gradient(du) / 2
+            """Flag spikes in a 2D array (n_heights, n_samples) using phase-space method."""
+            # Gradients along time axis
+            du = np.gradient(u, axis=1) / 2
+            du2 = np.gradient(du, axis=1) / 2
 
+            # Per-row statistics → (n_heights,)
             if robust_statistics:
-                # Standard deviation
-                sigma_u = median_abs_deviation(u, nan_policy="omit")
-                sigma_du = median_abs_deviation(du, nan_policy="omit")
-                sigma_du2 = median_abs_deviation(du2, nan_policy="omit")
-
-                # Median
-                u_bar = np.nanmedian(u)
-                du_bar = np.nanmedian(du)
-                du2_bar = np.nanmedian(du2)
+                sigma_u = median_abs_deviation(u, axis=1, nan_policy="omit")
+                sigma_du = median_abs_deviation(du, axis=1, nan_policy="omit")
+                sigma_du2 = median_abs_deviation(du2, axis=1, nan_policy="omit")
+                u_bar = np.nanmedian(u, axis=1)
+                du_bar = np.nanmedian(du, axis=1)
+                du2_bar = np.nanmedian(du2, axis=1)
             else:
-                # Standard deviation
-                sigma_u = np.nanstd(u)
-                sigma_du = np.nanstd(du)
-                sigma_du2 = np.nanstd(du2)
-
-                # Mean
-                u_bar = np.nanmean(u)
-                du_bar = np.nanmean(du)
-                du2_bar = np.nanmean(du2)
+                sigma_u = np.nanstd(u, axis=1)
+                sigma_du = np.nanstd(du, axis=1)
+                sigma_du2 = np.nanstd(du2, axis=1)
+                u_bar = np.nanmean(u, axis=1)
+                du_bar = np.nanmean(du, axis=1)
+                du2_bar = np.nanmean(du2, axis=1)
 
             # Expected absolute maximum
-            n = len(u)
+            n = u.shape[1]
             lam = np.sqrt(2 * np.log(n))
 
-            # Calculating axes of the 3 ellipses
-            theta = np.arctan(np.nansum(u * du2) / np.nansum(u**2))
+            # Rotation angle per row → (n_heights,)
+            theta = np.arctan(np.nansum(u * du2, axis=1) / np.nansum(u**2, axis=1))
 
-            # u vs du
+            # Ellipse axes (unrotated) → (n_heights,)
             a1 = lam * sigma_u
             b1 = lam * sigma_du
-
-            # du vs du2
             a3 = lam * sigma_du
             b3 = lam * sigma_du2
 
-            # u vs du2
-            A = np.array([[np.cos(theta) ** 2, np.sin(theta) ** 2], [np.sin(theta) ** 2, np.cos(theta) ** 2]])
-            b = np.array([(lam * sigma_u) ** 2, (lam * sigma_du2) ** 2])
-            x = np.linalg.solve(A, b)
-            a2 = np.sqrt(x[0])
-            b2 = np.sqrt(x[1])
+            # Rotated ellipse axes via batched 2x2 solve
+            cos_t = np.cos(theta)
+            sin_t = np.sin(theta)
+            A = np.empty((u.shape[0], 2, 2))
+            A[:, 0, 0] = cos_t**2
+            A[:, 0, 1] = sin_t**2
+            A[:, 1, 0] = sin_t**2
+            A[:, 1, 1] = cos_t**2
+            b_vec = np.stack([(lam * sigma_u) ** 2, (lam * sigma_du2) ** 2], axis=1)  # (n_heights, 2)
+            x = np.linalg.solve(A, b_vec[:, :, None]).squeeze(-1)  # (n_heights, 2)
+            a2 = np.sqrt(x[:, 0])
+            b2 = np.sqrt(x[:, 1])
 
-            # Finding the indices of the elements outside the three ellipses
+            # Broadcast all (n_heights,) stats to (n_heights, 1) for element-wise tests
+            u_bar = u_bar[:, None]
+            du_bar = du_bar[:, None]
+            du2_bar = du2_bar[:, None]
+            a1 = a1[:, None]
+            b1 = b1[:, None]
+            a2 = a2[:, None]
+            b2 = b2[:, None]
+            a3 = a3[:, None]
+            b3 = b3[:, None]
+            cos_t = cos_t[:, None]
+            sin_t = sin_t[:, None]
 
             # u vs du
-            bad_index_u_du = (u - u_bar) ** 2 / a1**2 + (du - du_bar) ** 2 / b1**2 > 1
+            bad_u_du = (u - u_bar) ** 2 / a1**2 + (du - du_bar) ** 2 / b1**2 > 1
 
-            # u vs du2
-            bad_index_u_du2 = (
-                (np.cos(theta) * (u - u_bar) + np.sin(theta) * (du2 - du2_bar)) ** 2 / a2**2
-                + (np.sin(theta) * (u - u_bar) - np.cos(theta) * (du2 - du2_bar)) ** 2 / b2**2
+            # u vs du2 (rotated ellipse)
+            bad_u_du2 = (
+                (cos_t * (u - u_bar) + sin_t * (du2 - du2_bar)) ** 2 / a2**2
+                + (sin_t * (u - u_bar) - cos_t * (du2 - du2_bar)) ** 2 / b2**2
             ) > 1
 
             # du vs du2
-            bad_index_du_du2 = (du - du_bar) ** 2 / a3**2 + (du2 - du2_bar) ** 2 / b3**2 > 1
+            bad_du_du2 = (du - du_bar) ** 2 / a3**2 + (du2 - du2_bar) ** 2 / b3**2 > 1
 
-            # Combining all of them
-            bad_index_total = bad_index_u_du | bad_index_u_du2 | bad_index_du_du2
+            return bad_u_du | bad_u_du2 | bad_du_du2
 
-            return bad_index_total
+        def interp_rows(u: np.ndarray) -> np.ndarray:
+            """Apply naninterp_pd independently to each row."""
+            for i in range(u.shape[0]):
+                u[i] = naninterp_pd(u[i])
+            return u
 
         def despike_worker(u: np.ndarray) -> np.ndarray:
             u_out = u.copy()
+            bad_index = flag_bad_indices(u_out)
+            total_bad = np.sum(bad_index, axis=1)
             iterations = 0
-            # First pass
-            bad_index_u = flag_bad_indices(u_out)
-            total_bad_u = sum(bad_index_u)
 
-            while ((total_bad_u > threshold)) and (iterations < max_iter):
-                u_out[bad_index_u] = np.nan
-                u_out = naninterp_pd(u_out)
-
-                if total_bad_u > threshold:
-                    bad_index_u = flag_bad_indices(u_out)
-
-                total_bad_u = sum(bad_index_u)
+            while np.any(total_bad > threshold) and iterations < max_iter:
+                u_out[bad_index] = np.nan
+                interp_rows(u_out)
+                bad_index = flag_bad_indices(u_out)
+                total_bad = np.sum(bad_index, axis=1)
                 iterations += 1
 
-            u_out = naninterp_pd(u_out)
+            interp_rows(u_out)
             return u_out
 
         data["u"] = despike_worker(data["u"])
@@ -300,7 +308,7 @@ class ADV(BaseInstrument):
         h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth
 
         # Getting sea surface elevation spectrum
-        f, S_pp = psd(p, **kwargs)
+        f, S_pp = psd(p, self.fs, **kwargs)
         df = np.max(np.diff(f))
         omega = 2 * np.pi * f
         k = get_wavenumber(omega, h)
@@ -308,22 +316,22 @@ class ADV(BaseInstrument):
         S_etaeta = S_pp * (attenuation_correction**2)
 
         # All the velocity components
-        _, S_uu = psd(u, **kwargs)
-        _, S_up = csd(u, p, **kwargs)
+        _, S_uu = psd(u, self.fs, **kwargs)
+        _, S_up = csd(u, p, self.fs, **kwargs)
         S_ueta = S_up * attenuation_correction
 
-        _, S_vv = psd(v, **kwargs)
-        _, S_vp = csd(v, p, **kwargs)
+        _, S_vv = psd(v, self.fs, **kwargs)
+        _, S_vp = csd(v, p, self.fs, **kwargs)
         S_veta = S_vp * attenuation_correction
 
-        _, S_ww = psd(w, **kwargs)
-        _, S_wp = csd(w, p, **kwargs)
+        _, S_ww = psd(w, self.fs, **kwargs)
+        _, S_wp = csd(w, p, self.fs, **kwargs)
         S_weta = S_wp * attenuation_correction
 
         # Velocity cross spectra
-        _, S_uw = csd(u, w, **kwargs)
-        _, S_vw = csd(v, w, **kwargs)
-        _, S_uv = csd(u, v, **kwargs)
+        _, S_uw = csd(u, w, self.fs, **kwargs)
+        _, S_vw = csd(v, w, self.fs, **kwargs)
+        _, S_uv = csd(u, v, self.fs, **kwargs)
 
         # Defining frequency range
         start_index, end_index = get_frequency_range(f, f_low, f_high)
@@ -619,7 +627,7 @@ class ADV(BaseInstrument):
                     v=v,
                     w=w,
                     p=p,
-                    mab=self.metadata.heights[height_idx],
+                    mab=self.z[height_idx],
                     rho=rho,
                     f_low=f_low,
                     f_high=f_high,
@@ -743,12 +751,12 @@ class ADV(BaseInstrument):
             sin_phi = np.sin(phi)  # (Nphi,)
 
             # Want shape (Ntheta, Nphi)
-            G_squared = (sin_theta ** 2)[:, np.newaxis] * (cos_phi ** 2 / sig1 ** 2 + sin_phi ** 2 / sig2 ** 2)[
+            G_squared = (sin_theta**2)[:, np.newaxis] * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[
                 np.newaxis, :
-            ] + (cos_theta ** 2)[:, np.newaxis] / sig3 ** 2
+            ] + (cos_theta**2)[:, np.newaxis] / sig3**2
 
             # Also shape (Ntheta, Nphi)
-            P33 = ((sin_theta ** 2)[:, np.newaxis] / G_squared) * (cos_phi ** 2 / sig1 ** 2 + sin_phi ** 2 / sig2 ** 2)[
+            P33 = ((sin_theta**2)[:, np.newaxis] / G_squared) * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[
                 np.newaxis, :
             ]
             P33_3 = P33[..., np.newaxis]
@@ -787,7 +795,7 @@ class ADV(BaseInstrument):
             alpha = 1.5
 
             w_prime = sig.detrend(w, type="linear")
-            fw, Pw = psd(w_prime, onesided=False, **kwargs)
+            fw, Pw = psd(w_prime, self.fs, onesided=False, **kwargs)
 
             omega = 2 * np.pi * fw
 
@@ -839,6 +847,7 @@ class ADV(BaseInstrument):
         burst_data: dict,
         band_definitions: Optional[dict] = None,
         sea_correction: Optional[bool] = True,
+        f_cutoff: Optional[float] = 1.0,
         rho: Optional[float] = 1020,
         **kwargs,
     ):
@@ -855,13 +864,15 @@ class ADV(BaseInstrument):
                 u=u,
                 v=v,
                 p=p,
-                mab=self.metadata.heights[height_idx],
+                mab=self.z[height_idx],
                 rho=rho,
                 band_definitions=band_definitions,
                 sea_correction=sea_correction,
+                f_cutoff=f_cutoff,
                 **kwargs,
             )
 
+        return out
 
     def wave_worker(
         self,
@@ -872,6 +883,7 @@ class ADV(BaseInstrument):
         rho: float,
         band_definitions: Optional[dict] = None,
         sea_correction: Optional[bool] = True,
+        f_cutoff: Optional[float] = 1.0,
         **kwargs,
     ) -> dict:
         """
@@ -904,6 +916,8 @@ class ADV(BaseInstrument):
             Statistics for the full frequency range ("all") will be calculated as well.
         sea_correction : bool, optional
             Whether to apply Jones-Monismith correction for sea waves, by default True
+        f_cutoff : float, optional
+            Upper bound for spectral integration to avoid high frequency noise. Defaults to 1.0 Hz.
         **kwargs
             Additional arguments passed to spectral analysis functions
 
@@ -939,6 +953,10 @@ class ADV(BaseInstrument):
         if h < 0:
             raise ValueError("Average water depth must be positive to calculate directional wave statistics.")
 
+        u = sig.detrend(u, type="linear")
+        v = sig.detrend(v, type="linear")
+        p = sig.detrend(p, type="linear")
+
         # Calculating spectra
         f, S_uu = psd(u, fs=self.fs, **kwargs)
         f, S_vv = psd(v, fs=self.fs, **kwargs)
@@ -946,39 +964,26 @@ class ADV(BaseInstrument):
         f, S_uv = csd(u, v, fs=self.fs, **kwargs)
         f, S_pu = csd(p, u, fs=self.fs, **kwargs)
         f, S_pv = csd(p, v, fs=self.fs, **kwargs)
-        f[0] = 1e-10  # to avoid divide by zero errors
         df = np.max(np.diff(f))
 
         # Depth correction and spectral weighted averages
         if band_definitions is None:
             fbands = {
-                "infragravity": ((f > 1 / 250) & (f <= 1 / 25)),
-                "swell": ((f > 1 / 25) & (f <= 0.2)),
-                "sea": ((f > 0.2) & (f <= 0.5)),
-                "all": np.concatenate(
-                    (
-                        [False],
-                        np.ones(
-                            (len(f) - 1),
-                        ).astype(bool),
-                    )
-                ),
+                "infragravity": ((f > 1 / 250) & (f <= 1 / 25) & (f <= f_cutoff)),
+                "swell": ((f > 1 / 25) & (f <= 0.2) & (f <= f_cutoff)),
+                "sea": ((f > 0.2) & (f <= 0.5) & (f <= f_cutoff)),
+                "all": ((f > 0) & (f <= f_cutoff)),
             }
         else:
             fbands = {
                 "infragravity": (
-                    (f > band_definitions["infragravity"][0]) & (f <= band_definitions["infragravity"][1])
+                    (f > band_definitions["infragravity"][0])
+                    & (f <= band_definitions["infragravity"][1])
+                    & (f <= f_cutoff)
                 ),
-                "swell": ((f > band_definitions["swell"][0]) & (f <= band_definitions["swell"][1])),
-                "sea": ((f > band_definitions["sea"][0]) & (f <= band_definitions["sea"][1])),
-                "all": np.concatenate(
-                    (
-                        [False],
-                        np.ones(
-                            (len(f) - 1),
-                        ).astype(bool),
-                    )
-                ),
+                "swell": ((f > band_definitions["swell"][0]) & (f <= band_definitions["swell"][1]) & (f <= f_cutoff)),
+                "sea": ((f > band_definitions["sea"][0]) & (f <= band_definitions["sea"][1]) & (f <= f_cutoff)),
+                "all": ((f > 0) & (f <= f_cutoff)),
             }
 
         # Getting sea surface elevation spectrum
@@ -1210,68 +1215,12 @@ class ADV(BaseInstrument):
         data["w"] = w_rot
         return data
 
-    def to_xarray(self) -> "xr.Dataset":
-        """
-        Convert results to xarray Dataset.
-
-        Returns
-        -------
-        xr.Dataset
-            Dataset containing results
-        """
-        if self.results is None:
-            raise ValueError("No results available. Run process_all() first.")
-
-        return self.results.to_xarray()
-
-    def save_results(self, path: str, format: str = "zarr"):
-        """
-        Save results to file.
-
-        Parameters
-        ----------
-        path : str
-            Output path
-        format : str
-            Output format ('zarr' or 'netcdf')
-        """
-        if self.results is None:
-            raise ValueError("No results available. Run process_all() first.")
-
-        if format == "zarr":
-            self.results.save_to_zarr(path)
-        elif format == "netcdf":
-            self.results.save_to_netcdf(path)
-        else:
-            raise ValueError(f"Unknown format: {format}")
-
-    @property
-    def metadata(self):
-        """Get metadata from data manager"""
-        return self.data_manager.metadata
-
     @property
     def n_bursts(self):
         """Number of bursts"""
-        return self.data_manager.metadata.n_bursts
+        return self.metadata.num_bursts
 
     @property
     def n_heights(self):
         """Number of heights"""
-        return self.data_manager.metadata.n_heights
-
-    @property
-    def fs(self):
-        """Sampling frequency"""
-        return self.data_manager.metadata.fs
-
-    @property
-    def heights(self):
-        """Height coordinates"""
-        return self.data_manager.metadata.heights
-
-    def __repr__(self):
-        return (
-            f"ADV(n_bursts={self.n_bursts}, n_heights={self.n_heights}, "
-            f"fs={self.fs}, has_results={self.results is not None})"
-        )
+        return self.metadata.num_heights
