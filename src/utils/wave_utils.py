@@ -49,7 +49,6 @@ def get_cg(k, h):
     -------
 
     """
-    g = 9.81
     Cp = np.sqrt((g / k) * np.tanh(k * h))
     Cg = 0.5 * Cp * (1 + (k * h) * (1 - (np.tanh(k * h)) ** 2) / np.tanh(k * h))
 

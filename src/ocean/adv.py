@@ -101,6 +101,8 @@ class ADV(BaseInstrument):
                 "rotate_vertical": float or "minimize"
         """
 
+        self._preprocess_enabled = True
+
         if isinstance(opts.get("rotate_vertical"), str) and opts.get("rotate_vertical") != "minimize":
             raise ValueError("Only 'minimize' is supported for rotate_vertical")
         if isinstance(opts.get("rotate_horizontal"), str) and opts.get("rotate_horizontal") != "principal":
@@ -117,17 +119,17 @@ class ADV(BaseInstrument):
         if self._despike:
             self._apply_despike(burst_data, **self._despike_opts)
 
-        if isinstance(self._rotate_vertical, str):
-            theta_v = ADV._minimize_vertical_velocity(burst_data)
-        else:
-            theta_v = self._rotate_vertical
-
         if isinstance(self._rotate_horizontal, str):
             theta_h = ADV._get_principal_axis(burst_data)
         else:
             theta_h = self._rotate_horizontal
 
-        if theta_v != 0.0 or theta_h != 0.0:
+        if isinstance(self._rotate_vertical, str):
+            theta_v = ADV._minimize_vertical_velocity(burst_data, theta_h)
+        else:
+            theta_v = self._rotate_vertical
+
+        if np.sum(np.abs(theta_v)) != 0.0 or np.sum(np.abs(theta_h)) != 0.0:
             burst_data = self._rotate_velocity(burst_data, theta_h, theta_v)
 
         return burst_data
@@ -338,8 +340,8 @@ class ADV(BaseInstrument):
 
         # Calculating wave spectra
         S_uwave_uwave = S_ueta * np.conj(S_ueta) / S_etaeta
-        S_vwave_vwave = S_veta * np.conj(S_veta / S_etaeta)
-        S_wwave_wwave = S_weta * np.conj(S_weta / S_etaeta)
+        S_vwave_vwave = S_veta * np.conj(S_veta) / S_etaeta
+        S_wwave_wwave = S_weta * np.conj(S_weta) / S_etaeta
         S_uwave_wwave = S_ueta * np.conj(S_weta) / S_etaeta
         S_uwave_vwave = S_ueta * np.conj(S_veta) / S_etaeta
         S_vwave_wwave = S_veta * np.conj(S_weta) / S_etaeta
@@ -388,14 +390,14 @@ class ADV(BaseInstrument):
         w = sig.detrend(w)
 
         # All the velocity components
-        _, S_uu = psd(u, **kwargs)
-        _, S_vv = psd(v, **kwargs)
-        _, S_ww = psd(w, **kwargs)
+        _, S_uu = psd(u, fs=self.fs, **kwargs)
+        _, S_vv = psd(v, fs=self.fs, **kwargs)
+        _, S_ww = psd(w, fs=self.fs, **kwargs)
 
         # Velocity cross spectra
-        _, S_uw = csd(u, w, **kwargs)
-        _, S_vw = csd(v, w, **kwargs)
-        f, S_uv = csd(u, v, **kwargs)
+        _, S_uw = csd(u, w, fs=self.fs, **kwargs)
+        _, S_vw = csd(v, w, fs=self.fs, **kwargs)
+        f, S_uv = csd(u, v, fs=self.fs, **kwargs)
 
         phase_uw = np.arctan2(np.imag(S_uw), np.real(S_uw))
         phase_vw = np.arctan2(np.imag(S_vw), np.real(S_vw))
@@ -549,27 +551,22 @@ class ADV(BaseInstrument):
             turbulence and wave components (e.g. 'uu_turb', 'uu_wave').
         """
         out = {}
-        n_heights = self.metadata.num_heights
+        n_heights = self.n_heights
         if method == "cov":
-            cov_uu = np.cov(burst_data["u"])
-            cov_vv = np.cov(burst_data["v"])
-            cov_ww = np.cov(burst_data["w"])
-            cov_uv = np.cov(burst_data["u"], burst_data["v"])
-            cov_uw = np.cov(burst_data["u"], burst_data["w"])
-            cov_vw = np.cov(burst_data["v"], burst_data["w"])
 
-            if n_heights > 1:
-                out["uu"] = np.diag(cov_uu)[:n_heights]
-                out["vv"] = np.diag(cov_vv)[:n_heights]
-                out["ww"] = np.diag(cov_ww)[:n_heights]
-            else:
-                out["uu"] = cov_uu
-                out["vv"] = cov_vv
-                out["ww"] = cov_ww
+            u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
+            v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
+            w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
+            u_prime = burst_data["u"] - u_bar
+            v_prime = burst_data["v"] - v_bar
+            w_prime = burst_data["w"] - w_bar
 
-            out["uw"] = np.diag(cov_uw, n_heights)
-            out["vw"] = np.diag(cov_vw, n_heights)
-            out["uv"] = np.diag(cov_uv, n_heights)
+            out["uu"] = np.mean(u_prime ** 2, axis=1)
+            out["vv"] = np.mean(v_prime ** 2, axis=1)
+            out["ww"] = np.mean(w_prime ** 2, axis=1)
+            out["uw"] = np.mean(u_prime * w_prime, axis=1)
+            out["vw"] = np.mean(v_prime * w_prime, axis=1)
+            out["uv"] = np.mean(u_prime * v_prime, axis=1)
 
         elif method == "spectral_integral":
             out["uu"] = np.empty((n_heights,))
@@ -585,22 +582,22 @@ class ADV(BaseInstrument):
                 w = burst_data["w"][height_idx, :]
 
                 # Power spectral densities
-                f, S_uu = psd(u, **kwargs)
-                f, S_vv = psd(v, **kwargs)
-                f, S_ww = psd(w, **kwargs)
-                f, S_uw = csd(u, w, **kwargs)
-                f, S_vw = csd(v, w, **kwargs)
-                f, S_uv = csd(u, v, **kwargs)
+                f, S_uu = psd(u, fs=self.fs, **kwargs)
+                f, S_vv = psd(v, fs=self.fs, **kwargs)
+                f, S_ww = psd(w, fs=self.fs, **kwargs)
+                f, S_uw = csd(u, w, fs=self.fs, **kwargs)
+                f, S_vw = csd(v, w, fs=self.fs, **kwargs)
+                f, S_uv = csd(u, v, fs=self.fs, **kwargs)
 
                 start_index, end_index = get_frequency_range(f, f_low, f_high)
                 df = np.nanmax(np.diff(f))
 
                 out["uu"][height_idx] = np.sum(np.real(S_uu[start_index:end_index]) * df)
-                out["uu"][height_idx] = np.sum(np.real(S_vv[start_index:end_index]) * df)
-                out["uu"][height_idx] = np.sum(np.real(S_ww[start_index:end_index]) * df)
-                out["uu"][height_idx] = np.sum(np.real(S_uw[start_index:end_index]) * df)
-                out["uu"][height_idx] = np.sum(np.real(S_vw[start_index:end_index]) * df)
-                out["uu"][height_idx] = np.sum(np.real(S_uv[start_index:end_index]) * df)
+                out["vv"][height_idx] = np.sum(np.real(S_vv[start_index:end_index]) * df)
+                out["ww"][height_idx] = np.sum(np.real(S_ww[start_index:end_index]) * df)
+                out["uw"][height_idx] = np.sum(np.real(S_uw[start_index:end_index]) * df)
+                out["vw"][height_idx] = np.sum(np.real(S_vw[start_index:end_index]) * df)
+                out["uv"][height_idx] = np.sum(np.real(S_uv[start_index:end_index]) * df)
         elif method == "benilov":
             out["uu_turb"] = np.empty((n_heights,))
             out["vv_turb"] = np.empty((n_heights,))
@@ -827,7 +824,7 @@ class ADV(BaseInstrument):
             return eps, noise, quality_flag
 
         out = {}
-        n_heights = self.metadata.num_heights
+        n_heights = self.n_heights
         out["eps"] = np.empty((n_heights,))
         out["noise"] = np.empty((n_heights,))
         out["quality_flag"] = np.empty((n_heights,), dtype=int)
@@ -854,7 +851,7 @@ class ADV(BaseInstrument):
         if "p" not in burst_data.keys():
             raise ValueError("Pressure must be included in dataset to calculate directional wave statistics")
 
-        n_heights = self.metadata.num_heights
+        n_heights = self.n_heights
         out = {}
         for height_idx in range(n_heights):
             u = burst_data["u"][height_idx, :]
@@ -1150,10 +1147,14 @@ class ADV(BaseInstrument):
             direction of maximum variance in degrees, CCW positive from east
             assuming that u = eastward velocity, v = northward velocity
         """
-        # Covariance matrix
-        u_var = np.nanvar(data["u"])
-        v_var = np.nanvar(data["v"])
-        cv = np.cov(data["u"], data["v"])[0, 1]
+        # (Co)variances
+        u_bar = np.mean(data["u"], axis=1, keepdims=True)
+        v_bar = np.mean(data["v"], axis=1, keepdims=True)
+        u_prime = data["u"] - u_bar
+        v_prime = data["v"] - v_bar
+        u_var = np.mean(u_prime**2, axis=1)
+        v_var = np.mean(v_prime**2, axis=1)
+        cv = np.mean(u_prime * v_prime, axis=1)
 
         # Direction of maximum variance
         theta = (180.0 / np.pi) * (0.5 * np.arctan2(2.0 * cv, (u_var - v_var)))
@@ -1161,54 +1162,63 @@ class ADV(BaseInstrument):
         return theta
 
     @staticmethod
-    def _minimize_vertical_velocity(data) -> float:
+    def _minimize_vertical_velocity(data, theta_h):
         """
-
+        Calculate the rotation angle that will minimize the mean vertical velocity.
 
         Parameters
         ----------
-        tbd
+        data : dict
+            Dictionary containing "u", "v", "w" arrays with shape (M, N)
+        theta_h : np.ndarray
+            Horizontal rotation angles in degrees, shape (M,)
 
         Returns
         -------
-        theta : float
-            tbd
+        np.ndarray
+            Vertical rotation angles in degrees, shape (M,)
         """
-        return 0.0
+        theta_h_rad = np.deg2rad(np.atleast_1d(theta_h))[:, None]
+        u_rot = data["u"] * np.cos(theta_h_rad) + data["v"] * np.sin(theta_h_rad)
+        u_rot_bar = np.mean(u_rot, axis=1)
+        w_bar = np.mean(data["w"], axis=1)
+        return np.rad2deg(np.arctan2(w_bar, u_rot_bar))
 
-    def _rotate_velocity(self, data: Dict[str, np.ndarray], theta_h: float, theta_v: float):
+    def _rotate_velocity(self, data: Dict[str, np.ndarray], theta_h, theta_v):
         """
-        Rotates u, v, w velocites by directions defined by theta_h and theta_v
+        Rotates u, v, w velocities by directions defined by theta_h and theta_v.
 
         Parameters
         ----------
-        data: dict
-            Dictionary containing "u", "v", and "w" velocity arrays to be rotated
-        theta_h: float
-            Direction (degrees, CCW positive from east) in which horizontal velocites should be rotated.
-            This is often the output of adv._get_principal_axis
-        theta_v: float
-            Direction (degrees, fill in) in which vertical velocities should be rotated.
-
+        data : dict
+            Dictionary containing "u", "v", and "w" velocity arrays with shape (M, N)
+        theta_h : float or np.ndarray
+            Horizontal rotation angle(s) in degrees, scalar or shape (M,)
+        theta_v : float or np.ndarray
+            Vertical rotation angle(s) in degrees, scalar or shape (M,)
 
         Returns
         -------
-        data: dict
+        data : dict
             Original data dictionary with "u", "v", and "w" velocity arrays rotated
-
         """
-        theta_h = np.deg2rad(theta_h)
-        theta_v = np.deg2rad(theta_v)
+        # (M,) or scalar → (M, 1) for broadcasting against (M, N)
+        th = np.deg2rad(np.atleast_1d(theta_h))[:, None]
+        tv = np.deg2rad(np.atleast_1d(theta_v))[:, None]
+
+        cos_h, sin_h = np.cos(th), np.sin(th)
+        cos_v, sin_v = np.cos(tv), np.sin(tv)
+
         u_rot = (
-            data["u"] * np.cos(theta_h) * np.cos(theta_v)
-            + data["v"] * np.sin(theta_h) * np.cos(theta_v)
-            + data["w"] * np.sin(theta_v)
+            data["u"] * cos_h * cos_v
+            + data["v"] * sin_h * cos_v
+            + data["w"] * sin_v
         )
-        v_rot = -data["u"] * np.sin(theta_h) + data["v"] * np.cos(theta_h)
+        v_rot = -data["u"] * sin_h + data["v"] * cos_h
         w_rot = (
-            -data["u"] * np.cos(theta_h) * np.sin(theta_v)
-            - data["v"] * np.sin(theta_h) * np.sin(theta_v)
-            + data["w"] * np.cos(theta_v)
+            -data["u"] * cos_h * sin_v
+            - data["v"] * sin_h * sin_v
+            + data["w"] * cos_v
         )
         data["u"] = u_rot
         data["v"] = v_rot

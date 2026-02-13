@@ -54,6 +54,7 @@ class BaseInstrument(ABC):
         self.z = z
         self._cached_idx = None
         self._cached_data = None
+        self._preprocess_enabled = False
         self.metadata = self._build_metadata()
 
     @staticmethod
@@ -288,12 +289,15 @@ class BaseInstrument(ABC):
 
             burst_data[out_key] = var_data
 
-        pre_processed_burst_data = self._apply_preprocessing(burst_data)
+        if self._preprocess_enabled:
+            burst_data_out = self._apply_preprocessing(burst_data)
+        else:
+            burst_data_out = burst_data
 
         self._cached_idx = burst_idx
-        self._cached_data = pre_processed_burst_data
+        self._cached_data = burst_data_out
 
-        return pre_processed_burst_data
+        return burst_data_out
 
     def _apply_preprocessing(self, burst_data):
         """Override in subclasses to add preprocessing steps."""

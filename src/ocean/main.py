@@ -24,7 +24,7 @@ if __name__ == "__main__":
     pre_opts = {
         "despike": True,
         "rotate_horizontal": "principal",
-        "rotate_vertical": 0.0,
+        "rotate_vertical": "minimize",
     }
     adv.set_preprocess_opts(pre_opts)
 
