@@ -96,6 +96,7 @@ def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.nda
     38(7), 1473-1490.
     """
     # Finding peak and cutoff frequency
+    S_out = S_etaeta.copy()
     df = np.max(np.diff(f))
     noise_floor = np.mean(S_pp[f < 3 * df])
 
@@ -109,6 +110,6 @@ def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.nda
 
     # Replacing the rest of the spectrum with a 10^-4 fit
     m = S_etaeta[index_cutoff] * (f[index_cutoff] ** 4)
-    S_etaeta[index_cutoff:] = m * (f[index_cutoff:]) ** (-4)
+    S_out[index_cutoff:] = m * (f[index_cutoff:]) ** (-4)
 
-    return S_etaeta
+    return S_out

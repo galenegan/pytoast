@@ -117,7 +117,7 @@ class ADV(BaseInstrument):
 
     def _apply_preprocessing(self, burst_data):
         if self._despike:
-            self._apply_despike(burst_data, **self._despike_opts)
+            burst_data = self._apply_despike(burst_data, **self._despike_opts)
 
         if isinstance(self._rotate_horizontal, str):
             theta_h = ADV._get_principal_axis(burst_data)
@@ -259,6 +259,7 @@ class ADV(BaseInstrument):
         data["u"] = despike_worker(data["u"])
         data["v"] = despike_worker(data["v"])
         data["w"] = despike_worker(data["w"])
+        return data
 
     def benilov_decomposition(
         self,
@@ -569,6 +570,7 @@ class ADV(BaseInstrument):
             out["uv"] = np.mean(u_prime * v_prime, axis=1)
 
         elif method == "spectral_integral":
+
             out["uu"] = np.empty((n_heights,))
             out["vv"] = np.empty((n_heights,))
             out["ww"] = np.empty((n_heights,))
@@ -648,8 +650,8 @@ class ADV(BaseInstrument):
         elif method == "phase":
 
             # Extract phase method-specific kwargs with error handling
-            f_wave_low = phase_kwargs.pop("f_wave_low", None)
-            f_wave_high = phase_kwargs.pop("f_wave_high", None)
+            f_wave_low = phase_kwargs.get("f_wave_low", None)
+            f_wave_high = phase_kwargs.get("f_wave_high", None)
 
             out["uu_turb"] = np.empty((n_heights,))
             out["vv_turb"] = np.empty((n_heights,))
@@ -786,7 +788,7 @@ class ADV(BaseInstrument):
             """
             Carries out the spectral curve fit
             """
-            if np.sum(np.isnan(u)) == len(u) or np.sum(np.isnan(v)) == len(v) or np.sum(np.isnan(w)) == len(w):
+            if np.all(np.isnan(u)) or np.all(np.isnan(v)) or np.all(np.isnan(w)):
                 return np.nan, np.nan, 0
             omega_range = [2 * np.pi * f_low, 2 * np.pi * f_high]
             alpha = 1.5
