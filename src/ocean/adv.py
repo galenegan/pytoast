@@ -1225,12 +1225,3 @@ class ADV(BaseInstrument):
         data["w"] = w_rot
         return data
 
-    @property
-    def n_bursts(self):
-        """Number of bursts"""
-        return self.metadata.num_bursts
-
-    @property
-    def n_heights(self):
-        """Number of heights"""
-        return self.metadata.num_heights
