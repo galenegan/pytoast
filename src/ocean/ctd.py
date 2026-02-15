@@ -1,0 +1,1 @@
+# TODO: class for handling ctd data and helper functions for e.g. density and stratification
