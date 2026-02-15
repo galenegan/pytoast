@@ -1,19 +1,25 @@
-import glob
-import itertools
 import numpy as np
 import os
 import scipy.signal as sig
 import xarray as xr
-from scipy.stats import median_abs_deviation
 from sklearn.linear_model import LinearRegression
-from typing import Optional, Union, List, Tuple
-from src.utils.parsing_utils import DatasetParser
-from src.utils.interp_utils import naninterp_pd
+from typing import Optional, Union, List, Dict, Any, Tuple
 from src.utils.spectral_utils import psd, csd
 from src.utils.base_instrument import BaseInstrument
 
 
 class Sonic(BaseInstrument):
+
+    def __init__(
+        self,
+        files: Union[str, List],
+        name_map: dict,
+        fs: Optional[Union[int, float]] = None,
+        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        L: float = 0.15,
+    ):
+        self.path_length = L
+        super().__init__(files, name_map, fs, z)
 
     @staticmethod
     def validate_inputs(
@@ -21,13 +27,11 @@ class Sonic(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        zarr_save_path: Optional[str] = None,
-        overwrite: Optional[bool] = False,
         L: Optional[float] = 0.15,
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, zarr_save_path, overwrite)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z)
 
         # Instrument-specific requirements
         required_keys = ["u", "v", "w"]
@@ -46,8 +50,6 @@ class Sonic(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        zarr_save_path: Optional[str] = None,
-        overwrite: Optional[bool] = False,
         L: Optional[float] = 0.15,
     ):
         """
@@ -97,19 +99,122 @@ class Sonic(BaseInstrument):
         """
         Sonic.validate_inputs(files, name_map, fs, z, L)
 
-        # General parser
-        parser = DatasetParser(files, name_map, fs, z)
-        ds = parser.parse_input()
+        return cls(files, name_map, fs, z, L)
 
-        # Adding sonic-specific attribute
-        ds.attrs["path_length"] = L
+    def set_preprocess_opts(self, opts: Dict[str, Any]):
+        """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
 
-        if zarr_save_path and (overwrite or not os.path.exists(os.path.expanduser(zarr_save_path))):
-            ds.to_zarr(zarr_save_path, consolidated=True)
+        Parameters
+        ----------
+        opts : Dict[str, Any]
+            Options for preprocessing. Currently supports the following keys/values
+            {
+                "rotate": "align_wind", "align_principal", or (horizontal_angle(s), vertical_angle(s))
+                "despike": bool
+            }
+        """
 
-        return cls(ds)
+        self._preprocess_enabled = True
 
-    def align_velocity_with_wind(self) -> (xr.DataArray, xr.DataArray, xr.DataArray):
+        self._rotate = opts.get("rotate", "align_wind")
+        self._cached_idx = None
+        self._cached_data = None
+
+    def _apply_preprocessing(self, burst_data):
+
+        if isinstance(self._rotate, str):
+            if self._rotate == "align_principal":
+                theta_h, theta_v = Sonic._align_with_principal_axis(burst_data)
+            elif self._rotate == "align_wind":
+                theta_h, theta_v = Sonic._align_with_wind(burst_data)
+            else:
+                raise ValueError(f"Invalid rotation option '{self._rotate}'")
+        else:
+            theta_h, theta_v = self._rotate
+
+        if np.sum(np.abs(theta_v)) != 0.0 or np.sum(np.abs(theta_h)) != 0.0:
+            burst_data = self._rotate_velocity(burst_data, theta_h, theta_v)
+
+        return burst_data
+
+    def _rotate_velocity(self, data: Dict[str, np.ndarray], theta_h, theta_v) -> Dict[str, np.ndarray]:
+        """
+        Rotates u, v, w velocities by directions defined by theta_h and theta_v.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary containing "u", "v", and "w" velocity arrays with shape (M, N)
+        theta_h : float or np.ndarray
+            Horizontal rotation angle(s) in degrees, scalar or shape (M,)
+        theta_v : float or np.ndarray
+            Vertical rotation angle(s) in degrees, scalar or shape (M,)
+
+        Returns
+        -------
+        data : dict
+            Original data dictionary with "u", "v", and "w" velocity arrays rotated
+        """
+        # (M,) or scalar → (M, 1) for broadcasting against (M, N)
+        th = np.deg2rad(np.atleast_1d(theta_h))[:, np.newaxis]
+        tv = np.deg2rad(np.atleast_1d(theta_v))[:, np.newaxis]
+
+        cos_h, sin_h = np.cos(th), np.sin(th)
+        cos_v, sin_v = np.cos(tv), np.sin(tv)
+
+        u_rot = (
+                data["u"] * cos_h * cos_v
+                + data["v"] * sin_h * cos_v
+                + data["w"] * sin_v
+        )
+        v_rot = -data["u"] * sin_h + data["v"] * cos_h
+        w_rot = (
+                -data["u"] * cos_h * sin_v
+                - data["v"] * sin_h * sin_v
+                + data["w"] * cos_v
+        )
+        data["u"] = u_rot
+        data["v"] = v_rot
+        data["w"] = w_rot
+        return data
+
+    @staticmethod
+    def _align_with_principal_axis(data: dict) -> Tuple[Union[float, np.ndarray], Union[float, np.ndarray]]:
+        """
+        Calculates the direction of maximum variance from the u and v velocities (Thomson & Emery, 4.52b).
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+        theta : float
+            direction of maximum variance in degrees, CCW positive from east
+            assuming that u = eastward velocity, v = northward velocity
+        """
+        # (Co)variances
+        u_bar = np.mean(data["u"], axis=1, keepdims=True)
+        v_bar = np.mean(data["v"], axis=1, keepdims=True)
+        u_prime = data["u"] - u_bar
+        v_prime = data["v"] - v_bar
+        u_var = np.mean(u_prime ** 2, axis=1)
+        v_var = np.mean(v_prime ** 2, axis=1)
+        cv = np.mean(u_prime * v_prime, axis=1)
+
+        # Direction of maximum variance in xy-plane (heading)
+        theta_h_radians = (0.5 * np.arctan2(2.0 * cv, (u_var - v_var)))
+
+        # Pitch angle
+        u_rot = data["u"] * np.cos(theta_h_radians) + data["v"] * np.sin(theta_h_radians)
+        u_rot_bar = np.mean(u_rot, axis=1)
+        w_bar = np.mean(data["w"], axis=1)
+        theta_v_radians = np.arctan2(w_bar, u_rot_bar)
+
+        out = (np.rad2deg(theta_h_radians), np.rad2deg(theta_v_radians))
+        return out
+
+    @staticmethod
+    def _align_with_wind(burst_data: dict) -> Tuple[Union[float, np.ndarray], Union[float, np.ndarray]]:
         """
         Rotates u, v, w velocities to minimize the burst-averaged v and w.
 
@@ -129,21 +234,18 @@ class Sonic(BaseInstrument):
             Zero-mean vertical velocity
         """
 
-        u_bar = self.u.mean()
-        v_bar = self.v.mean()
-        w_bar = self.w.mean()
-        s_bar = np.sqrt(u_bar**2 + v_bar**2)
-        alpha = np.arctan2(v_bar, u_bar)
-        beta = np.arctan2(w_bar, s_bar)
-        u_rot = self.u * np.cos(alpha) * np.cos(beta) + self.v * np.sin(alpha) * np.cos(beta) + self.w * np.sin(beta)
-        v_rot = -self.u * np.sin(alpha) + self.v * np.cos(alpha)
-        w_rot = -self.u * np.cos(alpha) * np.sin(beta) - self.v * np.sin(alpha) * np.sin(beta) + self.w * np.cos(beta)
-
-        return u_rot, v_rot, w_rot
+        u_bar = np.mean(burst_data["u"], axis=1)
+        v_bar = np.mean(burst_data["v"], axis=1)
+        w_bar = np.mean(burst_data["w"], axis=1)
+        U = np.sqrt(u_bar**2 + v_bar**2)
+        theta_h = np.arctan2(v_bar, u_bar)
+        theta_v = np.arctan2(w_bar, U)
+        out = (np.rad2deg(theta_h), np.rad2deg(theta_v))
+        return out
 
     def dissipation(
-        self, f_low: float, f_high: float, henjes_correction: bool, chunk_size: int = 100, **kwargs
-    ) -> float:
+        self, burst_data: dict, f_low: float, f_high: float, henjes_correction: bool, **kwargs
+    ) -> np.ndarray:
         """
 
         Parameters
@@ -151,7 +253,6 @@ class Sonic(BaseInstrument):
         f_low
         f_high
         henjes_correction
-        chunk_size
         kwargs
 
         Returns
@@ -159,11 +260,13 @@ class Sonic(BaseInstrument):
 
         """
 
-        def spectral_fit(u: np.ndarray, henjes_correction: bool = True) -> float:
+        def spectral_fit(
+            u: np.ndarray, f_low: float, f_high: float, henjes_correction: bool = True, **kwargs
+        ) -> np.ndarray:
             c1 = 0.53
             u_prime = sig.detrend(u, type="linear")
             u_bar = np.nanmean(u)
-            f, S = psd(u_prime, onesided=False, **kwargs)
+            f, S = psd(u_prime, fs=self.fs, onesided=False, **kwargs)
 
             if henjes_correction:
                 fs = kwargs.get("fs", self.fs)
@@ -199,21 +302,17 @@ class Sonic(BaseInstrument):
                     eps = eps23 ** (3 / 2)
             return eps
 
-        ds_chunked = self.chunk({"burst": chunk_size})
-        eps = xr.apply_ufunc(
-            spectral_fit,
-            ds_chunked.u,
-            f_low,
-            f_high,
-            henjes_correction,
-            input_core_dims=[["time"], [], [], []],
-            output_core_dims=[[]],
-            vectorize=True,
-            dask="parallelized",
-            output_dtypes=[self.w.dtype],
-        )
+        n_heights = self.n_heights
+        eps = np.empty((n_heights,))
+        for height_idx in range(n_heights):
+            u = burst_data["u"][height_idx, :]
+            eps[height_idx] = spectral_fit(u, henjes_correction=henjes_correction, f_low=f_low, f_high=f_high, **kwargs)
 
         return eps
+
+    def subsample(self, start_idx, end_idx):
+        files = self.files[start_idx:end_idx]
+        return self.__class__(files, self.name_map, self.fs, self.z, self.path_length)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.signal as sig
-from typing import Optional, Union, List, Dict, Any
+from typing import Optional, Union, List, Dict, Any, Tuple
 from sklearn.linear_model import LinearRegression
 from utils.base_instrument import BaseInstrument
 from utils.interp_utils import naninterp_pd
@@ -97,21 +97,14 @@ class ADV(BaseInstrument):
             {
                 "despike": bool
                 "despike_opts": {threshold: int, max_iter: int, robust_statistics: bool}
-                "rotate_horizontal": float or "principal"
-                "rotate_vertical": float or "minimize"
+                "rotate": "align_principal", "align_current", or (horizontal_angle(s), vertical_angle(s))
         """
 
         self._preprocess_enabled = True
 
-        if isinstance(opts.get("rotate_vertical"), str) and opts.get("rotate_vertical") != "minimize":
-            raise ValueError("Only 'minimize' is supported for rotate_vertical")
-        if isinstance(opts.get("rotate_horizontal"), str) and opts.get("rotate_horizontal") != "principal":
-            raise ValueError("Only 'principal' is supported for rotate_horizontal")
-
         self._despike = opts.get("despike", True)
         self._despike_opts = opts.get("despike_opts", {})
-        self._rotate_vertical = opts.get("rotate_vertical", 0.0)
-        self._rotate_horizontal = opts.get("rotate_horizontal", 0.0)
+        self._rotate = opts.get("rotate", "align_principal")
         self._cached_idx = None
         self._cached_data = None
 
@@ -119,15 +112,15 @@ class ADV(BaseInstrument):
         if self._despike:
             burst_data = self._apply_despike(burst_data, **self._despike_opts)
 
-        if isinstance(self._rotate_horizontal, str):
-            theta_h = ADV._get_principal_axis(burst_data)
+        if isinstance(self._rotate, str):
+            if self._rotate == "align_principal":
+                theta_h, theta_v = ADV._align_with_principal_axis(burst_data)
+            elif self._rotate == "align_current":
+                theta_h, theta_v = ADV._align_with_current(burst_data)
+            else:
+                raise ValueError(f"Invalid rotation option '{self._rotate}'")
         else:
-            theta_h = self._rotate_horizontal
-
-        if isinstance(self._rotate_vertical, str):
-            theta_v = ADV._minimize_vertical_velocity(burst_data, theta_h)
-        else:
-            theta_v = self._rotate_vertical
+            theta_h, theta_v = self._rotate
 
         if np.sum(np.abs(theta_v)) != 0.0 or np.sum(np.abs(theta_h)) != 0.0:
             burst_data = self._rotate_velocity(burst_data, theta_h, theta_v)
@@ -208,17 +201,17 @@ class ADV(BaseInstrument):
             b2 = np.sqrt(x[:, 1])
 
             # Broadcast all (n_heights,) stats to (n_heights, 1) for element-wise tests
-            u_bar = u_bar[:, None]
-            du_bar = du_bar[:, None]
-            du2_bar = du2_bar[:, None]
-            a1 = a1[:, None]
-            b1 = b1[:, None]
-            a2 = a2[:, None]
-            b2 = b2[:, None]
-            a3 = a3[:, None]
-            b3 = b3[:, None]
-            cos_t = cos_t[:, None]
-            sin_t = sin_t[:, None]
+            u_bar = u_bar[:, np.newaxis]
+            du_bar = du_bar[:, np.newaxis]
+            du2_bar = du2_bar[:, np.newaxis]
+            a1 = a1[:, np.newaxis]
+            b1 = b1[:, np.newaxis]
+            a2 = a2[:, np.newaxis]
+            b2 = b2[:, np.newaxis]
+            a3 = a3[:, np.newaxis]
+            b3 = b3[:, np.newaxis]
+            cos_t = cos_t[:, np.newaxis]
+            sin_t = sin_t[:, np.newaxis]
 
             # u vs du
             bad_u_du = (u - u_bar) ** 2 / a1**2 + (du - du_bar) ** 2 / b1**2 > 1
@@ -1136,7 +1129,7 @@ class ADV(BaseInstrument):
         return out
 
     @staticmethod
-    def _get_principal_axis(data) -> float:
+    def _align_with_principal_axis(data: dict) -> Tuple:
         """
         Calculates the direction of maximum variance from the u and v velocities (Thomson & Emery, 4.52b).
 
@@ -1158,33 +1151,47 @@ class ADV(BaseInstrument):
         v_var = np.mean(v_prime**2, axis=1)
         cv = np.mean(u_prime * v_prime, axis=1)
 
-        # Direction of maximum variance
-        theta = (180.0 / np.pi) * (0.5 * np.arctan2(2.0 * cv, (u_var - v_var)))
+        # Direction of maximum variance in xy-plane (heading)
+        theta_h_radians = (0.5 * np.arctan2(2.0 * cv, (u_var - v_var)))
 
-        return theta
+        # Pitch angle
+        u_rot = data["u"] * np.cos(theta_h_radians) + data["v"] * np.sin(theta_h_radians)
+        u_rot_bar = np.mean(u_rot, axis=1)
+        w_bar = np.mean(data["w"], axis=1)
+        theta_v_radians = np.arctan2(w_bar, u_rot_bar)
+
+        out = (np.rad2deg(theta_h_radians), np.rad2deg(theta_v_radians))
+        return out
 
     @staticmethod
-    def _minimize_vertical_velocity(data, theta_h):
+    def _align_with_current(burst_data: dict) -> Tuple:
         """
-        Calculate the rotation angle that will minimize the mean vertical velocity.
+        Rotates u, v, w velocities to minimize the burst-averaged v and w.
 
         Parameters
         ----------
-        data : dict
-            Dictionary containing "u", "v", "w" arrays with shape (M, N)
-        theta_h : np.ndarray
-            Horizontal rotation angles in degrees, shape (M,)
+
 
         Returns
         -------
-        np.ndarray
-            Vertical rotation angles in degrees, shape (M,)
+        u_rot: DataArray
+            Major axis horizontal velocity
+
+        v_rot: DataArray
+            Minor axis horizontal velocity
+
+        w_rot: DataArray
+            Zero-mean vertical velocity
         """
-        theta_h_rad = np.deg2rad(np.atleast_1d(theta_h))[:, None]
-        u_rot = data["u"] * np.cos(theta_h_rad) + data["v"] * np.sin(theta_h_rad)
-        u_rot_bar = np.mean(u_rot, axis=1)
-        w_bar = np.mean(data["w"], axis=1)
-        return np.rad2deg(np.arctan2(w_bar, u_rot_bar))
+
+        u_bar = np.mean(burst_data["u"], axis=1)
+        v_bar = np.mean(burst_data["v"], axis=1)
+        w_bar = np.mean(burst_data["w"], axis=1)
+        U = np.sqrt(u_bar ** 2 + v_bar ** 2)
+        theta_h = np.arctan2(v_bar, u_bar)
+        theta_v = np.arctan2(w_bar, U)
+        out = (np.rad2deg(theta_h), np.rad2deg(theta_v))
+        return out
 
     def _rotate_velocity(self, data: Dict[str, np.ndarray], theta_h, theta_v):
         """
@@ -1205,8 +1212,8 @@ class ADV(BaseInstrument):
             Original data dictionary with "u", "v", and "w" velocity arrays rotated
         """
         # (M,) or scalar → (M, 1) for broadcasting against (M, N)
-        th = np.deg2rad(np.atleast_1d(theta_h))[:, None]
-        tv = np.deg2rad(np.atleast_1d(theta_v))[:, None]
+        th = np.deg2rad(np.atleast_1d(theta_h))[:, np.newaxis]
+        tv = np.deg2rad(np.atleast_1d(theta_v))[:, np.newaxis]
 
         cos_h, sin_h = np.cos(th), np.sin(th)
         cos_v, sin_v = np.cos(tv), np.sin(tv)
