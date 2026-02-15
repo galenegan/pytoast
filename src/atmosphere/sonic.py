@@ -4,9 +4,9 @@ import scipy.signal as sig
 import xarray as xr
 from sklearn.linear_model import LinearRegression
 from typing import Optional, Union, List, Dict, Any, Tuple
-from src.utils.spectral_utils import psd, csd
+from src.utils.spectral_utils import psd, csd, get_frequency_range
 from src.utils.base_instrument import BaseInstrument
-
+from src.utils.constants import GRAVITATIONAL_ACCELERATION as g
 
 class Sonic(BaseInstrument):
 
@@ -309,6 +309,92 @@ class Sonic(BaseInstrument):
             eps[height_idx] = spectral_fit(u, henjes_correction=henjes_correction, f_low=f_low, f_high=f_high, **kwargs)
 
         return eps
+
+    def covariance(
+        self,
+        burst_data: Dict[str, np.ndarray],
+        method: str = "cov",
+        f_low: Optional[float] = None,
+        f_high: Optional[float] = None,
+        **kwargs
+    ):
+        out = {}
+        n_heights = self.n_heights
+        if method == "cov":
+
+            u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
+            v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
+            w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
+            u_prime = burst_data["u"] - u_bar
+            v_prime = burst_data["v"] - v_bar
+            w_prime = burst_data["w"] - w_bar
+
+            out["uu"] = np.mean(u_prime ** 2, axis=1)
+            out["vv"] = np.mean(v_prime ** 2, axis=1)
+            out["ww"] = np.mean(w_prime ** 2, axis=1)
+            out["uw"] = np.mean(u_prime * w_prime, axis=1)
+            out["vw"] = np.mean(v_prime * w_prime, axis=1)
+            out["uv"] = np.mean(u_prime * v_prime, axis=1)
+
+        elif method == "spectral_integral":
+
+            out["uu"] = np.empty((n_heights,))
+            out["vv"] = np.empty((n_heights,))
+            out["ww"] = np.empty((n_heights,))
+            out["uw"] = np.empty((n_heights,))
+            out["vw"] = np.empty((n_heights,))
+            out["uv"] = np.empty((n_heights,))
+
+            for height_idx in range(n_heights):
+                u = burst_data["u"][height_idx, :]
+                v = burst_data["v"][height_idx, :]
+                w = burst_data["w"][height_idx, :]
+
+                # Power spectral densities
+                f, S_uu = psd(u, fs=self.fs, **kwargs)
+                f, S_vv = psd(v, fs=self.fs, **kwargs)
+                f, S_ww = psd(w, fs=self.fs, **kwargs)
+                f, S_uw = csd(u, w, fs=self.fs, **kwargs)
+                f, S_vw = csd(v, w, fs=self.fs, **kwargs)
+                f, S_uv = csd(u, v, fs=self.fs, **kwargs)
+
+                start_index, end_index = get_frequency_range(f, f_low, f_high)
+                df = np.nanmax(np.diff(f))
+
+                out["uu"][height_idx] = np.sum(np.real(S_uu[start_index:end_index]) * df)
+                out["vv"][height_idx] = np.sum(np.real(S_vv[start_index:end_index]) * df)
+                out["ww"][height_idx] = np.sum(np.real(S_ww[start_index:end_index]) * df)
+                out["uw"][height_idx] = np.sum(np.real(S_uw[start_index:end_index]) * df)
+                out["vw"][height_idx] = np.sum(np.real(S_vw[start_index:end_index]) * df)
+                out["uv"][height_idx] = np.sum(np.real(S_uv[start_index:end_index]) * df)
+        else:
+            raise ValueError(f"Invalid covariance method '{method}'")
+
+        return out
+
+    def tke(self, burst_data: Dict[str, np.ndarray]):
+        u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
+        v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
+        w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
+
+        u_prime = burst_data["u"] - u_bar
+        v_prime = burst_data["v"] - v_bar
+        w_prime = burst_data["w"] - w_bar
+
+        tke_prime = 0.5 * (u_prime**2 + v_prime**2 + w_prime**2)
+        tke_out = np.mean(tke_prime, axis=1)
+        return tke_out
+
+    def buoyancy_flux(self, burst_data: Dict[str, np.ndarray]):
+        if "Ts" not in burst_data:
+            raise ValueError("Cannot compute buoyancy flux without sonic temperature data")
+
+        Ts_bar = np.mean(burst_data["Ts"], axis=1, keepdims=True)
+        w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
+        Ts_prime = burst_data["Ts"] - Ts_bar
+        w_prime = burst_data["w"] - w_bar
+        B = g * np.mean(Ts_prime * w_prime, axis=1) / (Ts_bar + 273.15)
+        return B
 
     def subsample(self, start_idx, end_idx):
         files = self.files[start_idx:end_idx]

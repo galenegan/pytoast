@@ -834,6 +834,19 @@ class ADV(BaseInstrument):
 
         return out
 
+    def tke(self, burst_data: Dict[str, np.ndarray]):
+        u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
+        v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
+        w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
+
+        u_prime = burst_data["u"] - u_bar
+        v_prime = burst_data["v"] - v_bar
+        w_prime = burst_data["w"] - w_bar
+
+        tke_prime = 0.5 * (u_prime**2 + v_prime**2 + w_prime**2)
+        tke_out = np.mean(tke_prime, axis=1)
+        return tke_out
+
     def directional_wave_statistics(
         self,
         burst_data: dict,
