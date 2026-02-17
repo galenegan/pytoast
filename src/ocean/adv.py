@@ -304,64 +304,64 @@ class ADV(BaseInstrument):
         h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth
 
         # Getting sea surface elevation spectrum
-        f, S_pp = psd(p, self.fs, **kwargs)
+        f, P_pp = psd(p, self.fs, **kwargs)
         df = np.max(np.diff(f))
         omega = 2 * np.pi * f
         k = get_wavenumber(omega, h)
         attenuation_correction = 1e4 * np.cosh(k * h) / (rho * g * np.cosh(k * mab))
-        S_etaeta = S_pp * (attenuation_correction**2)
+        P_etaeta = P_pp * (attenuation_correction**2)
 
         # All the velocity components
-        _, S_uu = psd(u, self.fs, **kwargs)
-        _, S_up = csd(u, p, self.fs, **kwargs)
-        S_ueta = S_up * attenuation_correction
+        _, P_uu = psd(u, self.fs, **kwargs)
+        _, P_up = csd(u, p, self.fs, **kwargs)
+        S_ueta = P_up * attenuation_correction
 
-        _, S_vv = psd(v, self.fs, **kwargs)
-        _, S_vp = csd(v, p, self.fs, **kwargs)
-        S_veta = S_vp * attenuation_correction
+        _, P_vv = psd(v, self.fs, **kwargs)
+        _, P_vp = csd(v, p, self.fs, **kwargs)
+        S_veta = P_vp * attenuation_correction
 
-        _, S_ww = psd(w, self.fs, **kwargs)
-        _, S_wp = csd(w, p, self.fs, **kwargs)
-        S_weta = S_wp * attenuation_correction
+        _, P_ww = psd(w, self.fs, **kwargs)
+        _, P_wp = csd(w, p, self.fs, **kwargs)
+        S_weta = P_wp * attenuation_correction
 
         # Velocity cross spectra
-        _, S_uw = csd(u, w, self.fs, **kwargs)
-        _, S_vw = csd(v, w, self.fs, **kwargs)
-        _, S_uv = csd(u, v, self.fs, **kwargs)
+        _, P_uw = csd(u, w, self.fs, **kwargs)
+        _, P_vw = csd(v, w, self.fs, **kwargs)
+        _, P_uv = csd(u, v, self.fs, **kwargs)
 
         # Defining frequency range
         start_index, end_index = get_frequency_range(f, f_low, f_high)
 
         # Calculating wave spectra
-        S_uwave_uwave = S_ueta * np.conj(S_ueta) / S_etaeta
-        S_vwave_vwave = S_veta * np.conj(S_veta) / S_etaeta
-        S_wwave_wwave = S_weta * np.conj(S_weta) / S_etaeta
-        S_uwave_wwave = S_ueta * np.conj(S_weta) / S_etaeta
-        S_uwave_vwave = S_ueta * np.conj(S_veta) / S_etaeta
-        S_vwave_wwave = S_veta * np.conj(S_weta) / S_etaeta
+        P_uwave_uwave = S_ueta * np.conj(S_ueta) / P_etaeta
+        P_vwave_vwave = S_veta * np.conj(S_veta) / P_etaeta
+        P_wwave_wwave = S_weta * np.conj(S_weta) / P_etaeta
+        P_uwave_wwave = S_ueta * np.conj(S_weta) / P_etaeta
+        P_uwave_vwave = S_ueta * np.conj(S_veta) / P_etaeta
+        P_vwave_wwave = S_veta * np.conj(S_weta) / P_etaeta
 
         # Calculating turbulent spectra
-        S_ut_ut = S_uu - S_uwave_uwave
-        S_ut_wt = S_uw - S_uwave_wwave
-        S_ut_vt = S_uv - S_uwave_vwave
-        S_vt_vt = S_vv - S_vwave_vwave
-        S_vt_wt = S_vw - S_vwave_wwave
-        S_wt_wt = S_ww - S_wwave_wwave
+        S_ut_ut = P_uu - P_uwave_uwave
+        S_ut_wt = P_uw - P_uwave_wwave
+        S_ut_vt = P_uv - P_uwave_vwave
+        S_vt_vt = P_vv - P_vwave_vwave
+        S_vt_wt = P_vw - P_vwave_wwave
+        S_wt_wt = P_ww - P_wwave_wwave
 
         # Summing them to get Reynolds stresses
         out = {}
         out["uu_turb"] = np.nansum(np.real(S_ut_ut[start_index:end_index]) * df)
-        out["uu_wave"] = np.nansum(np.real(S_uwave_uwave[start_index:end_index]) * df)
+        out["uu_wave"] = np.nansum(np.real(P_uwave_uwave[start_index:end_index]) * df)
         out["vv_turb"] = np.nansum(np.real(S_vt_vt[start_index:end_index]) * df)
-        out["vv_wave"] = np.nansum(np.real(S_vwave_vwave[start_index:end_index]) * df)
+        out["vv_wave"] = np.nansum(np.real(P_vwave_vwave[start_index:end_index]) * df)
         out["ww_turb"] = np.nansum(np.real(S_wt_wt[start_index:end_index]) * df)
-        out["ww_wave"] = np.nansum(np.real(S_wwave_wwave[start_index:end_index]) * df)
+        out["ww_wave"] = np.nansum(np.real(P_wwave_wwave[start_index:end_index]) * df)
         out["uw_turb"] = np.nansum(np.real(S_ut_wt[start_index:end_index]) * df)
-        out["uw_wave"] = np.nansum(np.real(S_uwave_wwave[start_index:end_index]) * df)
+        out["uw_wave"] = np.nansum(np.real(P_uwave_wwave[start_index:end_index]) * df)
         out["vw_turb"] = np.nansum(np.real(S_vt_wt[start_index:end_index]) * df)
-        out["vw_wave"] = np.nansum(np.real(S_vwave_wwave[start_index:end_index]) * df)
+        out["vw_wave"] = np.nansum(np.real(P_vwave_wwave[start_index:end_index]) * df)
         out["uv_turb"] = np.nansum(np.real(S_ut_vt[start_index:end_index]) * df)
-        out["uv_wave"] = np.nansum(np.real(S_uwave_vwave[start_index:end_index]) * df)
+        out["uv_wave"] = np.nansum(np.real(P_uwave_vwave[start_index:end_index]) * df)
 
         return out
 
@@ -384,18 +384,18 @@ class ADV(BaseInstrument):
         w = sig.detrend(w)
 
         # All the velocity components
-        _, S_uu = psd(u, fs=self.fs, **kwargs)
-        _, S_vv = psd(v, fs=self.fs, **kwargs)
-        _, S_ww = psd(w, fs=self.fs, **kwargs)
+        _, P_uu = psd(u, fs=self.fs, **kwargs)
+        _, P_vv = psd(v, fs=self.fs, **kwargs)
+        _, P_ww = psd(w, fs=self.fs, **kwargs)
 
         # Velocity cross spectra
-        _, S_uw = csd(u, w, fs=self.fs, **kwargs)
-        _, S_vw = csd(v, w, fs=self.fs, **kwargs)
-        f, S_uv = csd(u, v, fs=self.fs, **kwargs)
+        _, P_uw = csd(u, w, fs=self.fs, **kwargs)
+        _, P_vw = csd(v, w, fs=self.fs, **kwargs)
+        f, P_uv = csd(u, v, fs=self.fs, **kwargs)
 
-        phase_uw = np.arctan2(np.imag(S_uw), np.real(S_uw))
-        phase_vw = np.arctan2(np.imag(S_vw), np.real(S_vw))
-        phase_uv = np.arctan2(np.imag(S_uv), np.real(S_uv))
+        phase_uw = np.arctan2(np.imag(P_uw), np.real(P_uw))
+        phase_vw = np.arctan2(np.imag(P_vw), np.real(P_vw))
+        phase_uv = np.arctan2(np.imag(P_uv), np.real(P_uv))
         df = np.nanmax(np.diff(f))
 
         # Searching for the wave peak within a reasonable range of frequencies --
@@ -407,7 +407,7 @@ class ADV(BaseInstrument):
             width_ratio_low = 0.35  # Wave range below the wave peak (fraction of peak frequency)
             width_ratio_high = 0.8  # Wave range above the peak
             offset = np.sum(f <= f_offset)
-            u_idx_max = np.argmax(S_uu[(f > f_offset) & (f < 1)]) + offset
+            u_idx_max = np.argmax(P_uu[(f > f_offset) & (f < 1)]) + offset
             f_max = f[u_idx_max]
             waverange = np.arange(
                 max(u_idx_max - (f_max * width_ratio_low) // df, 0),
@@ -416,21 +416,21 @@ class ADV(BaseInstrument):
         interprange = np.arange(1, np.nanargmin(np.abs(f - 1))).astype(int)
 
         # Separating the turbulent portion from the full spectrum
-        Suu_turb = S_uu[interprange]
+        Suu_turb = P_uu[interprange]
         fuu = f[interprange]
         Suu_turb = np.delete(Suu_turb, waverange - interprange[0])
         fuu = np.delete(fuu, waverange - interprange[0])
         Suu_turb = Suu_turb[fuu > 0]
         fuu = fuu[fuu > 0]
 
-        Svv_turb = S_vv[interprange]
+        Svv_turb = P_vv[interprange]
         fvv = f[interprange]
         Svv_turb = np.delete(Svv_turb, waverange - interprange[0])
         fvv = np.delete(fvv, waverange - interprange[0])
         Svv_turb = Svv_turb[fvv > 0]
         fvv = fvv[fvv > 0]
 
-        Sww_turb = S_ww[interprange]
+        Sww_turb = P_ww[interprange]
         fww = f[interprange]
         Sww_turb = np.delete(Sww_turb, waverange - interprange[0])
         fww = np.delete(fww, waverange - interprange[0])
@@ -454,11 +454,11 @@ class ADV(BaseInstrument):
         Pwwhat = np.exp(np.polyval(Pww, np.log(f)))
 
         # Wave spectra strictly above the interpolation line
-        Suu_wave = S_uu[waverange] - Puuhat[waverange]
+        Suu_wave = P_uu[waverange] - Puuhat[waverange]
         Suu_wave[Suu_wave < 0] = 0
-        Svv_wave = S_vv[waverange] - Pvvhat[waverange]
+        Svv_wave = P_vv[waverange] - Pvvhat[waverange]
         Svv_wave[Svv_wave < 0] = 0
-        Sww_wave = S_ww[waverange] - Pwwhat[waverange]
+        Sww_wave = P_ww[waverange] - Pwwhat[waverange]
         Sww_wave[Sww_wave < 0] = 0
 
         # Wave Fourier components
@@ -484,12 +484,12 @@ class ADV(BaseInstrument):
         start_index, end_index = get_frequency_range(f, f_low, f_high)
 
         # Full reynolds stresses
-        uu = np.nansum(np.real(S_uu[start_index:end_index]) * df)
-        uv = np.nansum(np.real(S_uv[start_index:end_index]) * df)
-        uw = np.nansum(np.real(S_uw[start_index:end_index]) * df)
-        vv = np.nansum(np.real(S_vv[start_index:end_index]) * df)
-        vw = np.nansum(np.real(S_vw[start_index:end_index]) * df)
-        ww = np.nansum(np.real(S_ww[start_index:end_index]) * df)
+        uu = np.nansum(np.real(P_uu[start_index:end_index]) * df)
+        uv = np.nansum(np.real(P_uv[start_index:end_index]) * df)
+        uw = np.nansum(np.real(P_uw[start_index:end_index]) * df)
+        vv = np.nansum(np.real(P_vv[start_index:end_index]) * df)
+        vw = np.nansum(np.real(P_vw[start_index:end_index]) * df)
+        ww = np.nansum(np.real(P_ww[start_index:end_index]) * df)
 
         # Turbulent reynolds stresses
         out["uu_turb"] = uu - out["uu_wave"]
@@ -555,9 +555,9 @@ class ADV(BaseInstrument):
             v_prime = burst_data["v"] - v_bar
             w_prime = burst_data["w"] - w_bar
 
-            out["uu"] = np.mean(u_prime ** 2, axis=1)
-            out["vv"] = np.mean(v_prime ** 2, axis=1)
-            out["ww"] = np.mean(w_prime ** 2, axis=1)
+            out["uu"] = np.mean(u_prime**2, axis=1)
+            out["vv"] = np.mean(v_prime**2, axis=1)
+            out["ww"] = np.mean(w_prime**2, axis=1)
             out["uw"] = np.mean(u_prime * w_prime, axis=1)
             out["vw"] = np.mean(v_prime * w_prime, axis=1)
             out["uv"] = np.mean(u_prime * v_prime, axis=1)
@@ -577,22 +577,22 @@ class ADV(BaseInstrument):
                 w = burst_data["w"][height_idx, :]
 
                 # Power spectral densities
-                f, S_uu = psd(u, fs=self.fs, **kwargs)
-                f, S_vv = psd(v, fs=self.fs, **kwargs)
-                f, S_ww = psd(w, fs=self.fs, **kwargs)
-                f, S_uw = csd(u, w, fs=self.fs, **kwargs)
-                f, S_vw = csd(v, w, fs=self.fs, **kwargs)
-                f, S_uv = csd(u, v, fs=self.fs, **kwargs)
+                f, P_uu = psd(u, fs=self.fs, **kwargs)
+                f, P_vv = psd(v, fs=self.fs, **kwargs)
+                f, P_ww = psd(w, fs=self.fs, **kwargs)
+                f, P_uw = csd(u, w, fs=self.fs, **kwargs)
+                f, P_vw = csd(v, w, fs=self.fs, **kwargs)
+                f, P_uv = csd(u, v, fs=self.fs, **kwargs)
 
                 start_index, end_index = get_frequency_range(f, f_low, f_high)
                 df = np.nanmax(np.diff(f))
 
-                out["uu"][height_idx] = np.sum(np.real(S_uu[start_index:end_index]) * df)
-                out["vv"][height_idx] = np.sum(np.real(S_vv[start_index:end_index]) * df)
-                out["ww"][height_idx] = np.sum(np.real(S_ww[start_index:end_index]) * df)
-                out["uw"][height_idx] = np.sum(np.real(S_uw[start_index:end_index]) * df)
-                out["vw"][height_idx] = np.sum(np.real(S_vw[start_index:end_index]) * df)
-                out["uv"][height_idx] = np.sum(np.real(S_uv[start_index:end_index]) * df)
+                out["uu"][height_idx] = np.sum(np.real(P_uu[start_index:end_index]) * df)
+                out["vv"][height_idx] = np.sum(np.real(P_vv[start_index:end_index]) * df)
+                out["ww"][height_idx] = np.sum(np.real(P_ww[start_index:end_index]) * df)
+                out["uw"][height_idx] = np.sum(np.real(P_uw[start_index:end_index]) * df)
+                out["vw"][height_idx] = np.sum(np.real(P_vw[start_index:end_index]) * df)
+                out["uv"][height_idx] = np.sum(np.real(P_uv[start_index:end_index]) * df)
         elif method == "benilov":
             out["uu_turb"] = np.empty((n_heights,))
             out["vv_turb"] = np.empty((n_heights,))
@@ -952,26 +952,20 @@ class ADV(BaseInstrument):
         of pressure fluctuations with depth.
         """
 
-        h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth
-
-        # Sanity check to make sure average depth is positive
-        if h < 0:
-            raise ValueError("Average water depth must be positive to calculate directional wave statistics.")
-
         u = sig.detrend(u, type="linear")
         v = sig.detrend(v, type="linear")
         p = sig.detrend(p, type="linear")
 
         # Calculating spectra
-        f, S_uu = psd(u, fs=self.fs, **kwargs)
-        f, S_vv = psd(v, fs=self.fs, **kwargs)
-        f, S_pp = psd(p, fs=self.fs, **kwargs)
-        f, S_uv = csd(u, v, fs=self.fs, **kwargs)
-        f, S_pu = csd(p, u, fs=self.fs, **kwargs)
-        f, S_pv = csd(p, v, fs=self.fs, **kwargs)
+        f, P_uu = psd(u, fs=self.fs, **kwargs)
+        f, P_vv = psd(v, fs=self.fs, **kwargs)
+        f, P_pp = psd(p, fs=self.fs, **kwargs)
+        f, P_uv = csd(u, v, fs=self.fs, **kwargs)
+        f, P_pu = csd(p, u, fs=self.fs, **kwargs)
+        f, P_pv = csd(p, v, fs=self.fs, **kwargs)
         df = np.max(np.diff(f))
 
-        # Depth correction and spectral weighted averages
+        # Frequency band definitions
         if band_definitions is None:
             fbands = {
                 "infragravity": ((f > 1 / 250) & (f <= 1 / 25) & (f <= f_cutoff)),
@@ -992,48 +986,39 @@ class ADV(BaseInstrument):
             }
 
         # Getting sea surface elevation spectrum
+        h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth (m)
         omega = 2 * np.pi * f
         k = get_wavenumber(omega, h)
         attenuation_correction = 1e4 * np.cosh(k * h) / (rho * g * np.cosh(k * mab))
-        S_etaeta = S_pp * (attenuation_correction**2)
+        P_etaeta = P_pp * (attenuation_correction**2)
 
         if sea_correction:
-            S_etaeta = jones_monismith_correction(S_etaeta, S_pp, f)
+            P_etaeta = jones_monismith_correction(P_etaeta, P_pp, f)
 
-        # Equivalent pressure
-        UUpres = S_uu * (attenuation_correction**2)
-        VVpres = S_vv * (attenuation_correction**2)
-        UVpres = S_uv * (attenuation_correction**2)
-
-        PUpres = S_pu * attenuation_correction
-        PVpres = S_pv * attenuation_correction
-
-        # Cospectrum and quadrature
-        coPUpres = np.real(PUpres)
-        coPVpres = np.real(PVpres)
-        coUVpres = np.real(UVpres)
-
-        # Directional moments -- e.g., Herbers et al., 1999.
-        a1 = coPUpres / np.sqrt(S_pp * (UUpres + VVpres))
-        b1 = coPVpres / np.sqrt(S_pp * (UUpres + VVpres))
+        # Directional moments (Herbers et al., 1999, Appendix)
+        a1 = np.real(P_pu / np.sqrt(P_pp * (P_uu + P_vv)))
+        b1 = np.real(P_pv / np.sqrt(P_pp * (P_uu + P_vv)))
         dir1 = np.degrees(np.arctan2(b1, a1))
         spread1 = np.degrees(np.sqrt(2 * (1 - (a1 * np.cos(np.radians(dir1)) + b1 * np.sin(np.radians(dir1))))))
 
-        a2 = (UUpres - VVpres) / (UUpres + VVpres)
-        b2 = 2 * coUVpres / (UUpres + VVpres)
+        a2 = np.real((P_uu - P_vv) / (P_uu + P_vv))
+        b2 = np.real(2 * P_uv / (P_uu + P_vv))
         dir2 = np.degrees(np.arctan2(b2, a2) / 2)
         spread2 = np.degrees(
-            np.sqrt(np.abs(0.5 - 0.5 * (a2 * np.cos(2 * np.radians(dir2)) + b2 * np.sin(2 * np.radians(dir2)))))
+            np.sqrt(0.5 * (1 - (a2 * np.cos(2 * np.radians(dir2)) + b2 * np.sin(2 * np.radians(dir2)))))
         )
 
         # Phase and group velocity
-        Cp = omega / k
-        Cg = get_cg(k, h)
+        cp = omega / k
+        cg = get_cg(k, h)
 
-        # Radiation stress
-        Sxx = rho * g * ((1.5 + 0.5 * a2) * (Cg / Cp) - 0.5) * S_etaeta
-        Syy = rho * g * ((1.5 - 0.5 * a2) * (Cg / Cp) - 0.5) * S_etaeta
-        Sxy = rho * g * 0.5 * b2 * (Cg / Cp) * S_etaeta
+        # Radiation stress -- Mei et al. Ch 11.3
+        dir_rad = np.deg2rad(dir1)
+        E = rho * g * P_etaeta
+        n = cg / cp
+        Sxx = (E / 2) * (2 * n * np.cos(dir_rad) ** 2 + (2 * n - 1))
+        Syy = (E / 2) * (2 * n * np.sin(dir_rad) ** 2 + (2 * n - 1))
+        Sxy = E * n * np.sin(dir_rad) * np.cos(dir_rad)
 
         # Orbital velocity, basically following Wiberg & Sherwood (2008) but excluding
         # the factor of sqrt(2) (see Madsen 1994)
@@ -1043,19 +1028,19 @@ class ADV(BaseInstrument):
         u_orb_var = np.sqrt((np.nanvar(u_prime) + np.nanvar(v_prime)))
 
         # Spectral calculation
-        u_orb_spec = np.sqrt(np.sum((S_uu + S_vv) * df))
+        u_orb_spec = np.sqrt(np.sum((P_uu + P_vv) * df))
 
         # Setting up output dictionary and storing the spectral output
         out = {}
         out["f"] = f
         out["df"] = df
-        out["S_uu"] = S_uu
-        out["S_vv"] = S_vv
-        out["S_pp"] = S_pp
-        out["S_uv"] = S_uv
-        out["S_pu"] = S_pu
-        out["S_pv"] = S_pv
-        out["S_etaeta"] = S_etaeta
+        out["P_uu"] = P_uu
+        out["P_vv"] = P_vv
+        out["P_pp"] = P_pp
+        out["P_uv"] = P_uv
+        out["P_pu"] = P_pu
+        out["P_pv"] = P_pv
+        out["P_etaeta"] = P_etaeta
         out["a1"] = a1
         out["b1"] = b1
         out["a2"] = a2
@@ -1067,38 +1052,56 @@ class ADV(BaseInstrument):
         out["Sxx"] = Sxx
         out["Syy"] = Syy
         out["Sxy"] = Sxy
-        out["Cp"] = Cp
-        out["Cg"] = Cg
+        out["cp"] = cp
+        out["cg"] = cg
         out["u_orb_var"] = u_orb_var
         out["u_orb_spec"] = u_orb_spec
 
         # Looping over the frequency bands and adding bulk (integrated) parameters
         for band_name, band_indices in fbands.items():
             # Significant and rms wave height
-            out[f"Hsig_{band_name}"] = 4 * np.sqrt(np.sum(S_etaeta[band_indices] * df))
-            out[f"Hrms_{band_name}"] = np.sqrt(8 * np.sum(S_etaeta[band_indices] * df))
+            out[f"Hsig_{band_name}"] = 4 * np.sqrt(np.sum(P_etaeta[band_indices] * df))
+            out[f"Hrms_{band_name}"] = np.sqrt(8 * np.sum(P_etaeta[band_indices] * df))
 
             # Mean frequency and period
-            out[f"fm_{band_name}"] = np.sum(f[band_indices] * S_etaeta[band_indices]) / np.sum(S_etaeta[band_indices])
+            out[f"fm_{band_name}"] = np.sum(f[band_indices] * P_etaeta[band_indices]) / np.sum(P_etaeta[band_indices])
             out[f"Tm_{band_name}"] = 1 / out[f"fm_{band_name}"]
 
             # Peak frequency and period
-            out[f"fp_{band_name}"] = f[band_indices][np.argmax(S_etaeta[band_indices])]
+            out[f"fp_{band_name}"] = f[band_indices][np.argmax(P_etaeta[band_indices])]
             out[f"Tp_{band_name}"] = 1 / out[f"fp_{band_name}"]
 
             # Directions
-            out[f"a1_{band_name}"] = np.sum(a1[band_indices] * S_etaeta[band_indices]) / np.sum(S_etaeta[band_indices])
-            out[f"b1_{band_name}"] = np.sum(b1[band_indices] * S_etaeta[band_indices]) / np.sum(S_etaeta[band_indices])
-            out[f"a2_{band_name}"] = np.sum(a2[band_indices] * S_etaeta[band_indices]) / np.sum(S_etaeta[band_indices])
-            out[f"b2_{band_name}"] = np.sum(b2[band_indices] * S_etaeta[band_indices]) / np.sum(S_etaeta[band_indices])
+            out[f"a1_{band_name}"] = np.sum(a1[band_indices] * P_etaeta[band_indices]) / np.sum(P_etaeta[band_indices])
+            out[f"b1_{band_name}"] = np.sum(b1[band_indices] * P_etaeta[band_indices]) / np.sum(P_etaeta[band_indices])
+            out[f"a2_{band_name}"] = np.sum(a2[band_indices] * P_etaeta[band_indices]) / np.sum(P_etaeta[band_indices])
+            out[f"b2_{band_name}"] = np.sum(b2[band_indices] * P_etaeta[band_indices]) / np.sum(P_etaeta[band_indices])
 
             out[f"dir1_{band_name}"] = np.degrees(np.arctan2(out[f"b1_{band_name}"], out[f"a1_{band_name}"]))
-            out[f"dir2_{band_name}"] = np.degrees(np.arctan2(out[f"b2_{band_name}"], out[f"a2_{band_name}"]))
+            out[f"dir2_{band_name}"] = np.degrees(np.arctan2(out[f"b2_{band_name}"], out[f"a2_{band_name}"]) / 2)
             out[f"spread1_{band_name}"] = np.degrees(
-                np.sqrt(2 * (1 - np.sqrt(out[f"a1_{band_name}"] ** 2 + out[f"b1_{band_name}"] ** 2)))
+                np.sqrt(
+                    2
+                    * (
+                        1
+                        - (
+                            out[f"a1_{band_name}"] * np.cos(np.deg2rad(out[f"dir1_{band_name}"]))
+                            + out[f"b1_{band_name}"] * np.sin(np.deg2rad(out[f"dir1_{band_name}"]))
+                        )
+                    )
+                )
             )
             out[f"spread2_{band_name}"] = np.degrees(
-                np.sqrt(2 * (1 - np.sqrt(out[f"a2_{band_name}"] ** 2 + out[f"b2_{band_name}"] ** 2)))
+                np.sqrt(
+                    0.5
+                    * (
+                        1
+                        - (
+                            out[f"a2_{band_name}"] * np.cos(2 * np.deg2rad(out[f"dir2_{band_name}"]))
+                            + out[f"b2_{band_name}"] * np.sin(2 * np.deg2rad(out[f"dir2_{band_name}"]))
+                        )
+                    )
+                )
             )
 
             # Radiation stress
@@ -1106,7 +1109,7 @@ class ADV(BaseInstrument):
             out[f"Syy_{band_name}"] = np.sum(Syy[band_indices] * df)
             out[f"Sxy_{band_name}"] = np.sum(Sxy[band_indices] * df)
 
-            # Bulk Stokes drift
+            # Stokes drift, both bulk and spectral (unfortunately different). See Kumar et al. 2017, Appendix.
             omega_peak = 2 * np.pi / out[f"Tp_{band_name}"]
             k_peak = get_wavenumber(omega_peak, h)
             out[f"Us_bulk_{band_name}"] = (
@@ -1124,7 +1127,7 @@ class ADV(BaseInstrument):
 
             # Spectral Stokes drift (unfortunately different from the bulk estimate -- see Kumar et al. 2017)
             out[f"Us_spec_{band_name}"] = np.sum(
-                S_etaeta[band_indices]
+                P_etaeta[band_indices]
                 * omega[band_indices]
                 * k[band_indices]
                 * (np.cosh(2 * k[band_indices] * mab) / (np.sinh(k[band_indices] * h) ** 2))
@@ -1132,7 +1135,7 @@ class ADV(BaseInstrument):
                 * df
             )
             out[f"Vs_spec_{band_name}"] = np.sum(
-                S_etaeta[band_indices]
+                P_etaeta[band_indices]
                 * omega[band_indices]
                 * k[band_indices]
                 * (np.cosh(2 * k[band_indices] * mab) / (np.sinh(k[band_indices] * h) ** 2))
@@ -1165,7 +1168,7 @@ class ADV(BaseInstrument):
         cv = np.mean(u_prime * v_prime, axis=1)
 
         # Direction of maximum variance in xy-plane (heading)
-        theta_h_radians = (0.5 * np.arctan2(2.0 * cv, (u_var - v_var)))
+        theta_h_radians = 0.5 * np.arctan2(2.0 * cv, (u_var - v_var))
 
         # Pitch angle
         u_rot = data["u"] * np.cos(theta_h_radians) + data["v"] * np.sin(theta_h_radians)
@@ -1200,7 +1203,7 @@ class ADV(BaseInstrument):
         u_bar = np.mean(burst_data["u"], axis=1)
         v_bar = np.mean(burst_data["v"], axis=1)
         w_bar = np.mean(burst_data["w"], axis=1)
-        U = np.sqrt(u_bar ** 2 + v_bar ** 2)
+        U = np.sqrt(u_bar**2 + v_bar**2)
         theta_h = np.arctan2(v_bar, u_bar)
         theta_v = np.arctan2(w_bar, U)
         out = (np.rad2deg(theta_h), np.rad2deg(theta_v))
@@ -1231,19 +1234,10 @@ class ADV(BaseInstrument):
         cos_h, sin_h = np.cos(th), np.sin(th)
         cos_v, sin_v = np.cos(tv), np.sin(tv)
 
-        u_rot = (
-            data["u"] * cos_h * cos_v
-            + data["v"] * sin_h * cos_v
-            + data["w"] * sin_v
-        )
+        u_rot = data["u"] * cos_h * cos_v + data["v"] * sin_h * cos_v + data["w"] * sin_v
         v_rot = -data["u"] * sin_h + data["v"] * cos_h
-        w_rot = (
-            -data["u"] * cos_h * sin_v
-            - data["v"] * sin_h * sin_v
-            + data["w"] * cos_v
-        )
+        w_rot = -data["u"] * cos_h * sin_v - data["v"] * sin_h * sin_v + data["w"] * cos_v
         data["u"] = u_rot
         data["v"] = v_rot
         data["w"] = w_rot
         return data
-
