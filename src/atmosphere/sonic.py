@@ -7,6 +7,7 @@ from typing import Optional, Union, List, Dict, Any, Tuple
 from src.utils.spectral_utils import psd, csd, get_frequency_range
 from src.utils.base_instrument import BaseInstrument
 from src.utils.constants import GRAVITATIONAL_ACCELERATION as g
+from src.utils.rotate_utils import align_with_principal_axis, align_with_flow, rotate_velocity_by_theta
 
 class Sonic(BaseInstrument):
 
@@ -124,124 +125,19 @@ class Sonic(BaseInstrument):
 
         if isinstance(self._rotate, str):
             if self._rotate == "align_principal":
-                theta_h, theta_v = Sonic._align_with_principal_axis(burst_data)
+                theta_h, theta_v = align_with_principal_axis(burst_data)
             elif self._rotate == "align_wind":
-                theta_h, theta_v = Sonic._align_with_wind(burst_data)
+                theta_h, theta_v = align_with_flow(burst_data)
             else:
                 raise ValueError(f"Invalid rotation option '{self._rotate}'")
         else:
             theta_h, theta_v = self._rotate
 
         if np.sum(np.abs(theta_v)) != 0.0 or np.sum(np.abs(theta_h)) != 0.0:
-            burst_data = self._rotate_velocity(burst_data, theta_h, theta_v)
+            burst_data = rotate_velocity_by_theta(burst_data, theta_h, theta_v)
 
         return burst_data
 
-    def _rotate_velocity(self, data: Dict[str, np.ndarray], theta_h, theta_v) -> Dict[str, np.ndarray]:
-        """
-        Rotates u, v, w velocities by directions defined by theta_h and theta_v.
-
-        Parameters
-        ----------
-        data : dict
-            Dictionary containing "u", "v", and "w" velocity arrays with shape (M, N)
-        theta_h : float or np.ndarray
-            Horizontal rotation angle(s) in degrees, scalar or shape (M,)
-        theta_v : float or np.ndarray
-            Vertical rotation angle(s) in degrees, scalar or shape (M,)
-
-        Returns
-        -------
-        data : dict
-            Original data dictionary with "u", "v", and "w" velocity arrays rotated
-        """
-        # (M,) or scalar → (M, 1) for broadcasting against (M, N)
-        th = np.deg2rad(np.atleast_1d(theta_h))[:, np.newaxis]
-        tv = np.deg2rad(np.atleast_1d(theta_v))[:, np.newaxis]
-
-        cos_h, sin_h = np.cos(th), np.sin(th)
-        cos_v, sin_v = np.cos(tv), np.sin(tv)
-
-        u_rot = (
-                data["u"] * cos_h * cos_v
-                + data["v"] * sin_h * cos_v
-                + data["w"] * sin_v
-        )
-        v_rot = -data["u"] * sin_h + data["v"] * cos_h
-        w_rot = (
-                -data["u"] * cos_h * sin_v
-                - data["v"] * sin_h * sin_v
-                + data["w"] * cos_v
-        )
-        data["u"] = u_rot
-        data["v"] = v_rot
-        data["w"] = w_rot
-        return data
-
-    @staticmethod
-    def _align_with_principal_axis(data: dict) -> Tuple[Union[float, np.ndarray], Union[float, np.ndarray]]:
-        """
-        Calculates the direction of maximum variance from the u and v velocities (Thomson & Emery, 4.52b).
-
-        Parameters
-        ----------
-
-        Returns
-        -------
-        theta : float
-            direction of maximum variance in degrees, CCW positive from east
-            assuming that u = eastward velocity, v = northward velocity
-        """
-        # (Co)variances
-        u_bar = np.mean(data["u"], axis=1, keepdims=True)
-        v_bar = np.mean(data["v"], axis=1, keepdims=True)
-        u_prime = data["u"] - u_bar
-        v_prime = data["v"] - v_bar
-        u_var = np.mean(u_prime ** 2, axis=1)
-        v_var = np.mean(v_prime ** 2, axis=1)
-        cv = np.mean(u_prime * v_prime, axis=1)
-
-        # Direction of maximum variance in xy-plane (heading)
-        theta_h_radians = (0.5 * np.arctan2(2.0 * cv, (u_var - v_var)))
-
-        # Pitch angle
-        u_rot = data["u"] * np.cos(theta_h_radians) + data["v"] * np.sin(theta_h_radians)
-        u_rot_bar = np.mean(u_rot, axis=1)
-        w_bar = np.mean(data["w"], axis=1)
-        theta_v_radians = np.arctan2(w_bar, u_rot_bar)
-
-        out = (np.rad2deg(theta_h_radians), np.rad2deg(theta_v_radians))
-        return out
-
-    @staticmethod
-    def _align_with_wind(burst_data: dict) -> Tuple[Union[float, np.ndarray], Union[float, np.ndarray]]:
-        """
-        Rotates u, v, w velocities to minimize the burst-averaged v and w.
-
-        Parameters
-        ----------
-
-
-        Returns
-        -------
-        u_rot: DataArray
-            Major axis horizontal velocity
-
-        v_rot: DataArray
-            Minor axis horizontal velocity
-
-        w_rot: DataArray
-            Zero-mean vertical velocity
-        """
-
-        u_bar = np.mean(burst_data["u"], axis=1)
-        v_bar = np.mean(burst_data["v"], axis=1)
-        w_bar = np.mean(burst_data["w"], axis=1)
-        U = np.sqrt(u_bar**2 + v_bar**2)
-        theta_h = np.arctan2(v_bar, u_bar)
-        theta_v = np.arctan2(w_bar, U)
-        out = (np.rad2deg(theta_h), np.rad2deg(theta_v))
-        return out
 
     def dissipation(
         self, burst_data: dict, f_low: float, f_high: float, henjes_correction: bool, **kwargs

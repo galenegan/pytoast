@@ -187,7 +187,7 @@ class BaseInstrument(ABC):
             if fs is None:
                 time_array = data[self.name_map["time"]]
                 datetime_array = self.process_time(time_array)
-                fs = np.round(1 / ((datetime_array[1] - datetime_array[0]).astype(int) / 10 ** 9), 2)
+                fs = np.round(1 / ((datetime_array[1] - datetime_array[0]).astype(int) / 10**9), 2)
 
         return fs, z, file_type, num_samples
 
