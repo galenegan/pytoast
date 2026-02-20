@@ -160,21 +160,14 @@ class ADCP(BaseInstrument):
                 declination : float, optional
                     Magnetic declination offset in degrees. Added to heading for coordinate transformations.
 
-                flow_rotation : str, optional.
-                    one of ["align_principal", "align_current"]. If "align_principal" then the velocity will be rotated
-                    to align with the principal axis of the flow.
+                flow_rotation : str or Tuple[float], optional.
+                    One of ["align_principal", "align_current", or (horizontal_angle, vertical_angle)].
+                    If "align_principal" then the velocity will be rotated to align with the principal axis of the flow.
                     If "align_current" then the velocity will be rotated to align with the horizontal current speed
-                    sqrt(u1^2 + u2^2). In both cases, the vertical velocity will be minimized. Specifying either option
-                    will throw an error if ADCP.coords == "beam" and a coordinate system change is not also requested.
-
-
-            coord_transform_opts : dict, optional
-                Options for the coordinate transformation. Supported keys are:
-                coords_out : one of ["beam", "xyz", "enu"]
-
-            rotate : str or tuple, optional
-              ``'align_principal'``, ``'align_current'``, or a
-              ``(horizontal_angle, vertical_angle)`` tuple.
+                    sqrt(u1^2 + u2^2). In both cases, the vertical velocity will be minimized. If float angles are
+                    specified in a tuple, the flow will be rotated by those angles in the horizontal and vertical
+                    planes. Specifying any option will throw an error if ADCP.coords == "beam" and a
+                    coordinate system change is not also requested.
         """
 
         self._preprocess_enabled = True
