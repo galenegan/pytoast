@@ -163,6 +163,14 @@ class BaseInstrument(ABC):
                 z = np.array([z])
             elif isinstance(z, list):
                 z = np.array(z)
+        elif "z" in self.name_map:
+            key = self.name_map["z"]
+            if isinstance(data[key], (int, float)):
+                z = np.array([data[key]])
+            elif isinstance(data[key], list):
+                z = np.array(data[key])
+            elif isinstance(data[key], np.ndarray):
+                z = data[key]
         else:
             non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
             if isinstance(non_time_key, str):

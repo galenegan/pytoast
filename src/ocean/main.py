@@ -1,11 +1,9 @@
 from ocean.adv import ADV
 import time
 import glob
-import matplotlib.pyplot as plt
 import numpy as np
 
 if __name__ == "__main__":
-
     t0 = time.time()
 
     mean_depth = 13

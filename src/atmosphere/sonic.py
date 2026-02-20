@@ -1,16 +1,18 @@
 import numpy as np
-import os
 import scipy.signal as sig
-import xarray as xr
 from sklearn.linear_model import LinearRegression
-from typing import Optional, Union, List, Dict, Any, Tuple
+from typing import Optional, Union, List, Dict, Any
 from src.utils.spectral_utils import psd, csd, get_frequency_range
 from src.utils.base_instrument import BaseInstrument
 from src.utils.constants import GRAVITATIONAL_ACCELERATION as g
-from src.utils.rotate_utils import align_with_principal_axis, align_with_flow, rotate_velocity_by_theta
+from src.utils.rotate_utils import (
+    align_with_principal_axis,
+    align_with_flow,
+    rotate_velocity_by_theta,
+)
+
 
 class Sonic(BaseInstrument):
-
     def __init__(
         self,
         files: Union[str, List],
@@ -138,9 +140,13 @@ class Sonic(BaseInstrument):
 
         return burst_data
 
-
     def dissipation(
-        self, burst_data: dict, f_low: float, f_high: float, henjes_correction: bool, **kwargs
+        self,
+        burst_data: dict,
+        f_low: float,
+        f_high: float,
+        henjes_correction: bool,
+        **kwargs,
     ) -> np.ndarray:
         """
 
@@ -157,7 +163,11 @@ class Sonic(BaseInstrument):
         """
 
         def spectral_fit(
-            u: np.ndarray, f_low: float, f_high: float, henjes_correction: bool = True, **kwargs
+            u: np.ndarray,
+            f_low: float,
+            f_high: float,
+            henjes_correction: bool = True,
+            **kwargs,
         ) -> np.ndarray:
             c1 = 0.53
             u_prime = sig.detrend(u, type="linear")
@@ -202,7 +212,13 @@ class Sonic(BaseInstrument):
         eps = np.empty((n_heights,))
         for height_idx in range(n_heights):
             u = burst_data["u"][height_idx, :]
-            eps[height_idx] = spectral_fit(u, henjes_correction=henjes_correction, f_low=f_low, f_high=f_high, **kwargs)
+            eps[height_idx] = spectral_fit(
+                u,
+                henjes_correction=henjes_correction,
+                f_low=f_low,
+                f_high=f_high,
+                **kwargs,
+            )
 
         return eps
 
@@ -212,12 +228,11 @@ class Sonic(BaseInstrument):
         method: str = "cov",
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
-        **kwargs
+        **kwargs,
     ):
         out = {}
         n_heights = self.n_heights
         if method == "cov":
-
             u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
             v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
             w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
@@ -225,15 +240,14 @@ class Sonic(BaseInstrument):
             v_prime = burst_data["v"] - v_bar
             w_prime = burst_data["w"] - w_bar
 
-            out["uu"] = np.mean(u_prime ** 2, axis=1)
-            out["vv"] = np.mean(v_prime ** 2, axis=1)
-            out["ww"] = np.mean(w_prime ** 2, axis=1)
+            out["uu"] = np.mean(u_prime**2, axis=1)
+            out["vv"] = np.mean(v_prime**2, axis=1)
+            out["ww"] = np.mean(w_prime**2, axis=1)
             out["uw"] = np.mean(u_prime * w_prime, axis=1)
             out["vw"] = np.mean(v_prime * w_prime, axis=1)
             out["uv"] = np.mean(u_prime * v_prime, axis=1)
 
         elif method == "spectral_integral":
-
             out["uu"] = np.empty((n_heights,))
             out["vv"] = np.empty((n_heights,))
             out["ww"] = np.empty((n_heights,))

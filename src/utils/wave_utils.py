@@ -49,13 +49,18 @@ def get_cg(k, h):
     -------
 
     """
-    Cp = np.sqrt((g / k) * np.tanh(k * h))
-    Cg = 0.5 * Cp * (1 + (k * h) * (1 - (np.tanh(k * h)) ** 2) / np.tanh(k * h))
+    cp = np.sqrt((g / k) * np.tanh(k * h))
+    cg = 0.5 * cp * (1 + (k * h) * (1 - (np.tanh(k * h)) ** 2) / np.tanh(k * h))
 
-    return Cg
+    return cg
 
 
-def jones_monismith_correction(S_etaeta: np.ndarray, S_pp: np.ndarray, f: np.ndarray, f_cutoff: Optional[float] = 0.5):
+def jones_monismith_correction(
+    S_etaeta: np.ndarray,
+    S_pp: np.ndarray,
+    f: np.ndarray,
+    f_cutoff: Optional[float] = 0.5,
+):
     """
     Apply Jones & Monismith (2008) correction for high frequency noise introduced by the pressure attenuation
 

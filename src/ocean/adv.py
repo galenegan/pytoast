@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.signal as sig
-from typing import Optional, Union, List, Dict, Any, Tuple
+from typing import Optional, Union, List, Dict, Any
 from sklearn.linear_model import LinearRegression
 from utils.base_instrument import BaseInstrument
 from utils.interp_utils import naninterp_pd
@@ -9,7 +9,11 @@ from scipy.stats import median_abs_deviation
 
 from utils.spectral_utils import psd, csd, get_frequency_range
 from utils.constants import GRAVITATIONAL_ACCELERATION as g
-from utils.rotate_utils import align_with_principal_axis, align_with_flow, rotate_velocity_by_theta
+from utils.rotate_utils import (
+    align_with_principal_axis,
+    align_with_flow,
+    rotate_velocity_by_theta,
+)
 
 
 class ADV(BaseInstrument):
@@ -23,7 +27,7 @@ class ADV(BaseInstrument):
         files: Union[str, List],
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        z: Optional[Union[float, int, List[Union[float, int]], np.ndarray]] = None,
     ):
 
         # General validation
@@ -93,12 +97,37 @@ class ADV(BaseInstrument):
 
         Parameters
         ----------
-        opts : Dict[str, Any]
-            Options for preprocessing. Currently supports the following keys/values
-            {
-                "despike": bool
-                "despike_opts": {threshold: int, max_iter: int, robust_statistics: bool}
-                "rotate": "align_principal", "align_current", or (horizontal_angle(s), vertical_angle(s))
+        opts : dict
+            Preprocessing options. Supported keys:
+
+            despike_method : {'gn', 'threshold'}, optional
+                Despiking algorithm to use. Default is ``'gn'``.
+
+            despike_opts : dict, optional
+                Options for the despiking algorithm. Keys depend on ``despike_method``:
+                If ``despike_method='gn'`` (Goring-Nikora phase-space method):
+                spikes_remaining : int
+                    Stop iterating once this many or fewer spikes remain.
+                max_iter : int
+                    Maximum number of iterations.
+                robust_statistics : bool
+                    If True, use median/MAD instead of mean/std (Wahl 2003).
+                If ``despike_method='threshold'``:
+                threshold_min : float
+                    Lower bound; values below this are flagged as spikes.
+                threshold_max : float
+                    Upper bound; values above this are flagged as spikes.
+
+            coord_transform : bool, optional
+                If true, apply a coordinate transformation as specified in the coord_transform_opts dictionary.
+
+            coord_transform_opts : dict, optional
+                Options for the coordinate transformation. Supported keys are:
+                coords_out : one of ["beam", "xyz", "enu"]
+
+            rotate : str or tuple, optional
+              ``'align_principal'``, ``'align_current'``, or a
+              ``(horizontal_angle, vertical_angle)`` tuple.
         """
 
         self._preprocess_enabled = True
@@ -128,7 +157,13 @@ class ADV(BaseInstrument):
 
         return burst_data
 
-    def _apply_despike(self, data, threshold: int = 5, max_iter: int = 10, robust_statistics: bool = False):
+    def _apply_despike(
+        self,
+        data,
+        threshold: int = 5,
+        max_iter: int = 10,
+        robust_statistics: bool = False,
+    ):
         """
         Implements the Goring & Nikora (2002) phase-space de-spiking algorithm,
         returning data with modified data["u"], data["v"], and data["w"].
@@ -548,7 +583,6 @@ class ADV(BaseInstrument):
         out = {}
         n_heights = self.n_heights
         if method == "cov":
-
             u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
             v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
             w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
@@ -564,7 +598,6 @@ class ADV(BaseInstrument):
             out["uv"] = np.mean(u_prime * v_prime, axis=1)
 
         elif method == "spectral_integral":
-
             out["uu"] = np.empty((n_heights,))
             out["vv"] = np.empty((n_heights,))
             out["ww"] = np.empty((n_heights,))
@@ -642,7 +675,6 @@ class ADV(BaseInstrument):
                 out["uv_wave"][height_idx] = b_out["uv_wave"]
 
         elif method == "phase":
-
             # Extract phase method-specific kwargs with error handling
             f_wave_low = phase_kwargs.get("f_wave_low", None)
             f_wave_high = phase_kwargs.get("f_wave_high", None)
@@ -744,9 +776,9 @@ class ADV(BaseInstrument):
             sin_phi = np.sin(phi)  # (Nphi,)
 
             # Want shape (Ntheta, Nphi)
-            G_squared = (sin_theta**2)[:, np.newaxis] * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[
-                np.newaxis, :
-            ] + (cos_theta**2)[:, np.newaxis] / sig3**2
+            G_squared = (sin_theta**2)[:, np.newaxis] * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[np.newaxis, :] + (
+                cos_theta**2
+            )[:, np.newaxis] / sig3**2
 
             # Also shape (Ntheta, Nphi)
             P33 = ((sin_theta**2)[:, np.newaxis] / G_squared) * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[
@@ -769,7 +801,11 @@ class ADV(BaseInstrument):
 
             # Middle integral
             # Gets a negative sign so that we go from R = 0 -> infinity rather than R = infinity -> zero
-            I2 = -np.trapezoid(G_squared_3 ** (-11 / 6) * sin_theta[:, np.newaxis, np.newaxis] * P33_3 * I3, R, axis=2)
+            I2 = -np.trapezoid(
+                G_squared_3 ** (-11 / 6) * sin_theta[:, np.newaxis, np.newaxis] * P33_3 * I3,
+                R,
+                axis=2,
+            )
 
             # Outer integral
             I1 = np.trapezoid(I2, phi, axis=-1)
@@ -1144,5 +1180,3 @@ class ADV(BaseInstrument):
                 * df
             )
         return out
-
-

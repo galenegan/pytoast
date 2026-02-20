@@ -1,8 +1,8 @@
 import numpy as np
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 
 
-def coord_transform_3_beam(
+def coord_transform_3_beam_nortek(
     u1,
     u2,
     u3,
@@ -46,14 +46,28 @@ def coord_transform_3_beam(
     r_rad = np.radians(roll)
 
     # Heading matrix
-    H = np.array([[np.cos(h_rad), np.sin(h_rad), 0], [-np.sin(h_rad), np.cos(h_rad), 0], [0, 0, 1]])
+    H = np.array(
+        [
+            [np.cos(h_rad), np.sin(h_rad), 0],
+            [-np.sin(h_rad), np.cos(h_rad), 0],
+            [0, 0, 1],
+        ]
+    )
 
     # Pitch and Roll matrix
     P = np.array(
         [
-            [np.cos(p_rad), -np.sin(p_rad) * np.sin(r_rad), -np.cos(r_rad) * np.sin(p_rad)],
+            [
+                np.cos(p_rad),
+                -np.sin(p_rad) * np.sin(r_rad),
+                -np.cos(r_rad) * np.sin(p_rad),
+            ],
             [0, np.cos(r_rad), -np.sin(r_rad)],
-            [np.sin(p_rad), np.sin(r_rad) * np.cos(p_rad), np.cos(p_rad) * np.cos(r_rad)],
+            [
+                np.sin(p_rad),
+                np.sin(r_rad) * np.cos(p_rad),
+                np.cos(p_rad) * np.cos(r_rad),
+            ],
         ]
     )
 
@@ -73,6 +87,8 @@ def coord_transform_3_beam(
         U_rot = np.linalg.inv(T) @ U
     elif coords_in == "enu" and coords_out == "xyz":
         U_rot = T @ np.linalg.inv(T_flip) @ np.linalg.inv(R) @ U
+    elif coords_in == "xyz" and coords_out == "enu":
+        U_rot = R @ T_flip @ np.linalg.inv(T) @ U  # TODO: validate that this is the proper inverse
     else:
         raise ValueError("Invalid coordinate transformation.")
 
@@ -82,7 +98,8 @@ def coord_transform_3_beam(
     u3_rot = U_rot[2, :]
     return (u1_rot, u2_rot, u3_rot)
 
-def coord_transform_4_beam(
+
+def coord_transform_4_beam_nortek(
     u1,
     u2,
     u3,
@@ -126,7 +143,6 @@ def coord_transform_4_beam(
     # Velocity array
     U = np.vstack((u1.reshape(1, -1), u2.reshape(1, -1), u3.reshape(1, -1), u4.reshape(1, -1)))
 
-
     if coords_in == "beam" and coords_out == "xyz":
         U_rot = T @ U
     elif (coords_in == "beam" or coords_in == "xyz") and coords_out == "enu":
@@ -135,12 +151,26 @@ def coord_transform_4_beam(
         h_rad = np.radians(heading_plus_dec - 90)
         p_rad = np.radians(pitch)
         r_rad = np.radians(roll)
-        H = np.array([[np.cos(h_rad), np.sin(h_rad), 0], [-np.sin(h_rad), np.cos(h_rad), 0], [0, 0, 1]])
+        H = np.array(
+            [
+                [np.cos(h_rad), np.sin(h_rad), 0],
+                [-np.sin(h_rad), np.cos(h_rad), 0],
+                [0, 0, 1],
+            ]
+        )
         P = np.array(
             [
-                [np.cos(p_rad), -np.sin(p_rad) * np.sin(r_rad), -np.cos(r_rad) * np.sin(p_rad)],
+                [
+                    np.cos(p_rad),
+                    -np.sin(p_rad) * np.sin(r_rad),
+                    -np.cos(r_rad) * np.sin(p_rad),
+                ],
                 [0, np.cos(r_rad), -np.sin(r_rad)],
-                [np.sin(p_rad), np.sin(r_rad) * np.cos(p_rad), np.cos(p_rad) * np.cos(r_rad)],
+                [
+                    np.sin(p_rad),
+                    np.sin(r_rad) * np.cos(p_rad),
+                    np.cos(p_rad) * np.cos(r_rad),
+                ],
             ]
         )
         R[:3, :3] = H @ P
@@ -170,6 +200,97 @@ def coord_transform_4_beam(
     u3_rot = U_rot[2, :]
     u4_rot = U_rot[3, :]
     return (u1_rot, u2_rot, u3_rot, u4_rot)
+
+
+def coord_transform_4_beam_rdi(
+    u1,
+    u2,
+    u3,
+    u4,
+    heading,
+    pitch,
+    roll,
+    beam_angle,
+    transformation_matrix: Optional[np.ndarray] = None,
+    declination: float = 0.0,
+    orientation: str = "up",
+    coords_in: str = "beam",
+    coords_out: str = "xyz",
+):
+    """
+    Coordinate transformation for Teledyne RDI 4-beam ADCPs
+    https://www.teledynemarine.com/en-us/support/SiteAssets/RDI/Manuals%20and%20Guides/General%20Interest/Coordinate_Transformation.pdf
+
+    Parameters
+    ----------
+    u1
+    u2
+    u3
+    u4
+    heading
+    pitch
+    roll
+    transformation_matrix
+    declination
+
+    Returns
+    -------
+
+    """
+
+    if transformation_matrix is None:
+        beam_angle_rad = np.deg2rad(beam_angle)
+        a = 1 / (2 * np.sin(beam_angle_rad))
+        b = 1 / (4 * np.cos(beam_angle_rad))
+        c = 1  # Assuming convex transducer head
+        d = a / np.sqrt(2)
+        T = np.array([[c * a, -c * a, 0, 0], [0, 0, -c * a, c * a], [b, b, b, b], [d, d, -d, -d]])
+    else:
+        T = transformation_matrix.copy()
+
+    U = np.vstack((u1.reshape(1, -1), u2.reshape(1, -1), u3.reshape(1, -1), u4.reshape(1, -1)))
+
+    if coords_in == "beam" and coords_out == "xyz":
+        U_rot = T @ U
+    elif (coords_in == "beam" or coords_in == "xyz") and coords_out == "enu":
+        heading_plus_dec = (heading + declination) % 360
+        r_rad = np.deg2rad(roll)
+        h_rad = np.deg2rad(heading_plus_dec)
+        p_rad = np.deg2rad(pitch)
+
+        # Modifications per the manual
+        p_rad = np.arctan(np.tan(p_rad) * np.cos(r_rad))
+        if orientation == "up":
+            r_rad += np.pi
+
+        ch = np.cos(h_rad)
+        cr = np.cos(r_rad)
+        cp = np.cos(p_rad)
+        sh = np.sin(h_rad)
+        sr = np.sin(r_rad)
+        sp = np.sin(p_rad)
+
+        M = np.array(
+            [
+                [(ch * cr + sh * sp * sr), (sh * cp), (ch * sr - sh * sp * cr)],
+                [(-sh * cr + ch * sp * sr), (ch * cp), (-sh * sr + ch * sp * cr)],
+                [(-cp * sr), (sp), (cp * cr)],
+            ]
+        )
+
+        if coords_in == "beam":
+            U = T @ U
+
+        U_rot = M @ U
+    else:
+        raise ValueError("Invalid coordinate transformation.")
+
+    u1_rot = U_rot[0, :]
+    u2_rot = U_rot[1, :]
+    u3_rot = U_rot[2, :]
+    u4_rot = U_rot[3, :]
+    return (u1_rot, u2_rot, u3_rot, u4_rot)
+
 
 def align_with_principal_axis(data: dict) -> Tuple:
     """

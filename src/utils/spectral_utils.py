@@ -44,7 +44,13 @@ def psd(
         nfft = window_len
 
     f, Pxx = sig.welch(
-        x=x, fs=fs, window=window_type, nperseg=window_len, nfft=nfft, detrend=detrend, return_onesided=onesided
+        x=x,
+        fs=fs,
+        window=window_type,
+        nperseg=window_len,
+        nfft=nfft,
+        detrend=detrend,
+        return_onesided=onesided,
     )
 
     return f, Pxx
@@ -68,7 +74,14 @@ def csd(
         nfft = window_len
 
     f, Pxy = sig.csd(
-        x=x, y=y, fs=fs, window=window_type, nperseg=window_len, nfft=nfft, detrend=detrend, return_onesided=onesided
+        x=x,
+        y=y,
+        fs=fs,
+        window=window_type,
+        nperseg=window_len,
+        nfft=nfft,
+        detrend=detrend,
+        return_onesided=onesided,
     )
 
     return f, Pxy
