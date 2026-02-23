@@ -158,8 +158,14 @@ class ADV(BaseInstrument):
                 coords_out : str, optional
                     Coordinates for ADV.coords to be transformed to. One of ["beam", "xyz", "enu"].
 
+                transformation_matrices : List[np.ndarray], optional
+                    Transformation matrices for the instruments. Length should match ADV.n_heights.
+
                 declination : float, optional
                     Magnetic declination in degrees. Added to heading for coordinate transformations.
+
+                constant_hpr : List[Tuple[float]], optional
+                    Constant heading, pitch, and roll angles to apply at each instrument. Length should match ADV.n_heights
 
                 flow_rotation : str or Tuple[float], optional.
                     One of ["align_principal", "align_current", or (horizontal_angle, vertical_angle)].
@@ -196,22 +202,60 @@ class ADV(BaseInstrument):
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
 
         if self._rotate:
-            if self._rotate.get("coords_out"):
-                u1_new, u2_new, u3_new = coord_transform_3_beam_nortek(
-                    u1=burst_data["u1"],
-                    u2=burst_data["u2"],
-                    u3=burst_data["u3"],
-                    heading=burst_data.get("heading"),
-                    pitch=burst_data.get("pitch"),
-                    roll=burst_data.get("roll"),
-                    declination=self._rotate.get("declination", 0.0),
-                    orientation=self.orientation,
-                    coords_in=self.coords,
-                    coords_out=self._rotate["coords_out"]
-                )
-                burst_data["u1"] = u1_new
-                burst_data["u2"] = u2_new
-                burst_data["u3"] = u3_new
+            n_heights = self.n_heights
+            coords_in = self.coords
+            coords_out = self._rotate.get("coords_out")
+            transformation_matrices = self._rotate.get("transformation_matrices")
+            if len(transformation_matrices) != self.n_heights:
+                raise ValueError("A transformation matrix must be provided for instruments at each height")
+
+            if coords_out:
+                heading = burst_data.get("heading")
+                pitch = burst_data.get("pitch")
+                roll = burst_data.get("roll")
+
+
+                if ((coords_in == "enu") or (coords_out == "enu")) and ((heading is None) or (pitch is None) or (roll is None)):
+                    constant_hpr = self._rotate.get("constant_hpr")
+
+                    if constant_hpr:
+                        if len(constant_hpr) != n_heights:
+                            raise ValueError("")
+                        else:
+                            heading = np.array([constant_hpr[i][0] for i in range(n_heights)]).reshape(-1, 1)
+                            pitch = np.array([constant_hpr[i][1] for i in range(n_heights)]).reshape(-1, 1)
+                            roll = np.array([constant_hpr[i][2] for i in range(n_heights)]).reshape(-1, 1)
+                    else:
+                        raise ValueError("Heading, pitch, and roll must be provided for any coordinate transformation "
+                                     "to/from ENU")
+
+                for height_idx in range(n_heights):
+                    u1 = burst_data["u1"][height_idx, :]
+                    u2 = burst_data["u2"][height_idx, :]
+                    u3 = burst_data["u3"][height_idx, :]
+                    hi = heading[height_idx, :] if heading is not None else None
+                    pi = pitch[height_idx, :] if pitch is not None else None
+                    ri = roll[height_idx, :] if roll is not None else None
+
+                    if hi is None:
+                        print("here")
+                    u1_new, u2_new, u3_new = coord_transform_3_beam_nortek(
+                        u1=u1,
+                        u2=u2,
+                        u3=u3,
+                        heading=hi,
+                        pitch=pi,
+                        roll=ri,
+                        transformation_matrix=transformation_matrices[height_idx],
+                        declination=self._rotate.get("declination", 0.0),
+                        orientation=self.orientation,
+                        coords_in=coords_in,
+                        coords_out=coords_out
+                    )
+                    burst_data["u1"][height_idx, :] = u1_new
+                    burst_data["u2"][height_idx, :] = u2_new
+                    burst_data["u3"][height_idx, :] = u3_new
+                burst_data["coords"] = coords_out
 
             flow_rotation = self._rotate.get("flow_rotation")
 
@@ -233,6 +277,7 @@ class ADV(BaseInstrument):
                 burst_data["u1"] = u1_new
                 burst_data["u2"] = u2_new
                 burst_data["u3"] = u3_new
+                burst_data["rotation"] = flow_rotation
 
         return burst_data
 
@@ -674,12 +719,12 @@ class ADV(BaseInstrument):
         out = {}
         n_heights = self.n_heights
         if method == "cov":
-            u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
-            v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
-            w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
-            u_prime = burst_data["u"] - u_bar
-            v_prime = burst_data["v"] - v_bar
-            w_prime = burst_data["w"] - w_bar
+            u_bar = np.mean(burst_data["u1"], axis=1, keepdims=True)
+            v_bar = np.mean(burst_data["u2"], axis=1, keepdims=True)
+            w_bar = np.mean(burst_data["u3"], axis=1, keepdims=True)
+            u_prime = burst_data["u1"] - u_bar
+            v_prime = burst_data["u2"] - v_bar
+            w_prime = burst_data["u3"] - w_bar
 
             out["uu"] = np.mean(u_prime**2, axis=1)
             out["vv"] = np.mean(v_prime**2, axis=1)
@@ -697,9 +742,9 @@ class ADV(BaseInstrument):
             out["uv"] = np.empty((n_heights,))
 
             for height_idx in range(n_heights):
-                u = burst_data["u"][height_idx, :]
-                v = burst_data["v"][height_idx, :]
-                w = burst_data["w"][height_idx, :]
+                u = burst_data["u1"][height_idx, :]
+                v = burst_data["u2"][height_idx, :]
+                w = burst_data["u3"][height_idx, :]
 
                 # Power spectral densities
                 f, P_uu = psd(u, fs=self.fs, **kwargs)
@@ -734,9 +779,9 @@ class ADV(BaseInstrument):
             out["uv_wave"] = np.empty((n_heights,))
 
             for height_idx in range(n_heights):
-                u = burst_data["u"][height_idx, :]
-                v = burst_data["v"][height_idx, :]
-                w = burst_data["w"][height_idx, :]
+                u = burst_data["u1"][height_idx, :]
+                v = burst_data["u2"][height_idx, :]
+                w = burst_data["u3"][height_idx, :]
                 p = burst_data["p"][height_idx, :]
 
                 b_out = self.benilov_decomposition(
@@ -785,9 +830,9 @@ class ADV(BaseInstrument):
             out["uv_wave"] = np.empty((n_heights,))
 
             for height_idx in range(n_heights):
-                u = burst_data["u"][height_idx, :]
-                v = burst_data["v"][height_idx, :]
-                w = burst_data["w"][height_idx, :]
+                u = burst_data["u1"][height_idx, :]
+                v = burst_data["u2"][height_idx, :]
+                w = burst_data["u3"][height_idx, :]
 
                 p_out = self.phase_decomposition(
                     u=u,

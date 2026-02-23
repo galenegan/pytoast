@@ -50,20 +50,18 @@ def coord_transform_3_beam_nortek(
         u2_rot = U_rot[1, :]
         u3_rot = U_rot[2, :]
         return (u1_rot, u2_rot, u3_rot)
-    elif coords_in == "enu" or coords_out == "enu":
-        if (heading is None) or (pitch is None) or (roll is None):
-            raise ValueError("Heading, pitch, and roll must be provided for any coordinate transformation "
-                             "to/from ENU")
 
     T_flip = T.copy()
     if orientation == "down":
         T_flip[1, :] = -T_flip[1, :]
         T_flip[2, :] = -T_flip[2, :]
 
+    if heading is None:
+        print("here")
     heading_plus_dec = (heading + declination) % 360
-    h_rad = np.radians(heading_plus_dec - 90)
-    p_rad = np.radians(pitch)
-    r_rad = np.radians(roll)
+    h_rad = np.mean(np.radians(heading_plus_dec - 90))
+    p_rad = np.mean(np.radians(pitch))
+    r_rad = np.mean(np.radians(roll))
 
     # Heading matrix
     H = np.array(
@@ -331,7 +329,7 @@ def align_with_principal_axis(u1, u2, u3) -> Tuple:
     theta_h_radians = 0.5 * np.arctan2(2.0 * cv, (u1_var - u2_var))
 
     # Pitch angle
-    u_rot = u1 * np.cos(theta_h_radians) + u2 * np.sin(theta_h_radians)
+    u_rot = u1 * np.cos(theta_h_radians[:, np.newaxis]) + u2 * np.sin(theta_h_radians[:, np.newaxis])
     u_rot_bar = np.mean(u_rot, axis=1)
     u3_bar = np.mean(u3, axis=1)
     theta_v_radians = np.arctan2(u3_bar, u_rot_bar)

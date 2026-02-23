@@ -16,13 +16,22 @@ if __name__ == "__main__":
     files = files[200:210]
 
     # Name map:
-    name_map = {"u": "E", "v": "N", "w": "w", "p": "P2", "time": "dn"}
-    adv = ADV.from_raw(files, name_map, fs=32, z=mabs)
+    name_map = {"u1": "E", "u2": "N", "u3": "w", "p": "P2", "time": "dn"}
+    adv = ADV.from_raw(files, name_map, fs=32, z=mabs, coords="enu", orientation="down")
+
+    T = np.array([[2896, 2896, 0], [-2896, 2896, 0], [-2896, -2896, 5792]], dtype=float)
+
+    # If necessary, scale the transformation matrix to floating point values
+    T /= 4096.0
 
     pre_opts = {
-        "despike": True,
-        "rotate_horizontal": "principal",
-        "rotate_vertical": "minimize",
+        "despike": {"method": "gn"},
+        "rotate": {
+            "flow_rotation": "align_current",
+            "coords_out": "xyz",
+            "transformation_matrices": [T] * 6,
+            "constant_hpr": [(0.0, 1.0, 1.1)] * 6
+        }
     }
     adv.set_preprocess_opts(pre_opts)
 
