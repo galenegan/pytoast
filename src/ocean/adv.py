@@ -3,7 +3,7 @@ import scipy.signal as sig
 from typing import Optional, Union, List, Dict, Any
 from sklearn.linear_model import LinearRegression
 from utils.base_instrument import BaseInstrument
-from utils.interp_utils import naninterp_pd
+from utils.interp_utils import interp_rows
 from utils.wave_utils import get_wavenumber, get_cg, jones_monismith_correction
 from scipy.stats import median_abs_deviation
 
@@ -13,6 +13,7 @@ from utils.rotate_utils import (
     align_with_principal_axis,
     align_with_flow,
     rotate_velocity_by_theta,
+    coord_transform_3_beam_nortek
 )
 
 
@@ -22,23 +23,46 @@ class ADV(BaseInstrument):
     No longer stores raw data in xarray, instead uses efficient numpy processing.
     """
 
+    def __init__(
+        self,
+        files: Union[str, List],
+        name_map: dict,
+        fs: Optional[Union[int, float]] = None,
+        z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
+        coords: str = "xyz",
+        orientation: str = "up",
+    ):
+        self.coords = coords
+        self.orientation = orientation
+        super().__init__(files, name_map, fs, z)
+
     @staticmethod
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]], np.ndarray]] = None,
+        coords: Optional[str] = "xyz",
+        orientation: Optional[str] = "up",
     ):
+
+        # TODO: check best practice for repeated default arguments among validate_inputs, __init__ and from_raw
 
         # General validation
         BaseInstrument.validate_common_inputs(files, name_map, fs, z)
 
         # Instrument-specific requirements
-        required_keys = ["u", "v", "w"]
+        required_keys = ["u1", "u2", "u3"]
 
         for key in required_keys:
             if key not in name_map:
                 raise ValueError(f"`name_map` must include a mapping for '{key}'")
+
+        if coords not in ["xyz", "enu", "beam"]:
+            raise ValueError(f"Invalid value for `coords`: {coords}. Must be one of ['xyz', 'enu', 'beam']")
+
+        if orientation not in ["down", "up"]:
+            raise ValueError(f"Invalid value for `orientation`: {orientation}. Must be one of ['down', 'up']")
 
     @classmethod
     def from_raw(
@@ -47,6 +71,8 @@ class ADV(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        coords: Optional[str] = "xyz",
+        orientation: Optional[str] = "up",
     ):
         """
         Initializes a new ADV object from data files.
@@ -65,23 +91,34 @@ class ADV(BaseInstrument):
         name_map : dict
             a dictionary of the form:
             {
-                "u": "x-velocity variable name" or ["var 1", "var 2", etc.],
-                "v": "y-velocity variable name" or ["var 1", "var 2", etc.],
-                "w": "z-velocity variable name" or ["var 1", "var 2", etc.],
+                "u1": "first velocity variable name" or ["var 1", "var 2", etc.],
+                "u2": "second velocity variable name" or ["var 1", "var 2", etc.],
+                "u3": "third velocity variable name" or ["var 1", "var 2", etc.],
                 "p": "pressure variable name" or ["var 1", "var 2", etc.],
                 "time": "time variable name" or ["var 1", "var 2", etc.],
+                "heading": "heading variable name" or ["var 1", "var 2", etc.],
+                "pitch": "pitch variable name" or ["var 1", "var 2", etc.],
+                "roll": "roll variable name" or ["var 1", "var 2", etc.],
             }
-            Of these, "p" and "time" are optional, but an error will be raised if "time" is not specified and a sampling
-            frequency is also not specified. Lists should be provided if data from multiple instruments is stored
-            in multiple variables (as opposed to a 2d array).
+            "p" and "time" are optional, but an error will be raised if "time" is not specified and a sampling
+            frequency is also not specified. "heading", "pitch", and "roll" are also optional but an error will be
+            raised if they are missing and a transformation to ENU coordinates is requested.
+            Lists should be provided if data from multiple instruments are stored in multiple variables,
+            as opposed to storing data from multiple instruments in a 2d array).
 
         z : float, int or List[float, int], optional
             mean height above the bed (m) for each instrument. If not specified, the height coordinate in the resulting
             ADV object will be integer indices.
 
         fs : int or float, optional
-            sampling frequency (Hz). If not specified, will be inferred (and rounded to an integer)
+            sampling frequency (Hz). If not specified, will be inferred (and rounded to 2 decimel places)
             from name_map["time"] values
+
+        coords : str, optional
+            Velocity coordinate system. One of ["enu", "xyz", "beam"]. Default is "xyz" if not specified.
+
+        orientation : str, optional
+            Orientation of ADV probe. One of ["up", "down"]. Default is "up" if not specified.
 
 
         Returns
@@ -89,8 +126,8 @@ class ADV(BaseInstrument):
         ADV object
 
         """
-        ADV.validate_inputs(files, name_map, fs, z)
-        return cls(files, name_map, fs, z)
+        ADV.validate_inputs(files, name_map, fs, z, coords, orientation)
+        return cls(files, name_map, fs, z, coords, orientation)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
@@ -100,67 +137,121 @@ class ADV(BaseInstrument):
         opts : dict
             Preprocessing options. Supported keys:
 
-            despike_method : {'gn', 'threshold'}, optional
-                Despiking algorithm to use. Default is ``'gn'``.
+            despike : dict, optional
+                Options for despiking. If not specified, no despiking is applied. Supported keys:
 
-            despike_opts : dict, optional
-                Options for the despiking algorithm. Keys depend on ``despike_method``:
-                If ``despike_method='gn'`` (Goring-Nikora phase-space method):
-                spikes_remaining : int
-                    Stop iterating once this many or fewer spikes remain.
-                max_iter : int
-                    Maximum number of iterations.
-                robust_statistics : bool
-                    If True, use median/MAD instead of mean/std (Wahl 2003).
-                If ``despike_method='threshold'``:
-                threshold_min : float
-                    Lower bound; values below this are flagged as spikes.
-                threshold_max : float
-                    Upper bound; values above this are flagged as spikes.
+                method : {'threshold', 'gn'}
 
-            coord_transform : bool, optional
-                If true, apply a coordinate transformation as specified in the coord_transform_opts dictionary.
+                If ``{'method': 'gn', ...}``, additional keys can be:
+                    remaining_spikes : int
+                    max_iter : int
+                    robust_statistics : bool
 
-            coord_transform_opts : dict, optional
-                Options for the coordinate transformation. Supported keys are:
-                coords_out : one of ["beam", "xyz", "enu"]
+                If ``{'method': 'threshold', ...}``, additional keys can be:
+                    threshold_min : float
+                    threshold_max : float
 
-            rotate : str or tuple, optional
-              ``'align_principal'``, ``'align_current'``, or a
-              ``(horizontal_angle, vertical_angle)`` tuple.
+            rotate : dict, optional
+                Options for rotations and coordinate transformations. If not specified, no rotations applied.
+                Supported keys:
+
+                coords_out : str, optional
+                    Coordinates for ADV.coords to be transformed to. One of ["beam", "xyz", "enu"].
+
+                declination : float, optional
+                    Magnetic declination in degrees. Added to heading for coordinate transformations.
+
+                flow_rotation : str or Tuple[float], optional.
+                    One of ["align_principal", "align_current", or (horizontal_angle, vertical_angle)].
+                    If "align_principal" then the velocity will be rotated to align with the principal axes of the flow.
+                    If "align_current" then the velocity will be rotated to align with the horizontal current magnitude
+                    sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float angles are
+                    specified in a tuple, the flow will be rotated by those angles in the horizontal and vertical
+                    planes. Specifying any option will throw an error if ADV.coords == "beam", unless a
+                    coordinate system change to "xyz" or "enu" is also requested.
         """
 
         self._preprocess_enabled = True
 
-        self._despike = opts.get("despike", True)
-        self._despike_opts = opts.get("despike_opts", {})
-        self._rotate = opts.get("rotate", "align_principal")
+        self._despike = opts.get("despike", {})
+        if self._despike:
+            self._despike_method = self._despike.get("method")
+            self._despike_opts = {key: val for key, val in self._despike.items() if key != "method"}
+
+        self._rotate = opts.get("rotate", {})
         self._cached_idx = None
         self._cached_data = None
 
     def _apply_preprocessing(self, burst_data):
         if self._despike:
-            burst_data = self._apply_despike(burst_data, **self._despike_opts)
-
-        if isinstance(self._rotate, str):
-            if self._rotate == "align_principal":
-                theta_h, theta_v = align_with_principal_axis(burst_data)
-            elif self._rotate == "align_current":
-                theta_h, theta_v = align_with_flow(burst_data)
+            if self._despike_method == "gn":
+                burst_data["u1"] = self._apply_gn_despike(burst_data["u1"], **self._despike_opts)
+                burst_data["u2"] = self._apply_gn_despike(burst_data["u2"], **self._despike_opts)
+                burst_data["u3"] = self._apply_gn_despike(burst_data["u3"], **self._despike_opts)
+            elif self._despike_method == "threshold":
+                burst_data["u1"] = self._apply_threshold_despike(burst_data["u1"], **self._despike_opts)
+                burst_data["u2"] = self._apply_threshold_despike(burst_data["u2"], **self._despike_opts)
+                burst_data["u3"] = self._apply_threshold_despike(burst_data["u3"], **self._despike_opts)
             else:
-                raise ValueError(f"Invalid rotation option '{self._rotate}'")
-        else:
-            theta_h, theta_v = self._rotate
+                raise ValueError(f"Invalid despiking method '{self._despike_method}'")
 
-        if np.sum(np.abs(theta_v)) != 0.0 or np.sum(np.abs(theta_h)) != 0.0:
-            burst_data = rotate_velocity_by_theta(burst_data, theta_h, theta_v)
+        if self._rotate:
+            if self._rotate.get("coords_out"):
+                u1_new, u2_new, u3_new = coord_transform_3_beam_nortek(
+                    u1=burst_data["u1"],
+                    u2=burst_data["u2"],
+                    u3=burst_data["u3"],
+                    heading=burst_data.get("heading"),
+                    pitch=burst_data.get("pitch"),
+                    roll=burst_data.get("roll"),
+                    declination=self._rotate.get("declination", 0.0),
+                    orientation=self.orientation,
+                    coords_in=self.coords,
+                    coords_out=self._rotate["coords_out"]
+                )
+                burst_data["u1"] = u1_new
+                burst_data["u2"] = u2_new
+                burst_data["u3"] = u3_new
+
+            flow_rotation = self._rotate.get("flow_rotation")
+
+            if flow_rotation and self.coords == "beam":
+                raise ValueError("Cannot rotate flow velocity with ADV.coords == 'beam'. Specify either 'xyz' or 'enu'"
+                                 " as 'coords_out' in the rotate options dictionary.")
+            elif flow_rotation and self.coords != "beam":
+                if isinstance(flow_rotation, str):
+                    if flow_rotation == "align_principal":
+                        theta_h, theta_v = align_with_principal_axis(burst_data["u1"], burst_data["u2"], burst_data["u3"])
+                    elif flow_rotation == "align_current":
+                        theta_h, theta_v = align_with_flow(burst_data["u1"], burst_data["u2"], burst_data["u3"])
+                    else:
+                        raise ValueError(f"Invalid rotation option '{flow_rotation}'")
+                elif isinstance(flow_rotation, tuple):
+                    theta_h, theta_v = flow_rotation
+
+                u1_new, u2_new, u3_new = rotate_velocity_by_theta(burst_data["u1"], burst_data["u2"], burst_data["u3"], theta_h, theta_v)
+                burst_data["u1"] = u1_new
+                burst_data["u2"] = u2_new
+                burst_data["u3"] = u3_new
 
         return burst_data
 
-    def _apply_despike(
+    def _apply_threshold_despike(
+            self,
+            u: np.ndarray,
+            threshold_min: float = -3.0,
+            threshold_max: float = 3.0,
+    ):
+        u_out = u.copy()
+        bad_rows = np.where((u_out < threshold_min) | (u_out > threshold_max))[0]
+        u_out[bad_rows] = np.nan
+        interp_rows(u_out)
+        return u_out
+
+    def _apply_gn_despike(
         self,
-        data,
-        threshold: int = 5,
+        u: np.ndarray,
+        remaining_spikes: int = 5,
         max_iter: int = 10,
         robust_statistics: bool = False,
     ):
@@ -170,8 +261,11 @@ class ADV(BaseInstrument):
 
         Parameters
         ----------
-        threshold : int
-            Iterations will stop once there are threshold or fewer bad samples
+        u : np.ndarray
+            Velocity array to despike.
+
+        remaining_spikes : int
+            Iterations will stop once there are remaining_spikes or fewer bad samples
 
         max_iter : int
             Maximum number of iterations
@@ -263,32 +357,21 @@ class ADV(BaseInstrument):
 
             return bad_u_du | bad_u_du2 | bad_du_du2
 
-        def interp_rows(u: np.ndarray) -> np.ndarray:
-            """Apply naninterp_pd independently to each row."""
-            for i in range(u.shape[0]):
-                u[i] = naninterp_pd(u[i])
-            return u
+        u_out = u.copy()
+        bad_index = flag_bad_indices(u_out)
+        total_bad = np.sum(bad_index, axis=1)
+        iterations = 0
 
-        def despike_worker(u: np.ndarray) -> np.ndarray:
-            u_out = u.copy()
+        while np.any(total_bad > remaining_spikes) and iterations < max_iter:
+            u_out[bad_index] = np.nan
+            interp_rows(u_out)
             bad_index = flag_bad_indices(u_out)
             total_bad = np.sum(bad_index, axis=1)
-            iterations = 0
+            iterations += 1
 
-            while np.any(total_bad > threshold) and iterations < max_iter:
-                u_out[bad_index] = np.nan
-                interp_rows(u_out)
-                bad_index = flag_bad_indices(u_out)
-                total_bad = np.sum(bad_index, axis=1)
-                iterations += 1
+        interp_rows(u_out)
+        return u_out
 
-            interp_rows(u_out)
-            return u_out
-
-        data["u"] = despike_worker(data["u"])
-        data["v"] = despike_worker(data["v"])
-        data["w"] = despike_worker(data["w"])
-        return data
 
     def benilov_decomposition(
         self,
@@ -350,15 +433,15 @@ class ADV(BaseInstrument):
         # All the velocity components
         _, P_uu = psd(u, self.fs, **kwargs)
         _, P_up = csd(u, p, self.fs, **kwargs)
-        S_ueta = P_up * attenuation_correction
+        P_ueta = P_up * attenuation_correction
 
         _, P_vv = psd(v, self.fs, **kwargs)
         _, P_vp = csd(v, p, self.fs, **kwargs)
-        S_veta = P_vp * attenuation_correction
+        P_veta = P_vp * attenuation_correction
 
         _, P_ww = psd(w, self.fs, **kwargs)
         _, P_wp = csd(w, p, self.fs, **kwargs)
-        S_weta = P_wp * attenuation_correction
+        P_weta = P_wp * attenuation_correction
 
         # Velocity cross spectra
         _, P_uw = csd(u, w, self.fs, **kwargs)
@@ -369,34 +452,34 @@ class ADV(BaseInstrument):
         start_index, end_index = get_frequency_range(f, f_low, f_high)
 
         # Calculating wave spectra
-        P_uwave_uwave = S_ueta * np.conj(S_ueta) / P_etaeta
-        P_vwave_vwave = S_veta * np.conj(S_veta) / P_etaeta
-        P_wwave_wwave = S_weta * np.conj(S_weta) / P_etaeta
-        P_uwave_wwave = S_ueta * np.conj(S_weta) / P_etaeta
-        P_uwave_vwave = S_ueta * np.conj(S_veta) / P_etaeta
-        P_vwave_wwave = S_veta * np.conj(S_weta) / P_etaeta
+        P_uwave_uwave = P_ueta * np.conj(P_ueta) / P_etaeta
+        P_vwave_vwave = P_veta * np.conj(P_veta) / P_etaeta
+        P_wwave_wwave = P_weta * np.conj(P_weta) / P_etaeta
+        P_uwave_wwave = P_ueta * np.conj(P_weta) / P_etaeta
+        P_uwave_vwave = P_ueta * np.conj(P_veta) / P_etaeta
+        P_vwave_wwave = P_veta * np.conj(P_weta) / P_etaeta
 
         # Calculating turbulent spectra
-        S_ut_ut = P_uu - P_uwave_uwave
-        S_ut_wt = P_uw - P_uwave_wwave
-        S_ut_vt = P_uv - P_uwave_vwave
-        S_vt_vt = P_vv - P_vwave_vwave
-        S_vt_wt = P_vw - P_vwave_wwave
-        S_wt_wt = P_ww - P_wwave_wwave
+        P_ut_ut = P_uu - P_uwave_uwave
+        P_ut_wt = P_uw - P_uwave_wwave
+        P_ut_vt = P_uv - P_uwave_vwave
+        P_vt_vt = P_vv - P_vwave_vwave
+        P_vt_wt = P_vw - P_vwave_wwave
+        P_wt_wt = P_ww - P_wwave_wwave
 
         # Summing them to get Reynolds stresses
         out = {}
-        out["uu_turb"] = np.nansum(np.real(S_ut_ut[start_index:end_index]) * df)
+        out["uu_turb"] = np.nansum(np.real(P_ut_ut[start_index:end_index]) * df)
         out["uu_wave"] = np.nansum(np.real(P_uwave_uwave[start_index:end_index]) * df)
-        out["vv_turb"] = np.nansum(np.real(S_vt_vt[start_index:end_index]) * df)
+        out["vv_turb"] = np.nansum(np.real(P_vt_vt[start_index:end_index]) * df)
         out["vv_wave"] = np.nansum(np.real(P_vwave_vwave[start_index:end_index]) * df)
-        out["ww_turb"] = np.nansum(np.real(S_wt_wt[start_index:end_index]) * df)
+        out["ww_turb"] = np.nansum(np.real(P_wt_wt[start_index:end_index]) * df)
         out["ww_wave"] = np.nansum(np.real(P_wwave_wwave[start_index:end_index]) * df)
-        out["uw_turb"] = np.nansum(np.real(S_ut_wt[start_index:end_index]) * df)
+        out["uw_turb"] = np.nansum(np.real(P_ut_wt[start_index:end_index]) * df)
         out["uw_wave"] = np.nansum(np.real(P_uwave_wwave[start_index:end_index]) * df)
-        out["vw_turb"] = np.nansum(np.real(S_vt_wt[start_index:end_index]) * df)
+        out["vw_turb"] = np.nansum(np.real(P_vt_wt[start_index:end_index]) * df)
         out["vw_wave"] = np.nansum(np.real(P_vwave_wwave[start_index:end_index]) * df)
-        out["uv_turb"] = np.nansum(np.real(S_ut_vt[start_index:end_index]) * df)
+        out["uv_turb"] = np.nansum(np.real(P_ut_vt[start_index:end_index]) * df)
         out["uv_wave"] = np.nansum(np.real(P_uwave_vwave[start_index:end_index]) * df)
 
         return out
@@ -452,55 +535,57 @@ class ADV(BaseInstrument):
         interprange = np.arange(1, np.nanargmin(np.abs(f - 1))).astype(int)
 
         # Separating the turbulent portion from the full spectrum
-        Suu_turb = P_uu[interprange]
+        Puu_turb = P_uu[interprange]
         fuu = f[interprange]
-        Suu_turb = np.delete(Suu_turb, waverange - interprange[0])
+        Puu_turb = np.delete(Puu_turb, waverange - interprange[0])
         fuu = np.delete(fuu, waverange - interprange[0])
-        Suu_turb = Suu_turb[fuu > 0]
+        Puu_turb = Puu_turb[fuu > 0]
         fuu = fuu[fuu > 0]
 
-        Svv_turb = P_vv[interprange]
+        Pvv_turb = P_vv[interprange]
         fvv = f[interprange]
-        Svv_turb = np.delete(Svv_turb, waverange - interprange[0])
+        Pvv_turb = np.delete(Pvv_turb, waverange - interprange[0])
         fvv = np.delete(fvv, waverange - interprange[0])
-        Svv_turb = Svv_turb[fvv > 0]
+        Pvv_turb = Pvv_turb[fvv > 0]
         fvv = fvv[fvv > 0]
 
-        Sww_turb = P_ww[interprange]
+        Pww_turb = P_ww[interprange]
         fww = f[interprange]
-        Sww_turb = np.delete(Sww_turb, waverange - interprange[0])
+        Pww_turb = np.delete(Pww_turb, waverange - interprange[0])
         fww = np.delete(fww, waverange - interprange[0])
-        Sww_turb = Sww_turb[fww > 0]
+        Pww_turb = Pww_turb[fww > 0]
         fww = fww[fww > 0]
 
         # Linear interpolation over turbulent spectra
         F = np.log(fuu)
-        S = np.log(Suu_turb)
-        Puu = np.polyfit(F, S, deg=1)
+        P = np.log(Puu_turb)
+        Puu = np.polyfit(F, P, deg=1)
         Puuhat = np.exp(np.polyval(Puu, np.log(f)))
 
         F = np.log(fvv)
-        S = np.log(Svv_turb)
-        Pvv = np.polyfit(F, S, deg=1)
+        P = np.log(Pvv_turb)
+        Pvv = np.polyfit(F, P, deg=1)
         Pvvhat = np.exp(np.polyval(Pvv, np.log(f)))
 
         F = np.log(fww)
-        S = np.log(Sww_turb)
-        Pww = np.polyfit(F, S, deg=1)
+        P = np.log(Pww_turb)
+        Pww = np.polyfit(F, P, deg=1)
         Pwwhat = np.exp(np.polyval(Pww, np.log(f)))
 
         # Wave spectra strictly above the interpolation line
-        Suu_wave = P_uu[waverange] - Puuhat[waverange]
-        Suu_wave[Suu_wave < 0] = 0
-        Svv_wave = P_vv[waverange] - Pvvhat[waverange]
-        Svv_wave[Svv_wave < 0] = 0
-        Sww_wave = P_ww[waverange] - Pwwhat[waverange]
-        Sww_wave[Sww_wave < 0] = 0
+        Puu_wave = P_uu[waverange] - Puuhat[waverange]
+        Puu_wave[Puu_wave < 0] = 0
+        Pvv_wave = P_vv[waverange] - Pvvhat[waverange]
+        Pvv_wave[Pvv_wave < 0] = 0
+        Pww_wave = P_ww[waverange] - Pwwhat[waverange]
+        Pww_wave[Pww_wave < 0] = 0
 
         # Wave Fourier components
-        Amu_wave = np.sqrt((Suu_wave + 0j) * df)
-        Amv_wave = np.sqrt((Svv_wave + 0j) * df)
-        Amw_wave = np.sqrt((Sww_wave + 0j) * df)
+        Amu_wave = np.sqrt((Puu_wave + 0j) * df)
+        Amv_wave = np.sqrt((Pvv_wave + 0j) * df)
+        Amw_wave = np.sqrt((Pww_wave + 0j) * df)
+
+        # TODO: This 0j doesn't do anything probably
 
         # Wave Magnitudes
         Um_wave = np.sqrt(np.real(Amu_wave) ** 2 + np.imag(Amu_wave) ** 2)
@@ -512,9 +597,9 @@ class ADV(BaseInstrument):
         out["uv_wave"] = np.nansum(Um_wave * Vm_wave * np.cos(phase_uv[waverange]))
         out["vw_wave"] = np.nansum(Vm_wave * wm_wave * np.cos(phase_vw[waverange]))
 
-        out["uu_wave"] = np.nansum(Suu_wave * df)
-        out["vv_wave"] = np.nansum(Svv_wave * df)
-        out["ww_wave"] = np.nansum(Sww_wave * df)
+        out["uu_wave"] = np.nansum(Puu_wave * df)
+        out["vv_wave"] = np.nansum(Pvv_wave * df)
+        out["ww_wave"] = np.nansum(Pww_wave * df)
 
         # Defining frequency range for full stress summation
         start_index, end_index = get_frequency_range(f, f_low, f_high)
@@ -548,7 +633,7 @@ class ADV(BaseInstrument):
         **kwargs,
     ) -> dict:
         """
-        Calculate components of the covariance matrix.
+        Calculate components of the covariance matrix (i.e., the Reynolds stress)
 
         Parameters
         ----------
@@ -580,6 +665,12 @@ class ADV(BaseInstrument):
             (e.g. 'uu','uv','uw'). For wave decomposition methods, keys include
             turbulence and wave components (e.g. 'uu_turb', 'uu_wave').
         """
+
+        if self.coords == "beam":
+            raise ValueError("Reynolds stress is not implemented for beam coordinates."
+                             " Switch to either xyz or enu as a preprocessing step")
+
+
         out = {}
         n_heights = self.n_heights
         if method == "cov":
@@ -855,15 +946,19 @@ class ADV(BaseInstrument):
 
             return eps, noise, quality_flag
 
+        if self.coords == "beam":
+            raise ValueError("Dissipation is not implemented for beam coordinates."
+                             " Switch to either xyz or enu as a preprocessing step")
+
         out = {}
         n_heights = self.n_heights
         out["eps"] = np.empty((n_heights,))
         out["noise"] = np.empty((n_heights,))
         out["quality_flag"] = np.empty((n_heights,), dtype=int)
         for height_idx in range(n_heights):
-            u = burst_data["u"][height_idx, :]
-            v = burst_data["v"][height_idx, :]
-            w = burst_data["w"][height_idx, :]
+            u = burst_data["u1"][height_idx, :]
+            v = burst_data["u2"][height_idx, :]
+            w = burst_data["u3"][height_idx, :]
             (eps, noise, quality_flag) = spectral_fit(u, v, w, f_low, f_high, **kwargs)
             out["eps"][height_idx] = eps
             out["noise"][height_idx] = noise
@@ -872,15 +967,15 @@ class ADV(BaseInstrument):
         return out
 
     def tke(self, burst_data: Dict[str, np.ndarray]):
-        u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
-        v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
-        w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
+        u1_bar = np.mean(burst_data["u1"], axis=1, keepdims=True)
+        u2_bar = np.mean(burst_data["u2"], axis=1, keepdims=True)
+        u3_bar = np.mean(burst_data["u3"], axis=1, keepdims=True)
 
-        u_prime = burst_data["u"] - u_bar
-        v_prime = burst_data["v"] - v_bar
-        w_prime = burst_data["w"] - w_bar
+        u1_prime = burst_data["u1"] - u1_bar
+        u2_prime = burst_data["u2"] - u2_bar
+        u3_prime = burst_data["u3"] - u3_bar
 
-        tke_prime = 0.5 * (u_prime**2 + v_prime**2 + w_prime**2)
+        tke_prime = 0.5 * (u1_prime**2 + u2_prime**2 + u3_prime**2)
         tke_out = np.mean(tke_prime, axis=1)
         return tke_out
 
@@ -896,11 +991,14 @@ class ADV(BaseInstrument):
         if "p" not in burst_data.keys():
             raise ValueError("Pressure must be included in dataset to calculate directional wave statistics")
 
+        if self.coords == "beam":
+            raise ValueError("Directional wave statistics is not implemented for beam coordinates.")
+
         n_heights = self.n_heights
         out = {}
         for height_idx in range(n_heights):
-            u = burst_data["u"][height_idx, :]
-            v = burst_data["v"][height_idx, :]
+            u = burst_data["u1"][height_idx, :]
+            v = burst_data["u2"][height_idx, :]
             p = burst_data["p"][height_idx, :]
             out[height_idx] = self.wave_worker(
                 u=u,
@@ -1162,7 +1260,7 @@ class ADV(BaseInstrument):
                 * np.sin(np.radians(out[f"dir1_{band_name}"]))
             )
 
-            # Spectral Stokes drift (unfortunately different from the bulk estimate -- see Kumar et al. 2017)
+            # Spectral Stokes drift (unfortunately different from the bulk estimate -- see Kumar et al. 2017, appendix)
             out[f"Us_spec_{band_name}"] = np.sum(
                 P_etaeta[band_indices]
                 * omega[band_indices]

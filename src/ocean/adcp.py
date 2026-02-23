@@ -134,18 +134,12 @@ class ADCP(BaseInstrument):
             Preprocessing options. Supported keys:
 
             despike : dict, optional
-                Despiking method and options. If not specified, no despiking is applied. Supported keys:
+                Options for simple threshold-based despiking. If not specified, no despiking is applied.
+                Supported keys:
 
-                method : {'threshold', 'gn'}
+                threshold_min : float
 
-                If ``{'method': 'gn', ...}``, additional keys can be:
-                    remaining_spikes : int
-                    max_iter : int
-                    robust_statistics : bool
-
-                If ``{'method': 'threshold', ...}``, additional keys can be:
-                    threshold_min : float
-                    threshold_max : float
+                threshold_max : float
 
             rotate : dict, optional
                 Options for rotations and coordinate transformations. If not specified, no rotations applied.
@@ -158,23 +152,22 @@ class ADCP(BaseInstrument):
                     Beam angle in degrees. Affects accuracy of coordinate transform for RDI instruments
 
                 declination : float, optional
-                    Magnetic declination offset in degrees. Added to heading for coordinate transformations.
+                    Magnetic declination in degrees. Added to heading for coordinate transformations.
 
                 flow_rotation : str or Tuple[float], optional.
                     One of ["align_principal", "align_current", or (horizontal_angle, vertical_angle)].
                     If "align_principal" then the velocity will be rotated to align with the principal axis of the flow.
-                    If "align_current" then the velocity will be rotated to align with the horizontal current speed
+                    If "align_current" then the velocity will be rotated to align with the horizontal current magnitude
                     sqrt(u1^2 + u2^2). In both cases, the vertical velocity will be minimized. If float angles are
                     specified in a tuple, the flow will be rotated by those angles in the horizontal and vertical
-                    planes. Specifying any option will throw an error if ADCP.coords == "beam" and a
-                    coordinate system change is not also requested.
+                    planes. Specifying any option will throw an error if ADCP.coords == "beam", unless a
+                    coordinate system change to "xyz" or "enu" is also requested.
         """
 
         self._preprocess_enabled = True
 
-        self._despike = opts.get("despike", True)
-        self._despike_opts = opts.get("despike_opts", {})
-        self._rotate = opts.get("rotate", "align_principal")
+        self._despike = opts.get("despike", {})
+        self._rotate = opts.get("rotate", {})
         self._cached_idx = None
         self._cached_data = None
 

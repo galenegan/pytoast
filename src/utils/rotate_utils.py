@@ -35,6 +35,26 @@ def coord_transform_3_beam_nortek(
     if np.any(T > 1000):
         T /= 4096.0
 
+    # Velocity array
+    U = np.vstack((u1.reshape(1, -1), u2.reshape(1, -1), u3.reshape(1, -1)))
+
+    if coords_in == "beam" and coords_out == "xyz":
+        U_rot = T @ U
+        u1_rot = U_rot[0, :]
+        u2_rot = U_rot[1, :]
+        u3_rot = U_rot[2, :]
+        return (u1_rot, u2_rot, u3_rot)
+    elif coords_in == "xyz" and coords_out == "beam":
+        U_rot = np.linalg.inv(T) @ U
+        u1_rot = U_rot[0, :]
+        u2_rot = U_rot[1, :]
+        u3_rot = U_rot[2, :]
+        return (u1_rot, u2_rot, u3_rot)
+    elif coords_in == "enu" or coords_out == "enu":
+        if (heading is None) or (pitch is None) or (roll is None):
+            raise ValueError("Heading, pitch, and roll must be provided for any coordinate transformation "
+                             "to/from ENU")
+
     T_flip = T.copy()
     if orientation == "down":
         T_flip[1, :] = -T_flip[1, :]
@@ -74,17 +94,10 @@ def coord_transform_3_beam_nortek(
     # XYZ to ENU matrix
     R = H @ P
 
-    # Velocity array
-    U = np.vstack((u1.reshape(1, -1), u2.reshape(1, -1), u3.reshape(1, -1)))
-
     if coords_in == "beam" and coords_out == "enu":
         U_rot = R @ T_flip @ U
     elif coords_in == "enu" and coords_out == "beam":
         U_rot = np.linalg.inv(T_flip) @ np.linalg.inv(R) @ U
-    elif coords_in == "beam" and coords_out == "xyz":
-        U_rot = T @ U
-    elif coords_in == "xyz" and coords_out == "beam":
-        U_rot = np.linalg.inv(T) @ U
     elif coords_in == "enu" and coords_out == "xyz":
         U_rot = T @ np.linalg.inv(T_flip) @ np.linalg.inv(R) @ U
     elif coords_in == "xyz" and coords_out == "enu":
@@ -292,7 +305,7 @@ def coord_transform_4_beam_rdi(
     return (u1_rot, u2_rot, u3_rot, u4_rot)
 
 
-def align_with_principal_axis(data: dict) -> Tuple:
+def align_with_principal_axis(u1, u2, u3) -> Tuple:
     """
     Calculates the direction of maximum variance from the u and v velocities (Thomson & Emery, 4.52b).
 
@@ -306,28 +319,28 @@ def align_with_principal_axis(data: dict) -> Tuple:
         assuming that u = eastward velocity, v = northward velocity
     """
     # (Co)variances
-    u_bar = np.mean(data["u"], axis=1, keepdims=True)
-    v_bar = np.mean(data["v"], axis=1, keepdims=True)
-    u_prime = data["u"] - u_bar
-    v_prime = data["v"] - v_bar
-    u_var = np.mean(u_prime**2, axis=1)
-    v_var = np.mean(v_prime**2, axis=1)
-    cv = np.mean(u_prime * v_prime, axis=1)
+    u1_bar = np.mean(u1, axis=1, keepdims=True)
+    u2_bar = np.mean(u2, axis=1, keepdims=True)
+    u1_prime = u1 - u1_bar
+    u2_prime = u2 - u2_bar
+    u1_var = np.mean(u1_prime**2, axis=1)
+    u2_var = np.mean(u2_prime**2, axis=1)
+    cv = np.mean(u1_prime * u2_prime, axis=1)
 
     # Direction of maximum variance in xy-plane (heading)
-    theta_h_radians = 0.5 * np.arctan2(2.0 * cv, (u_var - v_var))
+    theta_h_radians = 0.5 * np.arctan2(2.0 * cv, (u1_var - u2_var))
 
     # Pitch angle
-    u_rot = data["u"] * np.cos(theta_h_radians) + data["v"] * np.sin(theta_h_radians)
+    u_rot = u1 * np.cos(theta_h_radians) + u2 * np.sin(theta_h_radians)
     u_rot_bar = np.mean(u_rot, axis=1)
-    w_bar = np.mean(data["w"], axis=1)
-    theta_v_radians = np.arctan2(w_bar, u_rot_bar)
+    u3_bar = np.mean(u3, axis=1)
+    theta_v_radians = np.arctan2(u3_bar, u_rot_bar)
 
     out = (np.rad2deg(theta_h_radians), np.rad2deg(theta_v_radians))
     return out
 
 
-def align_with_flow(burst_data: dict) -> Tuple:
+def align_with_flow(u1, u2, u3) -> Tuple:
     """
     Rotates u, v, w velocities to minimize the burst-averaged v and w.
 
@@ -347,9 +360,9 @@ def align_with_flow(burst_data: dict) -> Tuple:
         Zero-mean vertical velocity
     """
 
-    u_bar = np.mean(burst_data["u"], axis=1)
-    v_bar = np.mean(burst_data["v"], axis=1)
-    w_bar = np.mean(burst_data["w"], axis=1)
+    u_bar = np.mean(u1, axis=1)
+    v_bar = np.mean(u2, axis=1)
+    w_bar = np.mean(u3, axis=1)
     U = np.sqrt(u_bar**2 + v_bar**2)
     theta_h = np.arctan2(v_bar, u_bar)
     theta_v = np.arctan2(w_bar, U)
@@ -357,7 +370,7 @@ def align_with_flow(burst_data: dict) -> Tuple:
     return out
 
 
-def rotate_velocity_by_theta(data: Dict[str, np.ndarray], theta_h, theta_v):
+def rotate_velocity_by_theta(u1, u2, u3, theta_h, theta_v):
     """
     Rotates u, v, w velocities by directions defined by theta_h and theta_v.
 
@@ -382,10 +395,7 @@ def rotate_velocity_by_theta(data: Dict[str, np.ndarray], theta_h, theta_v):
     cos_h, sin_h = np.cos(th), np.sin(th)
     cos_v, sin_v = np.cos(tv), np.sin(tv)
 
-    u_rot = data["u"] * cos_h * cos_v + data["v"] * sin_h * cos_v + data["w"] * sin_v
-    v_rot = -data["u"] * sin_h + data["v"] * cos_h
-    w_rot = -data["u"] * cos_h * sin_v - data["v"] * sin_h * sin_v + data["w"] * cos_v
-    data["u"] = u_rot
-    data["v"] = v_rot
-    data["w"] = w_rot
-    return data
+    u_rot = u1 * cos_h * cos_v + u2 * sin_h * cos_v + u3 * sin_v
+    v_rot = -u1 * sin_h + u2 * cos_h
+    w_rot = -u1 * cos_h * sin_v - u2 * sin_h * sin_v + u3 * cos_v
+    return u_rot, v_rot, w_rot

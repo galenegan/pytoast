@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from string import ascii_lowercase
 import xarray as xr
@@ -15,3 +16,10 @@ def naninterp_xr(x):
     interp_da = da.interpolate_na(dim=dims[-1], method="linear", fill_value="extrapolate")
 
     return interp_da.values
+
+
+def interp_rows(u: np.ndarray) -> np.ndarray:
+    """Apply naninterp_pd independently to each row."""
+    for i in range(u.shape[0]):
+        u[i] = naninterp_pd(u[i])
+    return u
