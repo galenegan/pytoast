@@ -30,8 +30,8 @@ if __name__ == "__main__":
             "flow_rotation": "align_current",
             "coords_out": "xyz",
             "transformation_matrices": [T] * 6,
-            "constant_hpr": [(0.0, 1.0, 1.1)] * 6
-        }
+            "constant_hpr": [(0.0, 1.0, 1.1)] * 6,
+        },
     }
     adv.set_preprocess_opts(pre_opts)
 

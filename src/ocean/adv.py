@@ -13,7 +13,7 @@ from utils.rotate_utils import (
     align_with_principal_axis,
     align_with_flow,
     rotate_velocity_by_theta,
-    coord_transform_3_beam_nortek
+    coord_transform_3_beam_nortek,
 )
 
 
@@ -59,7 +59,9 @@ class ADV(BaseInstrument):
                 raise ValueError(f"`name_map` must include a mapping for '{key}'")
 
         if source_coords not in ["xyz", "enu", "beam"]:
-            raise ValueError(f"Invalid value for `source_coords`: {source_coords}. Must be one of ['xyz', 'enu', 'beam']")
+            raise ValueError(
+                f"Invalid value for `source_coords`: {source_coords}. Must be one of ['xyz', 'enu', 'beam']"
+            )
 
         if orientation not in ["down", "up"]:
             raise ValueError(f"Invalid value for `orientation`: {orientation}. Must be one of ['down', 'up']")
@@ -114,8 +116,9 @@ class ADV(BaseInstrument):
             sampling frequency (Hz). If not specified, will be inferred (and rounded to 2 decimel places)
             from name_map["time"] values
 
-        coords : str, optional
-            Velocity coordinate system. One of ["enu", "xyz", "beam"]. Default is "xyz" if not specified.
+        source_coords : str, optional
+            Velocity coordinate system in the source files. One of ["enu", "xyz", "beam"].
+            Default is "xyz" if not specified.
 
         orientation : str, optional
             Orientation of ADV probe. One of ["up", "down"]. Default is "up" if not specified.
@@ -212,7 +215,6 @@ class ADV(BaseInstrument):
             coords_out = self._rotate.get("coords_out")
 
             if coords_out:
-
                 transformation_matrices = self._rotate.get("transformation_matrices")
                 if transformation_matrices is None:
                     raise ValueError("A transformation matrix must be provided for instruments at each height")
@@ -223,19 +225,22 @@ class ADV(BaseInstrument):
                 pitch = burst_data.get("pitch")
                 roll = burst_data.get("roll")
 
-                if ((coords_in == "enu") or (coords_out == "enu")) and ((heading is None) or (pitch is None) or (roll is None)):
+                if ((coords_in == "enu") or (coords_out == "enu")) and (
+                    (heading is None) or (pitch is None) or (roll is None)
+                ):
                     constant_hpr = self._rotate.get("constant_hpr")
 
                     if constant_hpr:
                         if len(constant_hpr) != n_heights:
-                            raise ValueError("")
+                            raise ValueError("A (heading, pitch, roll) tuple must be provided for each instrument")
                         else:
                             heading = np.array([constant_hpr[i][0] for i in range(n_heights)]).reshape(-1, 1)
                             pitch = np.array([constant_hpr[i][1] for i in range(n_heights)]).reshape(-1, 1)
                             roll = np.array([constant_hpr[i][2] for i in range(n_heights)]).reshape(-1, 1)
                     else:
-                        raise ValueError("Heading, pitch, and roll must be provided for any coordinate transformation "
-                                     "to/from ENU")
+                        raise ValueError(
+                            "Heading, pitch, and roll must be provided for any coordinate transformation to/from ENU"
+                        )
 
                 for height_idx in range(n_heights):
                     u1 = burst_data["u1"][height_idx, :]
@@ -256,7 +261,7 @@ class ADV(BaseInstrument):
                         declination=self._rotate.get("declination", 0.0),
                         orientation=self.orientation,
                         coords_in=coords_in,
-                        coords_out=coords_out
+                        coords_out=coords_out,
                     )
                     burst_data["u1"][height_idx, :] = u1_new
                     burst_data["u2"][height_idx, :] = u2_new
@@ -266,12 +271,16 @@ class ADV(BaseInstrument):
             flow_rotation = self._rotate.get("flow_rotation")
 
             if flow_rotation and burst_data["coords"] == "beam":
-                raise ValueError("Cannot rotate flow velocity with ADV.coords == 'beam'. Specify either 'xyz' or 'enu'"
-                                 " as 'coords_out' in the rotate options dictionary.")
+                raise ValueError(
+                    "Cannot rotate flow velocity with ADV.coords == 'beam'. Specify either 'xyz' or 'enu'"
+                    " as 'coords_out' in the rotate options dictionary."
+                )
             elif flow_rotation and burst_data["coords"] != "beam":
                 if isinstance(flow_rotation, str):
                     if flow_rotation == "align_principal":
-                        theta_h, theta_v = align_with_principal_axis(burst_data["u1"], burst_data["u2"], burst_data["u3"])
+                        theta_h, theta_v = align_with_principal_axis(
+                            burst_data["u1"], burst_data["u2"], burst_data["u3"]
+                        )
                     elif flow_rotation == "align_current":
                         theta_h, theta_v = align_with_flow(burst_data["u1"], burst_data["u2"], burst_data["u3"])
                     else:
@@ -279,7 +288,9 @@ class ADV(BaseInstrument):
                 elif isinstance(flow_rotation, tuple):
                     theta_h, theta_v = flow_rotation
 
-                u1_new, u2_new, u3_new = rotate_velocity_by_theta(burst_data["u1"], burst_data["u2"], burst_data["u3"], theta_h, theta_v)
+                u1_new, u2_new, u3_new = rotate_velocity_by_theta(
+                    burst_data["u1"], burst_data["u2"], burst_data["u3"], theta_h, theta_v
+                )
                 burst_data["u1"] = u1_new
                 burst_data["u2"] = u2_new
                 burst_data["u3"] = u3_new
@@ -288,10 +299,10 @@ class ADV(BaseInstrument):
         return burst_data
 
     def _apply_threshold_despike(
-            self,
-            u: np.ndarray,
-            threshold_min: float = -3.0,
-            threshold_max: float = 3.0,
+        self,
+        u: np.ndarray,
+        threshold_min: float = -3.0,
+        threshold_max: float = 3.0,
     ):
         u_out = u.copy()
         bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
@@ -422,7 +433,6 @@ class ADV(BaseInstrument):
 
         interp_rows(u_out)
         return u_out
-
 
     def benilov_decomposition(
         self,
@@ -718,9 +728,10 @@ class ADV(BaseInstrument):
         """
 
         if burst_data["coords"] == "beam":
-            raise ValueError("Reynolds stress is not implemented for beam coordinates."
-                             " Switch to either xyz or enu as a preprocessing step")
-
+            raise ValueError(
+                "Reynolds stress is not implemented for beam coordinates."
+                " Switch to either xyz or enu as a preprocessing step"
+            )
 
         out = {}
         n_heights = self.n_heights
@@ -1000,8 +1011,10 @@ class ADV(BaseInstrument):
             return eps, noise, quality_flag
 
         if burst_data["coords"] == "beam":
-            raise ValueError("Dissipation is not implemented for beam coordinates."
-                             " Switch to either xyz or enu as a preprocessing step")
+            raise ValueError(
+                "Dissipation is not implemented for beam coordinates."
+                " Switch to either xyz or enu as a preprocessing step"
+            )
 
         out = {}
         n_heights = self.n_heights
@@ -1021,9 +1034,10 @@ class ADV(BaseInstrument):
 
     def tke(self, burst_data: Dict[str, np.ndarray]):
         if burst_data["coords"] == "beam":
-            raise ValueError("TKE is not implemented for beam coordinates."
-                             " Switch to either xyz or enu as a preprocessing step")
-        
+            raise ValueError(
+                "TKE is not implemented for beam coordinates. Switch to either xyz or enu as a preprocessing step"
+            )
+
         u1_bar = np.mean(burst_data["u1"], axis=1, keepdims=True)
         u2_bar = np.mean(burst_data["u2"], axis=1, keepdims=True)
         u3_bar = np.mean(burst_data["u3"], axis=1, keepdims=True)

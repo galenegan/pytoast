@@ -2,6 +2,7 @@ import numpy as np
 from typing import Tuple, Optional
 from scipy.stats import circmean
 
+
 def coord_transform_3_beam_nortek(
     u1,
     u2,
@@ -219,7 +220,7 @@ def coord_transform_4_beam_rdi(
     heading,
     pitch,
     roll,
-    beam_angle,
+    beam_angle: float = 25.0,
     transformation_matrix: Optional[np.ndarray] = None,
     declination: float = 0.0,
     orientation: str = "up",

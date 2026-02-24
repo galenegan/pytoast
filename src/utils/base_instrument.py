@@ -188,8 +188,11 @@ class BaseInstrument(ABC):
         # Determine num_samples and infer fs if needed
         if "time" not in self.name_map:
             data_var = data[list(self.name_map.keys())[0]]
-            num_rows, num_cols = data_var.shape
-            num_samples = max(num_rows, num_cols)
+            if data_var.ndim > 1:
+                num_rows, num_cols = data_var.shape
+                num_samples = max(num_rows, num_cols)
+            else:
+                num_samples = len(data_var)
         else:
             num_samples = len(data[self.name_map["time"]])
             if fs is None:
