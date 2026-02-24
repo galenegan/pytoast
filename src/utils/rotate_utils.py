@@ -1,6 +1,6 @@
 import numpy as np
-from typing import Tuple, Dict, Optional
-
+from typing import Tuple, Optional
+from scipy.stats import circmean
 
 def coord_transform_3_beam_nortek(
     u1,
@@ -56,12 +56,10 @@ def coord_transform_3_beam_nortek(
         T_flip[1, :] = -T_flip[1, :]
         T_flip[2, :] = -T_flip[2, :]
 
-    if heading is None:
-        print("here")
     heading_plus_dec = (heading + declination) % 360
-    h_rad = np.mean(np.radians(heading_plus_dec - 90))
-    p_rad = np.mean(np.radians(pitch))
-    r_rad = np.mean(np.radians(roll))
+    h_rad = circmean(np.radians(heading_plus_dec - 90))
+    p_rad = circmean(np.radians(pitch))
+    r_rad = circmean(np.radians(roll))
 
     # Heading matrix
     H = np.array(
@@ -159,9 +157,9 @@ def coord_transform_4_beam_nortek(
     elif (coords_in == "beam" or coords_in == "xyz") and coords_out == "enu":
         R = np.zeros((4, 4))
         heading_plus_dec = (heading + declination) % 360
-        h_rad = np.radians(heading_plus_dec - 90)
-        p_rad = np.radians(pitch)
-        r_rad = np.radians(roll)
+        h_rad = circmean(np.radians(heading_plus_dec - 90))
+        p_rad = circmean(np.radians(pitch))
+        r_rad = circmean(np.radians(roll))
         H = np.array(
             [
                 [np.cos(h_rad), np.sin(h_rad), 0],
@@ -265,9 +263,9 @@ def coord_transform_4_beam_rdi(
         U_rot = T @ U
     elif (coords_in == "beam" or coords_in == "xyz") and coords_out == "enu":
         heading_plus_dec = (heading + declination) % 360
-        r_rad = np.deg2rad(roll)
-        h_rad = np.deg2rad(heading_plus_dec)
-        p_rad = np.deg2rad(pitch)
+        r_rad = circmean(np.deg2rad(roll))
+        h_rad = circmean(np.deg2rad(heading_plus_dec))
+        p_rad = circmean(np.deg2rad(pitch))
 
         # Modifications per the manual
         p_rad = np.arctan(np.tan(p_rad) * np.cos(r_rad))

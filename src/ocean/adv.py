@@ -29,10 +29,10 @@ class ADV(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
-        coords: str = "xyz",
+        source_coords: str = "xyz",
         orientation: str = "up",
     ):
-        self.coords = coords
+        self.source_coords = source_coords
         self.orientation = orientation
         super().__init__(files, name_map, fs, z)
 
@@ -42,7 +42,7 @@ class ADV(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]], np.ndarray]] = None,
-        coords: Optional[str] = "xyz",
+        source_coords: Optional[str] = "xyz",
         orientation: Optional[str] = "up",
     ):
 
@@ -58,20 +58,20 @@ class ADV(BaseInstrument):
             if key not in name_map:
                 raise ValueError(f"`name_map` must include a mapping for '{key}'")
 
-        if coords not in ["xyz", "enu", "beam"]:
-            raise ValueError(f"Invalid value for `coords`: {coords}. Must be one of ['xyz', 'enu', 'beam']")
+        if source_coords not in ["xyz", "enu", "beam"]:
+            raise ValueError(f"Invalid value for `source_coords`: {source_coords}. Must be one of ['xyz', 'enu', 'beam']")
 
         if orientation not in ["down", "up"]:
             raise ValueError(f"Invalid value for `orientation`: {orientation}. Must be one of ['down', 'up']")
 
     @classmethod
-    def from_raw(
+    def from_files(
         cls,
         files: Union[str, List],
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        coords: Optional[str] = "xyz",
+        source_coords: Optional[str] = "xyz",
         orientation: Optional[str] = "up",
     ):
         """
@@ -126,8 +126,8 @@ class ADV(BaseInstrument):
         ADV object
 
         """
-        ADV.validate_inputs(files, name_map, fs, z, coords, orientation)
-        return cls(files, name_map, fs, z, coords, orientation)
+        ADV.validate_inputs(files, name_map, fs, z, source_coords, orientation)
+        return cls(files, name_map, fs, z, source_coords, orientation)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
@@ -176,7 +176,7 @@ class ADV(BaseInstrument):
                     planes. Specifying any option will throw an error if ADV.coords == "beam", unless a
                     coordinate system change to "xyz" or "enu" is also requested.
         """
-
+        self._preprocess_opts = opts
         self._preprocess_enabled = True
 
         self._despike = opts.get("despike", {})
@@ -189,6 +189,12 @@ class ADV(BaseInstrument):
         self._cached_data = None
 
     def _apply_preprocessing(self, burst_data):
+        # Setting coords regardless of preprocessing options
+        coords_in = self.source_coords
+        burst_data["coords"] = coords_in
+        if not self._preprocess_enabled:
+            return burst_data
+
         if self._despike:
             if self._despike_method == "gn":
                 burst_data["u1"] = self._apply_gn_despike(burst_data["u1"], **self._despike_opts)
@@ -203,17 +209,19 @@ class ADV(BaseInstrument):
 
         if self._rotate:
             n_heights = self.n_heights
-            coords_in = self.coords
             coords_out = self._rotate.get("coords_out")
-            transformation_matrices = self._rotate.get("transformation_matrices")
-            if len(transformation_matrices) != self.n_heights:
-                raise ValueError("A transformation matrix must be provided for instruments at each height")
 
             if coords_out:
+
+                transformation_matrices = self._rotate.get("transformation_matrices")
+                if transformation_matrices is None:
+                    raise ValueError("A transformation matrix must be provided for instruments at each height")
+                elif len(transformation_matrices) != self.n_heights:
+                    raise ValueError("A transformation matrix must be provided for instruments at each height")
+
                 heading = burst_data.get("heading")
                 pitch = burst_data.get("pitch")
                 roll = burst_data.get("roll")
-
 
                 if ((coords_in == "enu") or (coords_out == "enu")) and ((heading is None) or (pitch is None) or (roll is None)):
                     constant_hpr = self._rotate.get("constant_hpr")
@@ -237,8 +245,6 @@ class ADV(BaseInstrument):
                     pi = pitch[height_idx, :] if pitch is not None else None
                     ri = roll[height_idx, :] if roll is not None else None
 
-                    if hi is None:
-                        print("here")
                     u1_new, u2_new, u3_new = coord_transform_3_beam_nortek(
                         u1=u1,
                         u2=u2,
@@ -259,10 +265,10 @@ class ADV(BaseInstrument):
 
             flow_rotation = self._rotate.get("flow_rotation")
 
-            if flow_rotation and self.coords == "beam":
+            if flow_rotation and burst_data["coords"] == "beam":
                 raise ValueError("Cannot rotate flow velocity with ADV.coords == 'beam'. Specify either 'xyz' or 'enu'"
                                  " as 'coords_out' in the rotate options dictionary.")
-            elif flow_rotation and self.coords != "beam":
+            elif flow_rotation and burst_data["coords"] != "beam":
                 if isinstance(flow_rotation, str):
                     if flow_rotation == "align_principal":
                         theta_h, theta_v = align_with_principal_axis(burst_data["u1"], burst_data["u2"], burst_data["u3"])
@@ -288,7 +294,7 @@ class ADV(BaseInstrument):
             threshold_max: float = 3.0,
     ):
         u_out = u.copy()
-        bad_rows = np.where((u_out < threshold_min) | (u_out > threshold_max))[0]
+        bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
         u_out[bad_rows] = np.nan
         interp_rows(u_out)
         return u_out
@@ -460,12 +466,12 @@ class ADV(BaseInstrument):
         Tuple of turbulent and wave momentum flux components
         """
 
+        h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth
+
         u = sig.detrend(u)
         v = sig.detrend(v)
         w = sig.detrend(w)
         p = sig.detrend(p)
-
-        h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth
 
         # Getting sea surface elevation spectrum
         f, P_pp = psd(p, self.fs, **kwargs)
@@ -711,7 +717,7 @@ class ADV(BaseInstrument):
             turbulence and wave components (e.g. 'uu_turb', 'uu_wave').
         """
 
-        if self.coords == "beam":
+        if burst_data["coords"] == "beam":
             raise ValueError("Reynolds stress is not implemented for beam coordinates."
                              " Switch to either xyz or enu as a preprocessing step")
 
@@ -812,6 +818,8 @@ class ADV(BaseInstrument):
 
         elif method == "phase":
             # Extract phase method-specific kwargs with error handling
+            if phase_kwargs is None:
+                phase_kwargs = {}
             f_wave_low = phase_kwargs.get("f_wave_low", None)
             f_wave_high = phase_kwargs.get("f_wave_high", None)
 
@@ -991,7 +999,7 @@ class ADV(BaseInstrument):
 
             return eps, noise, quality_flag
 
-        if self.coords == "beam":
+        if burst_data["coords"] == "beam":
             raise ValueError("Dissipation is not implemented for beam coordinates."
                              " Switch to either xyz or enu as a preprocessing step")
 
@@ -1012,6 +1020,10 @@ class ADV(BaseInstrument):
         return out
 
     def tke(self, burst_data: Dict[str, np.ndarray]):
+        if burst_data["coords"] == "beam":
+            raise ValueError("TKE is not implemented for beam coordinates."
+                             " Switch to either xyz or enu as a preprocessing step")
+        
         u1_bar = np.mean(burst_data["u1"], axis=1, keepdims=True)
         u2_bar = np.mean(burst_data["u2"], axis=1, keepdims=True)
         u3_bar = np.mean(burst_data["u3"], axis=1, keepdims=True)
@@ -1036,8 +1048,8 @@ class ADV(BaseInstrument):
         if "p" not in burst_data.keys():
             raise ValueError("Pressure must be included in dataset to calculate directional wave statistics")
 
-        if self.coords == "beam":
-            raise ValueError("Directional wave statistics is not implemented for beam coordinates.")
+        if burst_data["coords"] == "beam":
+            raise ValueError("Directional wave statistics not implemented for beam coordinates.")
 
         n_heights = self.n_heights
         out = {}
@@ -1132,6 +1144,9 @@ class ADV(BaseInstrument):
         of pressure fluctuations with depth.
         """
 
+        # Calculate water depth (m) prior to detrending
+        h = 1e4 * np.nanmean(p) / (rho * g) + mab
+
         u = sig.detrend(u, type="linear")
         v = sig.detrend(v, type="linear")
         p = sig.detrend(p, type="linear")
@@ -1166,7 +1181,6 @@ class ADV(BaseInstrument):
             }
 
         # Getting sea surface elevation spectrum
-        h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth (m)
         omega = 2 * np.pi * f
         k = get_wavenumber(omega, h)
         attenuation_correction = 1e4 * np.cosh(k * h) / (rho * g * np.cosh(k * mab))
@@ -1323,3 +1337,22 @@ class ADV(BaseInstrument):
                 * df
             )
         return out
+
+    def subsample(self, start_idx, end_idx):
+        new_adv = self.__class__(
+            self.files[start_idx:end_idx],
+            self.name_map,
+            self.fs,
+            self.z,
+            self.source_coords,
+            self.orientation,
+        )
+        if self._preprocess_enabled:
+            new_adv.set_preprocess_opts(self._preprocess_opts)
+        return new_adv
+
+    @property
+    def output_coords(self):
+        if self._preprocess_enabled and self._rotate:
+            return self._rotate.get("coords_out", self.source_coords)
+        return self.source_coords

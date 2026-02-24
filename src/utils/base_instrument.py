@@ -293,10 +293,7 @@ class BaseInstrument(ABC):
 
             burst_data[out_key] = var_data
 
-        if self._preprocess_enabled:
-            burst_data_out = self._apply_preprocessing(burst_data)
-        else:
-            burst_data_out = burst_data
+        burst_data_out = self._apply_preprocessing(burst_data)
 
         self._cached_idx = burst_idx
         self._cached_data = burst_data_out
@@ -335,5 +332,4 @@ class BaseInstrument(ABC):
         return stacked_data
 
     def subsample(self, start_idx: int, end_idx: int):
-        files = self.files[start_idx:end_idx]
-        return self.__class__(files, self.name_map, self.fs, self.z)
+        raise NotImplementedError("Subclasses must implement subsample()")

@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     # Name map:
     name_map = {"u1": "E", "u2": "N", "u3": "w", "p": "P2", "time": "dn"}
-    adv = ADV.from_raw(files, name_map, fs=32, z=mabs, coords="enu", orientation="down")
+    adv = ADV.from_files(files, name_map, fs=32, z=mabs, source_coords="enu", orientation="down")
 
     T = np.array([[2896, 2896, 0], [-2896, 2896, 0], [-2896, -2896, 5792]], dtype=float)
 
@@ -25,7 +25,7 @@ if __name__ == "__main__":
     T /= 4096.0
 
     pre_opts = {
-        "despike": {"method": "gn"},
+        "despike": {"method": "threshold", "threshold_min": -0.2, "threshold_max": 0.2},
         "rotate": {
             "flow_rotation": "align_current",
             "coords_out": "xyz",
