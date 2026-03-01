@@ -1,11 +1,10 @@
 import numpy as np
 import scipy.signal as sig
 from typing import Optional, Union, List, Dict, Any
-from sklearn.linear_model import LinearRegression
 from utils.base_instrument import BaseInstrument
 from utils.interp_utils import interp_rows
 from utils.wave_utils import get_wavenumber, get_cg, jones_monismith_correction
-from scipy.stats import median_abs_deviation
+from scipy.stats import median_abs_deviation, linregress
 
 from utils.spectral_utils import psd, csd, get_frequency_range
 from utils.constants import GRAVITATIONAL_ACCELERATION as g
@@ -1032,9 +1031,9 @@ class ADV(BaseInstrument):
             # linear regression
             X = J33 * alpha * (omega_inertial ** (-5 / 3))
             y = Pw_inertial
-            reg = LinearRegression().fit(X.reshape(-1, 1), y)
-            eps = reg.coef_[0] ** (3 / 2)
-            noise = reg.intercept_
+            slope, intercept, *_ = linregress(X, y)
+            eps = slope ** (3 / 2)
+            noise = intercept
 
             if noise < J33 * alpha * (eps ** (2 / 3)) * (omega_range[0] ** (-5 / 3)):
                 quality_flag = 1

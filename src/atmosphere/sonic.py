@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.signal as sig
-from sklearn.linear_model import LinearRegression
+from scipy.stats import linregress
 from typing import Optional, Union, List, Dict, Any
 from src.utils.spectral_utils import psd, csd, get_frequency_range
 from src.utils.base_instrument import BaseInstrument
@@ -200,8 +200,8 @@ class Sonic(BaseInstrument):
             else:
                 X = c1 * k[good_data] ** (-5 / 3)
                 y = G[good_data]
-                reg = LinearRegression().fit(X.reshape(-1, 1), y)
-                eps23 = reg.coef_[0].item()
+                slope, *_ = linregress(X, y)
+                eps23 = slope
                 if eps23 < 0:
                     eps = np.nan
                 else:

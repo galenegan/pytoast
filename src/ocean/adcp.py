@@ -2,8 +2,7 @@ import copy
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
 from scipy.optimize import curve_fit
-from scipy.stats import circmean
-from sklearn.linear_model import LinearRegression
+from scipy.stats import circmean, linregress
 from typing import Optional, Union, List, Dict, Any
 from utils.base_instrument import BaseInstrument
 from utils.interp_utils import interp_rows
@@ -627,8 +626,8 @@ class ADCP(BaseInstrument):
                 k = 2 * np.pi * f / u_bar[height_idx]
                 X = C * k ** (-5 / 3)
                 y = P_T_k
-                reg = LinearRegression().fit(X.reshape(-1, 1), y)
-                out["eps"][height_idx] = reg.coef_[0] ** (3 / 2)
+                slope, *_ = linregress(X, y)
+                out["eps"][height_idx] = slope ** (3 / 2)
         elif method == "5th_beam_spectral":
             u5 = burst_data["u5"]
             u5_bar = np.mean(u5, axis=1, keepdims=True)
@@ -640,8 +639,8 @@ class ADCP(BaseInstrument):
                 k = 2 * np.pi * f / u_bar[height_idx]
                 X = C_w * k ** (-5 / 3)
                 y = P_55_k
-                reg = LinearRegression().fit(X.reshape(-1, 1), y)
-                out["eps"][height_idx] = reg.coef_[0] ** (3 / 2)
+                slope, *_ = linregress(X, y)
+                out["eps"][height_idx] = slope ** (3 / 2)
 
         elif method == "structure_function":
             z_start = sf_kwargs.get("z_start_idx", 0)
@@ -658,14 +657,14 @@ class ADCP(BaseInstrument):
                 u_bar = np.mean(u, axis=1, keepdims=True)
                 u_prime = u - u_bar
                 for ii in range(len(heights) - min_points):
-                    D_ll[ii, ii:z_end, jj] = np.mean((u_prime[ii:z_end, :] - u_prime[ii, :])**2, axis=1)
+                    D_ll[ii, ii:z_end, jj] = np.mean((u_prime[ii:z_end, :] - u_prime[ii, :]) ** 2, axis=1)
                     r = heights[ii:z_end] - heights[ii]
                     X = 2.1 * r ** (2 / 3)
                     y = D_ll[ii, ii:z_end, jj]
                     good_indices = ~np.isnan(y)
                     if sum(good_indices) >= min_points:
-                        reg = LinearRegression().fit(X[good_indices].reshape(-1, 1), y[good_indices])
-                        eps[ii, jj] = reg.coef_[0]**(3 / 2)
+                        slope, *_ = linregress(X[good_indices], y[good_indices])
+                        eps[ii, jj] = slope ** (3 / 2)
                     else:
                         eps[ii, jj] = np.nan
 
