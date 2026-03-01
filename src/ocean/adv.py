@@ -192,110 +192,143 @@ class ADV(BaseInstrument):
         self._cached_data = None
 
     def _apply_preprocessing(self, burst_data):
-        # Setting coords regardless of preprocessing options
-        coords_in = self.source_coords
-        burst_data["coords"] = coords_in
+        burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
             return burst_data
 
         if self._despike:
-            if self._despike_method == "gn":
-                burst_data["u1"] = self._apply_gn_despike(burst_data["u1"], **self._despike_opts)
-                burst_data["u2"] = self._apply_gn_despike(burst_data["u2"], **self._despike_opts)
-                burst_data["u3"] = self._apply_gn_despike(burst_data["u3"], **self._despike_opts)
-            elif self._despike_method == "threshold":
-                burst_data["u1"] = self._apply_threshold_despike(burst_data["u1"], **self._despike_opts)
-                burst_data["u2"] = self._apply_threshold_despike(burst_data["u2"], **self._despike_opts)
-                burst_data["u3"] = self._apply_threshold_despike(burst_data["u3"], **self._despike_opts)
-            else:
+            despike_fn = {"gn": self._apply_gn_despike, "threshold": self._apply_threshold_despike}.get(
+                self._despike_method
+            )
+            if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
+            for key in ["u1", "u2", "u3"]:
+                burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
 
         if self._rotate:
-            n_heights = self.n_heights
             coords_out = self._rotate.get("coords_out")
-
             if coords_out:
-                transformation_matrices = self._rotate.get("transformation_matrices")
-                if transformation_matrices is None:
-                    raise ValueError("A transformation matrix must be provided for instruments at each height")
-                elif len(transformation_matrices) != self.n_heights:
-                    raise ValueError("A transformation matrix must be provided for instruments at each height")
-
-                heading = burst_data.get("heading")
-                pitch = burst_data.get("pitch")
-                roll = burst_data.get("roll")
-
-                if ((coords_in == "enu") or (coords_out == "enu")) and (
-                    (heading is None) or (pitch is None) or (roll is None)
-                ):
-                    constant_hpr = self._rotate.get("constant_hpr")
-
-                    if constant_hpr:
-                        if len(constant_hpr) != n_heights:
-                            raise ValueError("A (heading, pitch, roll) tuple must be provided for each instrument")
-                        else:
-                            heading = np.array([constant_hpr[i][0] for i in range(n_heights)]).reshape(-1, 1)
-                            pitch = np.array([constant_hpr[i][1] for i in range(n_heights)]).reshape(-1, 1)
-                            roll = np.array([constant_hpr[i][2] for i in range(n_heights)]).reshape(-1, 1)
-                    else:
-                        raise ValueError(
-                            "Heading, pitch, and roll must be provided for any coordinate transformation to/from ENU"
-                        )
-
-                for height_idx in range(n_heights):
-                    u1 = burst_data["u1"][height_idx, :]
-                    u2 = burst_data["u2"][height_idx, :]
-                    u3 = burst_data["u3"][height_idx, :]
-                    hi = heading[height_idx, :] if heading is not None else None
-                    pi = pitch[height_idx, :] if pitch is not None else None
-                    ri = roll[height_idx, :] if roll is not None else None
-
-                    u1_new, u2_new, u3_new = coord_transform_3_beam_nortek(
-                        u1=u1,
-                        u2=u2,
-                        u3=u3,
-                        heading=hi,
-                        pitch=pi,
-                        roll=ri,
-                        transformation_matrix=transformation_matrices[height_idx],
-                        declination=self._rotate.get("declination", 0.0),
-                        orientation=self.orientation,
-                        coords_in=coords_in,
-                        coords_out=coords_out,
-                    )
-                    burst_data["u1"][height_idx, :] = u1_new
-                    burst_data["u2"][height_idx, :] = u2_new
-                    burst_data["u3"][height_idx, :] = u3_new
-                burst_data["coords"] = coords_out
+                burst_data = self._apply_coord_transform(burst_data, coords_out)
 
             flow_rotation = self._rotate.get("flow_rotation")
+            if flow_rotation:
+                if burst_data["coords"] == "beam":
+                    raise ValueError(
+                        "Cannot apply flow rotation in beam coordinates. Specify 'coords_out' "
+                        "as 'xyz' or 'enu' in rotate options."
+                    )
+                burst_data = self._apply_flow_rotation(burst_data, flow_rotation)
 
-            if flow_rotation and burst_data["coords"] == "beam":
+        return burst_data
+
+    def _apply_coord_transform(self, burst_data, coords_out):
+        """
+        Transform velocity components between coordinate systems.
+
+        Uses configuration stored in self._rotate (transformation_matrices, declination,
+        constant_hpr). Can be called from _apply_preprocessing during standard burst
+        loading, or directly from analysis methods when on-the-fly transformation is needed.
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary. burst_data["coords"] must reflect the current
+            coordinate system of u1/u2/u3.
+        coords_out : str
+            Target coordinate system. One of ["beam", "xyz", "enu"].
+
+        Returns
+        -------
+        dict
+            burst_data with velocity components transformed in-place and
+            burst_data["coords"] updated to coords_out.
+        """
+        coords_in = burst_data["coords"]
+        n_heights = self.n_heights
+
+        transformation_matrices = self._rotate.get("transformation_matrices")
+        if transformation_matrices is None:
+            raise ValueError("A transformation matrix must be provided for each instrument")
+        if len(transformation_matrices) != n_heights:
+            raise ValueError(f"Expected {n_heights} transformation matrices, got {len(transformation_matrices)}")
+
+        heading = burst_data.get("heading")
+        pitch = burst_data.get("pitch")
+        roll = burst_data.get("roll")
+
+        if ((coords_in == "enu") or (coords_out == "enu")) and ((heading is None) or (pitch is None) or (roll is None)):
+            constant_hpr = self._rotate.get("constant_hpr")
+            if constant_hpr:
+                if len(constant_hpr) != n_heights:
+                    raise ValueError("A (heading, pitch, roll) tuple must be provided for each instrument")
+                heading = np.array([constant_hpr[i][0] for i in range(n_heights)]).reshape(-1, 1)
+                pitch = np.array([constant_hpr[i][1] for i in range(n_heights)]).reshape(-1, 1)
+                roll = np.array([constant_hpr[i][2] for i in range(n_heights)]).reshape(-1, 1)
+            else:
                 raise ValueError(
-                    "Cannot rotate flow velocity with ADV.coords == 'beam'. Specify either 'xyz' or 'enu'"
-                    " as 'coords_out' in the rotate options dictionary."
+                    "Heading, pitch, and roll must be provided for any coordinate transformation to/from ENU"
                 )
-            elif flow_rotation and burst_data["coords"] != "beam":
-                if isinstance(flow_rotation, str):
-                    if flow_rotation == "align_principal":
-                        theta_h, theta_v = align_with_principal_axis(
-                            burst_data["u1"], burst_data["u2"], burst_data["u3"]
-                        )
-                    elif flow_rotation == "align_current":
-                        theta_h, theta_v = align_with_flow(burst_data["u1"], burst_data["u2"], burst_data["u3"])
-                    else:
-                        raise ValueError(f"Invalid rotation option '{flow_rotation}'")
-                elif isinstance(flow_rotation, tuple):
-                    theta_h, theta_v = flow_rotation
 
-                u1_new, u2_new, u3_new = rotate_velocity_by_theta(
-                    burst_data["u1"], burst_data["u2"], burst_data["u3"], theta_h, theta_v
+        # Each instrument in the array may have a different orientation, so HPR
+        # is indexed per instrument (height_idx).
+        for height_idx in range(n_heights):
+            u1_new, u2_new, u3_new = coord_transform_3_beam_nortek(
+                u1=burst_data["u1"][height_idx, :],
+                u2=burst_data["u2"][height_idx, :],
+                u3=burst_data["u3"][height_idx, :],
+                heading=heading[height_idx, :] if heading is not None else None,
+                pitch=pitch[height_idx, :] if pitch is not None else None,
+                roll=roll[height_idx, :] if roll is not None else None,
+                transformation_matrix=transformation_matrices[height_idx],
+                declination=self._rotate.get("declination", 0.0),
+                orientation=self.orientation,
+                coords_in=coords_in,
+                coords_out=coords_out,
+            )
+            burst_data["u1"][height_idx, :] = u1_new
+            burst_data["u2"][height_idx, :] = u2_new
+            burst_data["u3"][height_idx, :] = u3_new
+
+        burst_data["coords"] = coords_out
+        return burst_data
+
+    def _apply_flow_rotation(self, burst_data, flow_rotation):
+        """
+        Rotate u1/u2/u3 to align with the burst-mean flow direction.
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary. Must be in non-beam coordinates.
+        flow_rotation : str or tuple
+            "align_principal", "align_current", or (theta_h_deg, theta_v_deg).
+
+        Returns
+        -------
+        dict
+            burst_data with u1/u2/u3 rotated and burst_data["rotation"] set.
+        """
+        if isinstance(flow_rotation, str):
+            if flow_rotation == "align_principal":
+                theta_h, theta_v = align_with_principal_axis(burst_data["u1"], burst_data["u2"], burst_data["u3"])
+            elif flow_rotation == "align_current":
+                theta_h, theta_v = align_with_flow(burst_data["u1"], burst_data["u2"], burst_data["u3"])
+            else:
+                raise ValueError(
+                    f"Invalid flow_rotation '{flow_rotation}'. Must be 'align_principal' or 'align_current'."
                 )
-                burst_data["u1"] = u1_new
-                burst_data["u2"] = u2_new
-                burst_data["u3"] = u3_new
-                burst_data["rotation"] = flow_rotation
+        elif isinstance(flow_rotation, tuple):
+            theta_h, theta_v = flow_rotation
+        else:
+            raise TypeError(f"flow_rotation must be a str or tuple, got {type(flow_rotation)}")
 
+        u1_new, u2_new, u3_new = rotate_velocity_by_theta(
+            burst_data["u1"], burst_data["u2"], burst_data["u3"], theta_h, theta_v
+        )
+        burst_data["u1"] = u1_new
+        burst_data["u2"] = u2_new
+        burst_data["u3"] = u3_new
+        burst_data["rotation"] = flow_rotation
         return burst_data
 
     def _apply_threshold_despike(
