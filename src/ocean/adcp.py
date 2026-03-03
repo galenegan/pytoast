@@ -29,6 +29,7 @@ class ADCP(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
+        data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: str = "beam",
         orientation: str = "up",
         beam_angle: float = 25.0,
@@ -38,7 +39,7 @@ class ADCP(BaseInstrument):
         self.orientation = orientation
         self.beam_angle = beam_angle
         self.manufacturer = manufacturer
-        super().__init__(files, name_map, fs, z)
+        super().__init__(files, name_map, fs, z, data_keys)
 
     @staticmethod
     def validate_inputs(
@@ -46,6 +47,7 @@ class ADCP(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
+        data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: str = "beam",
         orientation: str = "up",
         beam_angle: float = 25.0,
@@ -85,6 +87,7 @@ class ADCP(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: str = "beam",
         orientation: str = "up",
         beam_angle: float = 25.0,
@@ -141,8 +144,18 @@ class ADCP(BaseInstrument):
         ADCP object
 
         """
-        ADCP.validate_inputs(files, name_map, fs, z, source_coords, orientation, beam_angle, manufacturer)
-        return cls(files, name_map, fs, z, source_coords, orientation, beam_angle, manufacturer)
+        ADCP.validate_inputs(
+            files=files,
+            name_map=name_map,
+            fs=fs,
+            z=z,
+            data_keys=data_keys,
+            source_coords=source_coords,
+            orientation=orientation,
+            beam_angle=beam_angle,
+            manufacturer=manufacturer
+        )
+        return cls(files, name_map, fs, z, data_keys, source_coords, orientation, beam_angle, manufacturer)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
@@ -454,7 +467,7 @@ class ADCP(BaseInstrument):
                     def model_ogive(k, uw, k0):
                         A = (7 / (3 * np.pi)) * np.sin(3 * np.pi / 7)
                         cospectrum = uw * A * (1 / k0) / (1 + (k / k0) ** (7 / 3))
-                        ogive = cumulative_trapezoid(cospectrum, k)
+                        ogive = cumulative_trapezoid(cospectrum, k, initial=0)
                         return ogive
 
                     out[stress_key] = np.empty((self.n_heights,))
@@ -465,7 +478,7 @@ class ADCP(BaseInstrument):
                         k_measured = 2 * np.pi * f / u_bar
                         Co_measured = (P_u1 - P_u2) / (2 * np.sin(2 * beam_angle_rad))
                         Co_measured_k = Co_measured * u_bar / (2 * np.pi)
-                        ogive_measured = cumulative_trapezoid(Co_measured_k, k_measured)
+                        ogive_measured = cumulative_trapezoid(Co_measured_k, k_measured, initial=0)
 
                         # Cutoff
                         k_cutoff = 2 * np.pi * f_cutoff_ogive / u_bar
@@ -488,7 +501,9 @@ class ADCP(BaseInstrument):
 
             # Implement guerra and thomson
             pitch = circmean(np.deg2rad(pitch))
+            pitch = (pitch + np.pi) % (2 * np.pi) - np.pi
             roll = circmean(np.deg2rad(roll))
+            roll = (roll + np.pi) % (2 * np.pi) - np.pi
 
             # Using their variable names to make life easier
             theta = beam_angle_rad
@@ -586,7 +601,7 @@ class ADCP(BaseInstrument):
 
         if method not in ["4beam_spectral", "5th_beam_spectral", "structure_function"]:
             raise ValueError(
-                f"Invalid dissipation method '{method}'. Must be '4beam_spectral', '5beam_spectral', or 'structure_function'."
+                f"Invalid dissipation method '{method}'. Must be '4beam_spectral', '5th_beam_spectral', or 'structure_function'."
             )
 
         # Kolmogorov constants
@@ -626,7 +641,8 @@ class ADCP(BaseInstrument):
                 k = 2 * np.pi * f / u_bar[height_idx]
                 X = C * k ** (-5 / 3)
                 y = P_T_k
-                slope, *_ = linregress(X, y)
+                idx_fit = k > 0
+                slope, *_ = linregress(X[idx_fit], y[idx_fit])
                 out["eps"][height_idx] = slope ** (3 / 2)
         elif method == "5th_beam_spectral":
             u5 = burst_data["u5"]
@@ -639,7 +655,8 @@ class ADCP(BaseInstrument):
                 k = 2 * np.pi * f / u_bar[height_idx]
                 X = C_w * k ** (-5 / 3)
                 y = P_55_k
-                slope, *_ = linregress(X, y)
+                idx_fit = k > 0
+                slope, *_ = linregress(X[idx_fit], y[idx_fit])
                 out["eps"][height_idx] = slope ** (3 / 2)
 
         elif method == "structure_function":
@@ -670,6 +687,8 @@ class ADCP(BaseInstrument):
 
             # Averaging over beams
             out["eps"] = np.nanmean(eps, axis=1)
+
+        return out
 
     def tke(self, burst_data):
         pass

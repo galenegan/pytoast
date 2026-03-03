@@ -1,6 +1,7 @@
 from abc import ABC
 import numpy as np
 import os
+import sys
 from typing import List, Union, Optional, Dict
 import scipy.io as sio
 import pandas as pd
@@ -16,6 +17,7 @@ class BaseInstrument(ABC):
         name_map: dict,
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float]]] = None,
+        data_keys: Optional[Union[str, List[str]]] = None,
     ):
         """
         Initialize data manager.
@@ -30,11 +32,15 @@ class BaseInstrument(ABC):
             Sampling frequency
         z : float or List[float], optional
             Height coordinates
+        data_keys : str or List[str], optional
+            One or more nested keys to traverse after loading (e.g. "Data" or
+            ["Data", "Burst"] if variables live at file["Data"]["Burst"])
         """
         files = files if isinstance(files, list) else [files]
         self.validate_common_inputs(files, name_map, fs, z)
         self.files = files
         self.name_map = name_map
+        self.data_keys = [data_keys] if isinstance(data_keys, str) else (list(data_keys) if data_keys else [])
         self.fs, self.z, self.file_type, self.num_samples_per_burst = self._inspect_first_file(fs, z)
         self._cached_idx = None
         self._cached_data = None
@@ -109,10 +115,10 @@ class BaseInstrument(ABC):
             raise TypeError("`fs` must be either an int or a float")
 
     @staticmethod
-    def _load_file(file_path):
+    def _load_file(file_path, data_keys=None):
         suffix = file_path.split(".")[-1].lower()
         if suffix == "mat":
-            data = sio.loadmat(file_path, simplify_cells=True)
+            data = strip_mat_nulls(sio.loadmat(file_path, simplify_cells=True))
             file_type = "mat"
         elif suffix == "npy":
             data = np.load(file_path, allow_pickle=True).item()
@@ -125,6 +131,9 @@ class BaseInstrument(ABC):
             file_type = "nc"
         else:
             raise Exception(f"Unrecognized file type .{suffix} for filepath input")
+
+        for key in (data_keys or []):
+            data = data[key]
 
         return data, file_type
 
@@ -154,7 +163,7 @@ class BaseInstrument(ABC):
         if not self.files:
             raise ValueError("No files provided")
 
-        data, file_type = self._load_file(self.files[0])
+        data, file_type = self._load_file(self.files[0], self.data_keys)
 
         # Normalize z to a numpy array, or infer from data dimensions
         # TODO: Test this to make sure it's generalizable to xarray DA, numpy array, and pandas df
@@ -274,7 +283,7 @@ class BaseInstrument(ABC):
 
         file_path = self.files[burst_idx]
         try:
-            data, _ = self._load_file(file_path)
+            data, _ = self._load_file(file_path, self.data_keys)
         except Exception as e:
             raise IOError(f"Failed to load {file_path}: {e}")
 
@@ -293,6 +302,9 @@ class BaseInstrument(ABC):
                         var_data = var_data.T
                 else:
                     var_data = np.expand_dims(var_data, axis=0)  # 2D even if only one height
+
+            # Enforcing byte order in case there is a mismatch
+            var_data = var_data.astype(var_data.dtype.newbyteorder('='))
 
             burst_data[out_key] = var_data
 
@@ -336,3 +348,11 @@ class BaseInstrument(ABC):
 
     def subsample(self, start_idx: int, end_idx: int):
         raise NotImplementedError("Subclasses must implement subsample()")
+
+# Helper function
+def strip_mat_nulls(obj):
+    if isinstance(obj, dict):
+        return {k.rstrip('\x00'): strip_mat_nulls(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(strip_mat_nulls(i) for i in obj)
+    return obj

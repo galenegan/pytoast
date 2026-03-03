@@ -32,6 +32,9 @@ def coord_transform_3_beam_nortek(
     -------
 
     """
+    if coords_in == coords_out:
+        return (u1, u2, u3)
+
     T = transformation_matrix.copy()
     if np.any(T > 1000):
         T /= 4096.0
@@ -98,7 +101,7 @@ def coord_transform_3_beam_nortek(
     elif coords_in == "enu" and coords_out == "xyz":
         U_rot = T @ np.linalg.inv(T_flip) @ np.linalg.inv(R) @ U
     elif coords_in == "xyz" and coords_out == "enu":
-        U_rot = R @ T_flip @ np.linalg.inv(T) @ U  # TODO: validate that this is the proper inverse
+        U_rot = R @ T_flip @ np.linalg.inv(T) @ U
     else:
         raise ValueError("Invalid coordinate transformation.")
 
@@ -124,43 +127,51 @@ def coord_transform_4_beam_nortek(
     coords_out: str = "xyz",
 ):
     """
-    Implementation of Nortek's coordinate transformation for the 4-beam Signature instrument
+    Implementation of Nortek's coordinate transformation for the 4-beam Signature instrument.
+    Supports all combinations of beam, xyz, and enu coordinates.
 
     https://support.nortekgroup.com/hc/en-us/articles/360029820971-How-is-a-coordinate-transformation-done
+
     Parameters
     ----------
-    u1
-    u2
-    u3
-    u4
-    heading
-    pitch
-    roll
-    transformation_matrix
-    declination
-    coords_in
-    coords_out
+    u1, u2, u3, u4 : array-like
+        Velocity components in the input coordinate system
+    heading, pitch, roll : float or array-like
+        Instrument orientation in degrees
+    transformation_matrix : np.ndarray
+        4x4 beam-to-xyz transformation matrix from the instrument config
+    declination : float
+        Magnetic declination in degrees
+    orientation : str
+        "up" or "down"
+    coords_in, coords_out : str
+        One of "beam", "xyz", "enu"
 
     Returns
     -------
-
+    tuple of four np.ndarray
     """
+    if coords_in == coords_out:
+        return (u1, u2, u3, u4)
 
     T = transformation_matrix.copy()
     if np.any(T > 1000):
         T /= 4096.0
 
-    # Velocity array
     U = np.vstack((u1.reshape(1, -1), u2.reshape(1, -1), u3.reshape(1, -1), u4.reshape(1, -1)))
 
+    # beam <-> xyz: no orientation correction needed
     if coords_in == "beam" and coords_out == "xyz":
         U_rot = T @ U
-    elif (coords_in == "beam" or coords_in == "xyz") and coords_out == "enu":
-        R = np.zeros((4, 4))
+    elif coords_in == "xyz" and coords_out == "beam":
+        U_rot = np.linalg.inv(T) @ U
+    else:
+        # Build the 4x4 xyz->enu rotation matrix per Nortek Signature reference
         heading_plus_dec = (heading + declination) % 360
         h_rad = circmean(np.radians(heading_plus_dec - 90))
         p_rad = circmean(np.radians(pitch))
         r_rad = circmean(np.radians(roll))
+
         H = np.array(
             [
                 [np.cos(h_rad), np.sin(h_rad), 0],
@@ -170,22 +181,15 @@ def coord_transform_4_beam_nortek(
         )
         P = np.array(
             [
-                [
-                    np.cos(p_rad),
-                    -np.sin(p_rad) * np.sin(r_rad),
-                    -np.cos(r_rad) * np.sin(p_rad),
-                ],
+                [np.cos(p_rad), -np.sin(p_rad) * np.sin(r_rad), -np.cos(r_rad) * np.sin(p_rad)],
                 [0, np.cos(r_rad), -np.sin(r_rad)],
-                [
-                    np.sin(p_rad),
-                    np.sin(r_rad) * np.cos(p_rad),
-                    np.cos(p_rad) * np.cos(r_rad),
-                ],
+                [np.sin(p_rad), np.sin(r_rad) * np.cos(p_rad), np.cos(p_rad) * np.cos(r_rad)],
             ]
         )
-        R[:3, :3] = H @ P
 
-        # Trusting Nortek
+        R = np.zeros((4, 4))
+        R[:3, :3] = H @ P
+        # Nortek Signature twoZs modifications (from Nortek reference script)
         R[0, 2] /= 2
         R[0, 3] = R[0, 2]
         R[1, 2] /= 2
@@ -195,21 +199,27 @@ def coord_transform_4_beam_nortek(
         R[3, 3] = R[2, 2]
         R[3, 2] = 0
 
-        if coords_in == "beam":
-            U = T @ U
+        R_inv = np.linalg.inv(R)
 
-        if orientation == "down":
-            U *= -1
+        # For "down" orientation, flip sign of y, z1, z2 (not x) in xyz space before
+        # applying the ENU rotation. sign^2 = 1, so the same array undoes itself on inverse.
+        sign = np.array([[1], [-1], [-1], [-1]]) if orientation == "down" else np.ones((4, 1))
 
-        U_rot = R @ U
-    else:
-        raise ValueError("Invalid coordinate transformation.")
+        if coords_in == "xyz" and coords_out == "enu":
+            U_rot = R @ (sign * U)
+        elif coords_in == "beam" and coords_out == "enu":
+            U_xyz = T @ U
+            U_rot = R @ (sign * U_xyz)
+        elif coords_in == "enu" and coords_out == "xyz":
+            # sign^2 = 1, so applying sign again inverts the orientation correction
+            U_rot = sign * (R_inv @ U)
+        elif coords_in == "enu" and coords_out == "beam":
+            U_xyz = sign * (R_inv @ U)
+            U_rot = np.linalg.inv(T) @ U_xyz
+        else:
+            raise ValueError("Invalid coordinate transformation.")
 
-    u1_rot = U_rot[0, :]
-    u2_rot = U_rot[1, :]
-    u3_rot = U_rot[2, :]
-    u4_rot = U_rot[3, :]
-    return (u1_rot, u2_rot, u3_rot, u4_rot)
+    return (U_rot[0, :], U_rot[1, :], U_rot[2, :], U_rot[3, :])
 
 
 def coord_transform_4_beam_rdi(
@@ -228,31 +238,44 @@ def coord_transform_4_beam_rdi(
     coords_out: str = "xyz",
 ):
     """
-    Coordinate transformation for Teledyne RDI 4-beam ADCPs
+    Coordinate transformation for Teledyne RDI 4-beam ADCPs. Supports all
+    combinations of beam, xyz, and enu coordinates.
+
     https://www.teledynemarine.com/en-us/support/SiteAssets/RDI/Manuals%20and%20Guides/General%20Interest/Coordinate_Transformation.pdf
 
     Parameters
     ----------
-    u1
-    u2
-    u3
-    u4
-    heading
-    pitch
-    roll
-    transformation_matrix
-    declination
+    u1, u2, u3, u4 : array-like
+        Velocity components in the input coordinate system. For xyz inputs,
+        u4 is the error velocity. For enu inputs, u4 is unused.
+    heading, pitch, roll : float or array-like
+        Instrument orientation in degrees
+    beam_angle : float
+        Beam angle from vertical in degrees (used when transformation_matrix is None)
+    transformation_matrix : np.ndarray, optional
+        4x4 beam-to-xyz transformation matrix. Computed from beam_angle if not provided.
+    declination : float
+        Magnetic declination in degrees
+    orientation : str
+        "up" or "down"
+    coords_in, coords_out : str
+        One of "beam", "xyz", "enu"
 
     Returns
     -------
-
+    tuple of four np.ndarray
+        For enu output: (E, N, U, error), where error is passed through from
+        the xyz stage. For enu input (enu→xyz, enu→beam), the 4th return value
+        is zero because the error velocity cannot be recovered from ENU.
     """
+    if coords_in == coords_out:
+        return (u1, u2, u3, u4)
 
     if transformation_matrix is None:
         beam_angle_rad = np.deg2rad(beam_angle)
         a = 1 / (2 * np.sin(beam_angle_rad))
         b = 1 / (4 * np.cos(beam_angle_rad))
-        c = 1  # Assuming convex transducer head
+        c = 1  # convex transducer head
         d = a / np.sqrt(2)
         T = np.array([[c * a, -c * a, 0, 0], [0, 0, -c * a, c * a], [b, b, b, b], [d, d, -d, -d]])
     else:
@@ -260,46 +283,63 @@ def coord_transform_4_beam_rdi(
 
     U = np.vstack((u1.reshape(1, -1), u2.reshape(1, -1), u3.reshape(1, -1), u4.reshape(1, -1)))
 
+    # beam <-> xyz: T and its inverse (all 4 components, including error velocity)
     if coords_in == "beam" and coords_out == "xyz":
         U_rot = T @ U
-    elif (coords_in == "beam" or coords_in == "xyz") and coords_out == "enu":
-        heading_plus_dec = (heading + declination) % 360
-        r_rad = circmean(np.deg2rad(roll))
-        h_rad = circmean(np.deg2rad(heading_plus_dec))
-        p_rad = circmean(np.deg2rad(pitch))
+        return (U_rot[0, :], U_rot[1, :], U_rot[2, :], U_rot[3, :])
 
-        # Modifications per the manual
-        p_rad = np.arctan(np.tan(p_rad) * np.cos(r_rad))
-        if orientation == "up":
-            r_rad += np.pi
+    if coords_in == "xyz" and coords_out == "beam":
+        U_rot = np.linalg.inv(T) @ U
+        return (U_rot[0, :], U_rot[1, :], U_rot[2, :], U_rot[3, :])
 
-        ch = np.cos(h_rad)
-        cr = np.cos(r_rad)
-        cp = np.cos(p_rad)
-        sh = np.sin(h_rad)
-        sr = np.sin(r_rad)
-        sp = np.sin(p_rad)
+    # All remaining cases involve ENU: build the 3x3 attitude matrix M
+    heading_plus_dec = (heading + declination) % 360
+    r_rad = circmean(np.deg2rad(roll))
+    h_rad = circmean(np.deg2rad(heading_plus_dec))
+    p_rad = circmean(np.deg2rad(pitch))
 
-        M = np.array(
-            [
-                [(ch * cr + sh * sp * sr), (sh * cp), (ch * sr - sh * sp * cr)],
-                [(-sh * cr + ch * sp * sr), (ch * cp), (-sh * sr + ch * sp * cr)],
-                [(-cp * sr), (sp), (cp * cr)],
-            ]
-        )
+    # Modifications per RDI manual
+    p_rad = np.arctan(np.tan(p_rad) * np.cos(r_rad))
+    if orientation == "up":
+        r_rad += np.pi
 
-        if coords_in == "beam":
-            U = T @ U
+    ch, sh = np.cos(h_rad), np.sin(h_rad)
+    cr, sr = np.cos(r_rad), np.sin(r_rad)
+    cp, sp = np.cos(p_rad), np.sin(p_rad)
 
-        U_rot = M @ U
-    else:
-        raise ValueError("Invalid coordinate transformation.")
+    M = np.array(
+        [
+            [(ch * cr + sh * sp * sr), (sh * cp), (ch * sr - sh * sp * cr)],
+            [(-sh * cr + ch * sp * sr), (ch * cp), (-sh * sr + ch * sp * cr)],
+            [(-cp * sr), (sp), (cp * cr)],
+        ]
+    )
 
-    u1_rot = U_rot[0, :]
-    u2_rot = U_rot[1, :]
-    u3_rot = U_rot[2, :]
-    u4_rot = U_rot[3, :]
-    return (u1_rot, u2_rot, u3_rot, u4_rot)
+    if coords_in == "xyz" and coords_out == "enu":
+        # M acts on xyz (first 3 rows); error velocity (row 3) is passed through
+        U_enu = M @ U[:3, :]
+        return (U_enu[0, :], U_enu[1, :], U_enu[2, :], U[3, :])
+
+    if coords_in == "beam" and coords_out == "enu":
+        U_xyz = T @ U  # 4 components: x, y, z, error
+        U_enu = M @ U_xyz[:3, :]
+        return (U_enu[0, :], U_enu[1, :], U_enu[2, :], U_xyz[3, :])
+
+    M_inv = np.linalg.inv(M)
+    zeros = np.zeros((1, U.shape[1]))
+
+    if coords_in == "enu" and coords_out == "xyz":
+        # u4 (error velocity) cannot be recovered from ENU; returned as zero
+        U_xyz = M_inv @ U[:3, :]
+        return (U_xyz[0, :], U_xyz[1, :], U_xyz[2, :], zeros[0, :])
+
+    if coords_in == "enu" and coords_out == "beam":
+        # Reconstruct xyz with error=0 (unrecoverable), then invert T
+        U_xyz4 = np.vstack([M_inv @ U[:3, :], zeros])
+        U_beam = np.linalg.inv(T) @ U_xyz4
+        return (U_beam[0, :], U_beam[1, :], U_beam[2, :], U_beam[3, :])
+
+    raise ValueError(f"Invalid coordinate transformation: {coords_in!r} -> {coords_out!r}")
 
 
 def align_with_principal_axis(u1, u2, u3) -> Tuple:
