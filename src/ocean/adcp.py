@@ -15,6 +15,7 @@ from utils.rotate_utils import (
     coord_transform_3_beam_nortek,
     coord_transform_4_beam_nortek,
     coord_transform_4_beam_rdi,
+    min_angle
 )
 
 
@@ -209,7 +210,7 @@ class ADCP(BaseInstrument):
 
         self._despike = opts.get("despike", {})
         if self._despike:
-            self._despike_opts = {key: val for key, val in self._despike.items() if key != "method"}
+            self._despike_opts = {key: val for key, val in self._despike.items()}
 
         self._rotate = opts.get("rotate", {})
         self._cached_idx = None
@@ -429,6 +430,8 @@ class ADCP(BaseInstrument):
         burst_data: dict,
         method: str = "variance",
         f_cutoff_ogive: float = 0.1,
+        ogive_r2_min: float = 0.9,
+        sigma_wave_ratio_max: Optional[float] = None,
         pitch: np.ndarray = np.array([0.0]),
         roll: np.ndarray = np.array([0.0]),
         **kwargs,
@@ -438,8 +441,12 @@ class ADCP(BaseInstrument):
             raise ValueError(f"Invalid covariance method '{method}'. Must be 'variance', 'ogive_fit', or '5beam'.")
 
         if burst_data["coords"] != "beam":
+            u_bar = np.mean(np.sqrt(burst_data["u1"] ** 2 + burst_data["u2"] ** 2), axis=1)
             burst_data = copy.deepcopy(burst_data)
             burst_data = self._apply_coord_transform(burst_data, "beam")
+        else:
+            burst_data_xyz = self._apply_coord_transform(burst_data, "xyz")
+            u_bar = np.mean(np.sqrt(burst_data_xyz["u1"] ** 2 + burst_data_xyz["u2"] ** 2), axis=1)
 
         beam_angle_rad = np.deg2rad(self.beam_angle)
         out = {}
@@ -463,47 +470,101 @@ class ADCP(BaseInstrument):
                 if method == "variance":
                     out[stress_key] = stress_estimate
                 elif method == "ogive_fit":
-                    # Ogive curve based on Kaimal spectrum
+                    # Traditional (decreasing) ogive fit based on Kaimal spectrum
+                    # (Kirincich et al. 2010, Eq. 13).
+                    #
+                    # The ogive is Og(k) = ∫_k^∞ Co(k') dk', a decreasing function:
+                    # at low k it plateaus near u'w'; at high k it drops to 0.
+                    # Fitting in the low-k (sub-wave) band therefore reads u'w' directly
+                    # from the plateau, regardless of k0.  The reversed (cumulative from
+                    # low k) form used previously was approximately linear in the fit
+                    # range, making the (uw, k0) optimization ill-conditioned and biased.
                     def model_ogive(k, uw, k0):
                         A = (7 / (3 * np.pi)) * np.sin(3 * np.pi / 7)
                         cospectrum = uw * A * (1 / k0) / (1 + (k / k0) ** (7 / 3))
-                        ogive = cumulative_trapezoid(cospectrum, k, initial=0)
-                        return ogive
+                        # Traditional: remaining stress at scales larger than 1/k.
+                        # The Kaimal total ∫_0^∞ Co dk = uw exactly, so:
+                        cum = cumulative_trapezoid(cospectrum, k, initial=0)
+                        return uw - cum
 
-                    out[stress_key] = np.empty((self.n_heights,))
+                    out[stress_key] = np.full((self.n_heights,), np.nan)
                     for height_idx in range(self.n_heights):
-                        u_bar = np.sqrt(u1_bar[height_idx] ** 2 + u2_bar[height_idx] ** 2).squeeze()
+                        u_bar_z = u_bar[height_idx]
                         f, P_u1 = psd(u1_prime[height_idx, :], fs=self.fs, **kwargs)
                         f, P_u2 = psd(u2_prime[height_idx, :], fs=self.fs, **kwargs)
-                        k_measured = 2 * np.pi * f / u_bar
+                        k_measured = 2 * np.pi * f / u_bar_z
                         Co_measured = (P_u1 - P_u2) / (2 * np.sin(2 * beam_angle_rad))
-                        Co_measured_k = Co_measured * u_bar / (2 * np.pi)
-                        ogive_measured = cumulative_trapezoid(Co_measured_k, k_measured, initial=0)
+                        Co_measured_k = Co_measured * u_bar_z / (2 * np.pi)
 
-                        # Cutoff
-                        k_cutoff = 2 * np.pi * f_cutoff_ogive / u_bar
-                        fit_indices = k_measured < k_cutoff
+                        # Traditional ogive: cumulate from high k to low k
+                        ogive_cumulative = cumulative_trapezoid(Co_measured_k, k_measured, initial=0)
+                        ogive_measured = ogive_cumulative[-1] - ogive_cumulative
 
-                        # Initial guesses
+                        k_cutoff = 2 * np.pi * f_cutoff_ogive / u_bar_z
+                        fit_indices = (k_measured > 0) & (k_measured < k_cutoff)
+
+                        # QC 1: wave contamination — σ_wave / u_bar must be below threshold.
+                        # Wave variance is estimated from beam PSD above the cutoff frequency.
+                        # High σ_wave / u_bar means Taylor's frozen-turbulence hypothesis
+                        # may not hold in the wave band.
+                        if sigma_wave_ratio_max is not None:
+                            wave_indices = f > f_cutoff_ogive
+                            if wave_indices.any():
+                                sigma_wave_sq = np.trapz(
+                                    (P_u1[wave_indices] + P_u2[wave_indices]) / 2,
+                                    f[wave_indices],
+                                )
+                                sigma_wave = np.sqrt(max(sigma_wave_sq, 0.0))
+                                if sigma_wave / u_bar_z > sigma_wave_ratio_max:
+                                    continue
+
+                        # Initial guesses: k0 from the sub-wave band only, to avoid
+                        # the wave peak biasing the spectral-peak estimate.
                         uw_0 = stress_estimate[height_idx]
-                        k0_0 = k_measured[np.argmax(k_measured * Co_measured_k)]
+                        fit_k = k_measured[fit_indices]
+                        fit_Co_k = Co_measured_k[fit_indices]
+                        if fit_k.size > 0 and np.any(fit_Co_k != 0):
+                            k0_0 = fit_k[np.argmax(np.abs(fit_k * fit_Co_k))]
+                        else:
+                            k0_0 = k_cutoff / 2
 
-                        popt, pcov = curve_fit(
-                            f=model_ogive,
-                            xdata=k_measured[fit_indices],
-                            ydata=ogive_measured[fit_indices],
-                            p0=(uw_0, k0_0),
-                        )
-                        out[stress_key][height_idx] = popt[0]
+                        # QC 2: convergence
+                        try:
+                            popt, _ = curve_fit(
+                                f=model_ogive,
+                                xdata=k_measured[fit_indices],
+                                ydata=ogive_measured[fit_indices],
+                                p0=(uw_0, k0_0),
+                                bounds=([-np.inf, 0], [np.inf, np.inf]),
+                                maxfev=10000,
+                            )
+                        except RuntimeError:
+                            continue
+
+                        uw_fit, k0_fit = popt
+
+                        # QC 3: k₀ must be positive (already enforced by bounds, but
+                        # guard against edge cases).
+                        if k0_fit <= 0:
+                            continue
+
+                        # QC 4: goodness-of-fit (R²) between model and measured ogive
+                        ogive_model = model_ogive(k_measured[fit_indices], uw_fit, k0_fit)
+                        ss_res = np.sum((ogive_measured[fit_indices] - ogive_model) ** 2)
+                        ss_tot = np.sum((ogive_measured[fit_indices] - np.mean(ogive_measured[fit_indices])) ** 2)
+                        r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+                        if r2 < ogive_r2_min:
+                            continue
+
+                        out[stress_key][height_idx] = uw_fit
+
         elif method == "5beam":
             if self.num_beams != 5:
                 raise ValueError("5beam covariance requires 5 beams")
 
             # Implement guerra and thomson
-            pitch = circmean(np.deg2rad(pitch))
-            pitch = (pitch + np.pi) % (2 * np.pi) - np.pi
-            roll = circmean(np.deg2rad(roll))
-            roll = (roll + np.pi) % (2 * np.pi) - np.pi
+            pitch = circmean(np.deg2rad(min_angle(pitch)))
+            roll = circmean(np.deg2rad(min_angle(roll)))
 
             # Using their variable names to make life easier
             theta = beam_angle_rad
@@ -660,26 +721,43 @@ class ADCP(BaseInstrument):
                 out["eps"][height_idx] = slope ** (3 / 2)
 
         elif method == "structure_function":
+            sf_kwargs = sf_kwargs or {}
             z_start = sf_kwargs.get("z_start_idx", 0)
-            z_end = sf_kwargs.get("z_end_idx", -1)
+            z_end = sf_kwargs.get("z_end_idx", self.n_heights)
             min_points = sf_kwargs.get("min_points", 3)
             beams = sf_kwargs.get("beams", self.beam_keys)
+            # r_min / r_max restrict the fit to the inertial subrange.
+            # Including large separations (r >> outer scale) causes D_LL to
+            # saturate at 2σ² >> 2.1·ε^(2/3)·r^(2/3), which inflates the
+            # fitted slope and ε by orders of magnitude.  r_max should be set
+            # to a value below the outer/integral length scale (often a few
+            # times the bin spacing, or ~10% of the measurement span).
+            r_min = sf_kwargs.get("r_min", None)
+            r_max = sf_kwargs.get("r_max", None)
             heights = self.z[z_start:z_end]
 
             # z x r x beam
-            D_ll = np.zeros((len(heights), len(heights), len(beams))) * np.nan
-            eps = np.empty((len(heights), len(beams)))
+            D_ll = np.full((len(heights), len(heights), len(beams)), np.nan)
+            eps = np.full((len(heights), len(beams)), np.nan)
             for jj, vel_beam in enumerate(beams):
                 u = burst_data[vel_beam]
                 u_bar = np.mean(u, axis=1, keepdims=True)
                 u_prime = u - u_bar
-                for ii in range(len(heights) - min_points):
+                for ii in range(min(len(heights) - min_points, z_end)):
                     D_ll[ii, ii:z_end, jj] = np.mean((u_prime[ii:z_end, :] - u_prime[ii, :]) ** 2, axis=1)
                     r = heights[ii:z_end] - heights[ii]
                     X = 2.1 * r ** (2 / 3)
                     y = D_ll[ii, ii:z_end, jj]
-                    good_indices = ~np.isnan(y)
-                    if sum(good_indices) >= min_points:
+
+                    # Restrict fit to inertial subrange; always exclude r=0
+                    fit_mask = r > 0
+                    if r_min is not None:
+                        fit_mask &= r >= r_min
+                    if r_max is not None:
+                        fit_mask &= r <= r_max
+                    good_indices = fit_mask & ~np.isnan(y)
+
+                    if good_indices.sum() >= min_points:
                         slope, *_ = linregress(X[good_indices], y[good_indices])
                         eps[ii, jj] = slope ** (3 / 2)
                     else:
@@ -690,8 +768,6 @@ class ADCP(BaseInstrument):
 
         return out
 
-    def tke(self, burst_data):
-        pass
 
     @property
     def beam_keys(self):

@@ -2,6 +2,7 @@ import numpy as np
 import scipy.signal as sig
 from scipy.stats import linregress
 from typing import Optional, Union, List, Dict, Any
+from src.utils.interp_utils import interp_rows
 from src.utils.spectral_utils import psd, csd, get_frequency_range
 from src.utils.base_instrument import BaseInstrument
 from src.utils.constants import GRAVITATIONAL_ACCELERATION as g
@@ -19,9 +20,9 @@ class Sonic(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        L: float = 0.15,
+        path_length: float = 0.15,
     ):
-        self.path_length = L
+        self.path_length = path_length
         super().__init__(files, name_map, fs, z)
 
     @staticmethod
@@ -30,30 +31,30 @@ class Sonic(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        L: Optional[float] = 0.15,
+        path_length: Optional[float] = 0.15,
     ):
 
         # General validation
         BaseInstrument.validate_common_inputs(files, name_map, fs, z)
 
         # Instrument-specific requirements
-        required_keys = ["u", "v", "w"]
+        required_keys = ["u1", "u2", "u3"]
 
         for key in required_keys:
             if key not in name_map:
                 raise ValueError(f"`name_map` must include a mapping for '{key}'")
 
-        if not isinstance(L, float):
-            raise TypeError("path length `L` must be a float")
+        if not isinstance(path_length, float):
+            raise TypeError("`path length` must be a float")
 
     @classmethod
-    def from_raw(
+    def from_files(
         cls,
         files: Union[str, List],
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        L: Optional[float] = 0.15,
+        path_length: Optional[float] = 0.15,
     ):
         """
         Initializes a new Sonic object from data files.
@@ -72,9 +73,9 @@ class Sonic(BaseInstrument):
         name_map : dict
             a dictionary of the form:
             {
-                "u": "x-velocity variable name" or ["var 1", "var 2", etc.],
-                "v": "y-velocity variable name" or ["var 1", "var 2", etc.],
-                "w": "z-velocity variable name" or ["var 1", "var 2", etc.],
+                "u1": "x-velocity variable name" or ["var 1", "var 2", etc.],
+                "u2": "y-velocity variable name" or ["var 1", "var 2", etc.],
+                "u3": "z-velocity variable name" or ["var 1", "var 2", etc.],
                 "Ts": "sonic temperature name" or ["var 1", "var 2", etc.],
                 "time": "time variable name" or ["var 1", "var 2", etc.],
             }
@@ -90,7 +91,7 @@ class Sonic(BaseInstrument):
             sampling frequency (Hz). If not specified, will be inferred (and rounded to 2 decimal places)
             from name_map["time"] values
 
-        L : float, optional
+        path_length : float, optional
             path length (m). Required to implement the Henjes Correction to the spectral curve fit in
             Sonic.dissipation. Defaults to 0.15 if not specified
 
@@ -100,9 +101,9 @@ class Sonic(BaseInstrument):
         Sonic object
 
         """
-        Sonic.validate_inputs(files, name_map, fs, z, L)
+        Sonic.validate_inputs(files, name_map, fs, z, path_length)
 
-        return cls(files, name_map, fs, z, L)
+        return cls(files, name_map, fs, z, path_length)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
@@ -117,27 +118,83 @@ class Sonic(BaseInstrument):
             }
         """
 
+        self._preprocess_opts = opts
         self._preprocess_enabled = True
 
-        self._rotate = opts.get("rotate", "align_wind")
+        self._despike = opts.get("despike", {})
+        if self._despike:
+            self._despike_opts = {key: val for key, val in self._despike.items()}
+
+        self._rotate = opts.get("rotate", {})
         self._cached_idx = None
         self._cached_data = None
 
     def _apply_preprocessing(self, burst_data):
 
-        if isinstance(self._rotate, str):
-            if self._rotate == "align_principal":
-                theta_h, theta_v = align_with_principal_axis(burst_data)
-            elif self._rotate == "align_wind":
-                theta_h, theta_v = align_with_flow(burst_data)
+        if not self._preprocess_enabled:
+            return burst_data
+
+        if self._despike:
+            for key in self.beam_keys:
+                burst_data[key] = self._apply_threshold_despike(burst_data[key], **self._despike_opts)
+
+        if self._rotate:
+
+            flow_rotation = self._rotate.get("flow_rotation")
+            if flow_rotation:
+                burst_data = self._apply_flow_rotation(burst_data, flow_rotation)
+
+        return burst_data
+
+    def _apply_threshold_despike(
+        self,
+        u: np.ndarray,
+        threshold_min: float = -3.0,
+        threshold_max: float = 3.0,
+    ):
+        u_out = u.copy()
+        bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
+        u_out[bad_rows] = np.nan
+        interp_rows(u_out)
+        return u_out
+
+    def _apply_flow_rotation(self, burst_data, flow_rotation):
+        """
+        Rotate u1/u2/u3 to align with the burst-mean flow direction.
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary. Must be in non-beam coordinates.
+        flow_rotation : str or tuple
+            "align_principal", "align_current", or (theta_h_deg, theta_v_deg).
+
+        Returns
+        -------
+        dict
+            burst_data with u1/u2/u3 rotated and burst_data["rotation"] set.
+        """
+        if isinstance(flow_rotation, str):
+            if flow_rotation == "align_principal":
+                theta_h, theta_v = align_with_principal_axis(burst_data["u1"], burst_data["u2"], burst_data["u3"])
+            elif flow_rotation == "align_current":
+                theta_h, theta_v = align_with_flow(burst_data["u1"], burst_data["u2"], burst_data["u3"])
             else:
-                raise ValueError(f"Invalid rotation option '{self._rotate}'")
+                raise ValueError(
+                    f"Invalid flow_rotation '{flow_rotation}'. Must be 'align_principal' or 'align_current'."
+                )
+        elif isinstance(flow_rotation, tuple):
+            theta_h, theta_v = flow_rotation
         else:
-            theta_h, theta_v = self._rotate
+            raise TypeError(f"flow_rotation must be a str or tuple, got {type(flow_rotation)}")
 
-        if np.sum(np.abs(theta_v)) != 0.0 or np.sum(np.abs(theta_h)) != 0.0:
-            burst_data = rotate_velocity_by_theta(burst_data, theta_h, theta_v)
-
+        u1_new, u2_new, u3_new = rotate_velocity_by_theta(
+            burst_data["u1"], burst_data["u2"], burst_data["u3"], theta_h, theta_v
+        )
+        burst_data["u1"] = u1_new
+        burst_data["u2"] = u2_new
+        burst_data["u3"] = u3_new
+        burst_data["rotation"] = flow_rotation
         return burst_data
 
     def dissipation(
@@ -307,17 +364,19 @@ class Sonic(BaseInstrument):
         return B
 
     def subsample(self, start_idx, end_idx):
+        new_sonic = self.__class__(
+            self.files[start_idx:end_idx],
+            self.name_map,
+            self.fs,
+            self.z,
+            self.path_length,
+            self.orientation,
+        )
+        if self._preprocess_enabled:
+            new_sonic.set_preprocess_opts(self._preprocess_opts)
+
+        return new_sonic
+
+    def subsample(self, start_idx, end_idx):
         files = self.files[start_idx:end_idx]
         return self.__class__(files, self.name_map, self.fs, self.z, self.path_length)
-
-
-if __name__ == "__main__":
-    import time
-
-    t0 = time.time()
-    # Testing this out
-    file_path = "/Users/ea-gegan/Documents/gitrepos/tke-budget/src/reprocess_pw/processed_data/5-13/sonic_end_based.npy"
-
-    # Name map:
-    name_map = {"u": "E", "v": "N", "w": "w", "p": "P2", "time": "dn"}
-    sonic = Sonic.from_raw(files, name_map, fs=32, z=mabs, zarr_save_path="~/Desktop/adv_zarr_test")
