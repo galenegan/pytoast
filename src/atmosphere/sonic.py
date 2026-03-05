@@ -140,7 +140,7 @@ class Sonic(BaseInstrument):
         burst_data : dict
             Burst data dictionary. Must be in non-beam coordinates.
         flow_rotation : str or tuple
-            "align_principal", "align_current", or (theta_h_deg, theta_v_deg).
+            `align_principal`, `align_current`, or (theta_h_deg, theta_v_deg).
 
         Returns
         -------

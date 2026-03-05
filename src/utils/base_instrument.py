@@ -33,8 +33,8 @@ class BaseInstrument(ABC):
         z : float, List[float], or np.ndarray, optional
             Height coordinates
         data_keys : str or List[str], optional
-            One or more nested keys to traverse after loading a file (e.g. "Data" if
-            variables in the name_map live at file["Data"]["variable_name"])
+            One or more nested keys to traverse after loading a file (e.g. `"Data"` if
+            variables in `name_map` live at `file["Data"]["variable_name"]`)
         """
         files = files if isinstance(files, list) else [files]
         self.validate_common_inputs(files, name_map, fs, z)
@@ -156,7 +156,7 @@ class BaseInstrument(ABC):
         z : np.ndarray
             Height coordinates as a numpy array (provided or inferred)
         file_type : str
-            File format identifier ("mat", "npy", "csv", "nc")
+            File format identifier (`"mat"`, `"npy"`, `"csv"`, `"nc"`)
         num_samples_per_burst : int
             Number of samples per burst
         """
@@ -247,7 +247,7 @@ class BaseInstrument(ABC):
             time_input (float): The input float to test.
 
         Returns:
-            str: "datestring", "epoch", "matlab". Raises an exception if there is no match
+            str: `"datestring"`, `"epoch"`, `"matlab"`. Raises an exception if there is no match
         """
 
         # Rough numeric ranges as of 2020s:

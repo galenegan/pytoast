@@ -143,9 +143,9 @@ def coord_transform_4_beam_nortek(
     declination : float
         Magnetic declination in degrees
     orientation : str
-        "up" or "down"
+        `up` or `down`
     coords_in, coords_out : str
-        One of "beam", "xyz", "enu"
+        One of {`beam`, `xyz`, `enu`}
 
     Returns
     -------
@@ -257,9 +257,9 @@ def coord_transform_4_beam_rdi(
     declination : float
         Magnetic declination in degrees
     orientation : str
-        "up" or "down"
+        `up` or `down`
     coords_in, coords_out : str
-        One of "beam", "xyz", "enu"
+        One of {`beam`, `xyz`, `enu`}
 
     Returns
     -------
@@ -414,7 +414,7 @@ def rotate_velocity_by_theta(u1, u2, u3, theta_h, theta_v):
     Parameters
     ----------
     data : dict
-        Dictionary containing "u", "v", and "w" velocity arrays with shape (M, N)
+        Dictionary containing `"u"`, `"v"`, and `"w"` velocity arrays with shape (M, N)
     theta_h : float or np.ndarray
         Horizontal rotation angle(s) in degrees, scalar or shape (M,)
     theta_v : float or np.ndarray

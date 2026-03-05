@@ -87,7 +87,7 @@ class ADCP(BaseInstrument):
             Beam angle from vertical (degrees). Used in beam-to-xyz coordinate transformations.
             Defaults to 25.0.
         manufacturer : str, optional
-            Instrument manufacturer. One of {`nortek` `rdi`}. Determines the coordinate transformation logic. Defaults
+            Instrument manufacturer. One of {`nortek`, `rdi`}. Determines the coordinate transformation logic. Defaults
             to `nortek`.
 
         Returns
@@ -172,13 +172,13 @@ class ADCP(BaseInstrument):
                     constant_hpr : Tuple[float], optional
                         Constant heading, pitch, and roll angles to apply.
                     flow_rotation : str or Tuple[float], optional.
-                        One of ["align_principal", "align_current", or (horizontal_angle, vertical_angle)]. If
-                        "align_principal" then the velocity will be rotated to align with the principal axes of the
-                        flow. If "align_current" then the velocity will be rotated to align with the horizontal current
+                        One of {`align_principal`, `align_current`, or (horizontal_angle, vertical_angle)}. If
+                        `align_principal` then the velocity will be rotated to align with the principal axes of the
+                        flow. If `align_current` then the velocity will be rotated to align with the horizontal current
                         magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float
                         angles are specified in a tuple, the flow will be rotated by those angles in the horizontal and
-                        vertical planes. Specifying any option will throw an error if burst["coords"] == "beam", unless
-                        a coordinate system change to "xyz" or "enu" is also requested.
+                        vertical planes. Specifying any option will throw an error if `burst["coords"]` == `"beam"`, unless
+                        a coordinate system change to `xyz` or `enu` is also requested.
         """
 
         self._preprocess_opts = opts
@@ -227,9 +227,9 @@ class ADCP(BaseInstrument):
         Parameters
         ----------
         burst_data : dict
-            Burst data dictionary, with burst_data["coords"] reflecting the current velocity coordinate system
+            Burst data dictionary, with `burst_data["coords"]` reflecting the current velocity coordinate system
         coords_out : str
-            Target coordinate system. One of ["beam", "xyz", "enu"].
+            Target coordinate system. One of {`beam`, `xyz`, `enu`}.
 
         Returns
         -------
@@ -340,7 +340,7 @@ class ADCP(BaseInstrument):
         burst_data : dict
             Burst data dictionary. Must be in non-beam coordinates.
         flow_rotation : str or tuple
-            "align_principal", "align_current", or (theta_h_deg, theta_v_deg).
+            `align_principal`, `align_current`, or (theta_h_deg, theta_v_deg).
 
         Returns
         -------

@@ -16,9 +16,9 @@ def apply_threshold_despike(
     u : np.ndarray
         Velocity array to despike
     threshold_min : float, optional
-        Value below which samples are set to np.nan and interpolated over
+        Value below which samples are set to `np.nan` and interpolated over
     threshold_max : float, optional
-        Value above which samples are set to np.nan and interpolated over
+        Value above which samples are set to `np.nan` and interpolated over
 
     Returns
     -------
@@ -49,7 +49,7 @@ def apply_gn_despike(
         Velocity array to despike.
 
     remaining_spikes : int
-        Iterations will stop once there are remaining_spikes or fewer bad samples
+        Iterations will stop once there are `remaining_spikes` or fewer bad samples
 
     max_iter : int
         Maximum number of iterations

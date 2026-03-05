@@ -42,7 +42,7 @@ class ADV(BaseInstrument):
         ----------
         files : str or List[str]
             Path(s) to data files. If a list, each element is treated as a file containing data from an individual burst
-            period. Supported formats: .npy (saved as a dict), mat (saved as a MATLAB struct), .csv (variables in
+            period. Supported formats: `.npy` (saved as a dict), `.mat` (saved as a MATLAB struct), `.csv` (variables in
             columns). If variables are two-dimensional, the larger dimension is assumed to be time and the shorter
             dimension is assumed to be a vertical coordinate.
         name_map : dict
@@ -70,10 +70,10 @@ class ADV(BaseInstrument):
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables in name_map are
             stored at `burst["Data"]["variable_name"]`).
         source_coords : str, optional
-            Velocity coordinate system in the source files. One of ["xyz", "enu", "beam"].
-            Defaults to "xyz".
+            Velocity coordinate system in the source files. One of {`xyz`, `enu`, `beam`}.
+            Defaults to `xyz`.
         orientation : str, optional
-            Orientation of the ADV probe. One of ["up", "down"]. Defaults to "up". For Nortek Vector ADVs, this
+            Orientation of the ADV probe. One of {`up`, `down`}. Defaults to `up`. For Nortek Vector ADVs, this
             corresponds to the end cap pointing up and the probe pointing down (see
             https://support.nortekgroup.com/hc/en-us/articles/360029507712-What-do-the-Error-and-Status-codes-mean)
 
@@ -132,7 +132,7 @@ class ADV(BaseInstrument):
                     If `threshold`, data is despiked by replacing any samples with a magnitude outside a specified
                     range. If `gn`, data is despiked using the Goring & Nikora (2002) algorithm.
 
-                If ``{'method': 'gn', ...}``, additional keys can be (see _apply_gn_despike docstring):
+                If ``{'method': 'gn', ...}``, additional keys can be (see `apply_gn_despike` docstring):
                     remaining_spikes : int
                     max_iter : int
                     robust_statistics : bool
@@ -625,7 +625,7 @@ class ADV(BaseInstrument):
             Burst data dictionary. Must be in non-beam coordinates.
         method : str
             Method to calculate covariances. Options are:
-            - `cov`: Standard covariance calculation using the built-in np.cov
+            - `cov`: Standard covariance calculation using the built-in `np.cov`
             - `spectral_integral`: Integrate the cross-spectrum over a specified frequency range
             - `benilov`: Benilov wave-turbulence decomposition
             - `phase`:  Bricker & Monismith phase-method wave-turbulence decomposition
