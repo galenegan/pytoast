@@ -36,10 +36,65 @@ class ADCP(BaseInstrument):
         beam_angle: float = 25.0,
         manufacturer: str = "nortek",
     ):
+        """
+        Initialize an ADCP data manager.
+
+        Parameters
+        ----------
+        files : str or List[str]
+            Path(s) to data files. If a list, each element is treated as a file containing data from
+            an individual burst period. Supported formats: .npy (saved as a dict), .mat (saved as a
+            MATLAB struct), .csv (variables in columns). If variables are two-dimensional, the larger
+            dimension is assumed to be time and the shorter dimension a vertical coordinate; in that
+            case a matching `z` list must be provided.
+        name_map : dict
+            Mapping of standard variable names to names in the data files, e.g.:
+            {
+                "u1": "first beam/direction velocity variable name",
+                "u2": "second beam/direction velocity variable name",
+                "u3": "third beam/direction velocity variable name",
+                "u4": "fourth beam/direction velocity variable name",  # optional
+                "u5": "fifth beam/direction velocity variable name",   # optional
+                "heading": "heading variable name",   # optional
+                "pitch": "pitch variable name",       # optional
+                "roll": "roll variable name",         # optional
+                "z": "height variable name",          # optional
+                "p": "pressure variable name",        # optional
+                "time": "time variable name",         # optional
+            }
+            An error is raised if "time" is absent and `fs` is also not provided. "z" in the
+            name_map is only used if the `z` argument is not specified directly.
+        fs : int or float, optional
+            Sampling frequency (Hz). Inferred from the "time" variable if not provided.
+        z : List[float, int] or np.ndarray, optional
+            Vertical coordinate for each cell (m above bed if `orientation="up"`, m below surface if
+            `orientation="down"`). Defaults to integer indices if not specified.
+        data_keys : str or List[str], optional
+            One or more nested keys to traverse after loading the file (e.g. "Data" or
+            ["Data", "Burst"]) if variables are not at the top level.
+        source_coords : str, optional
+            Velocity coordinate system in the source files. One of ["beam", "xyz", "enu"].
+            Defaults to "beam".
+        orientation : str, optional
+            Instrument orientation. One of ["up", "down"]. Affects interpretation of the vertical
+            coordinate. Defaults to "up".
+        beam_angle : float, optional
+            Beam angle from vertical (degrees). Used in beam-to-xyz coordinate transformations.
+            Defaults to 25.0.
+        manufacturer : str, optional
+            Instrument manufacturer. One of ["nortek", "rdi"]. Determines the beam transformation
+            matrix used. Only relevant when `source_coords="beam"`. Defaults to "nortek".
+
+        Returns
+        -------
+        ADCP
+        """
         self.source_coords = source_coords
         self.orientation = orientation
         self.beam_angle = beam_angle
         self.manufacturer = manufacturer
+        files_list = files if isinstance(files, list) else [files]
+        ADCP.validate_inputs(files_list, name_map, fs, z, data_keys, source_coords, orientation, beam_angle, manufacturer)
         super().__init__(files, name_map, fs, z, data_keys)
 
     @staticmethod
@@ -80,83 +135,6 @@ class ADCP(BaseInstrument):
                 "beam/xyz/enu coordinate transformations, so there is no need to specify if your data are "
                 "are already in the desired coordinates"
             )
-
-    @classmethod
-    def from_files(
-        cls,
-        files: Union[str, List],
-        name_map: dict,
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        data_keys: Optional[Union[str, List[str]]] = None,
-        source_coords: str = "beam",
-        orientation: str = "up",
-        beam_angle: float = 25.0,
-        manufacturer: str = "nortek",
-    ):
-        """
-        Initializes a new ADV object from data files.
-
-        Parameters
-        ----------
-        files : str or List[str]
-            If str, must be a path to a netCDF file, .mat file, or zarr file store that contains the
-            entire dataset you wish to load. If list, the elements of the list will be interpreted as files containing data
-            from individual measurement burst periods. Supported burst file types are .npy (assuming it was saved as a
-            dictionary), .mat (assuming it was saved as a Matlab Struct) and .csv (with variables in separate columns).
-            If the variables associated with a particular name are two-dimensional, then the larger dimension is
-            assumed to be time and the shorter dimension is assumed to be a vertical coordinate. In this case,
-            a "z" list must be passed as an argument with a length matching the size of the shorter dimension
-
-        name_map : dict
-            a dictionary of the form:
-            {
-                "u1": "variable name for first beam/direction velocity",
-                "u2": "variable name for second beam/direction velocity",
-                "u3": "variable name for third beam/direction velocity",
-                "u4": "variable name for fourth beam/direction velocity",
-                "u5": "variable name for fifth beam/direction velocity",
-                "heading": "heading variable name",
-                "pitch": "pitch variable name",
-                "roll": "roll variable name",
-                "z": "height variable name",
-                "p": "pressure variable name" ,
-                "time": "time variable name",
-            }
-            Of these, "heading", "pitch", "roll", "z", "p", "time", "u4" and "u5" are optional. However, an error will
-            be raised if "time" is not specified and a sampling frequency is also not specified, and "z" will only be
-            used if the class-level ADCP.z argument is not specified.
-
-        z : List[float, int] or np.ndarray, optional
-            vertical coordinate for each cell. This will be interpreted as either meters above the bed
-            if orientation == "up", or meters below the surface if orientation == "down".
-            If not specified, the height coordinate in the resulting ADCP object will be integer indices.
-
-        fs : int or float, optional
-            sampling frequency (Hz). If not specified, will be inferred (and rounded to an integer)
-            from name_map["time"] values
-
-        orientation : str, optional
-            Instrument orientation. Can be "up" or "down"; affects the interpretation of the vertical coordinate
-
-
-        Returns
-        -------
-        ADCP object
-
-        """
-        ADCP.validate_inputs(
-            files=files,
-            name_map=name_map,
-            fs=fs,
-            z=z,
-            data_keys=data_keys,
-            source_coords=source_coords,
-            orientation=orientation,
-            beam_angle=beam_angle,
-            manufacturer=manufacturer
-        )
-        return cls(files, name_map, fs, z, data_keys, source_coords, orientation, beam_angle, manufacturer)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.

@@ -2,6 +2,7 @@ from ocean.adv import ADV
 import time
 import glob
 import numpy as np
+import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     t0 = time.time()
@@ -17,7 +18,7 @@ if __name__ == "__main__":
 
     # Name map:
     name_map = {"u1": "E", "u2": "N", "u3": "w", "p": "P2", "time": "dn"}
-    adv = ADV.from_files(files, name_map, fs=32, z=mabs, source_coords="enu", orientation="down")
+    adv = ADV(files, name_map, fs=32, z=mabs, source_coords="enu", orientation="up")
 
     T = np.array([[2896, 2896, 0], [-2896, 2896, 0], [-2896, -2896, 5792]], dtype=float)
 
@@ -28,17 +29,24 @@ if __name__ == "__main__":
         "despike": {"method": "threshold", "threshold_min": -0.2, "threshold_max": 0.2},
         "rotate": {
             "flow_rotation": "align_current",
-            "coords_out": "xyz",
-            "transformation_matrices": [T] * 6,
-            "constant_hpr": [(0.0, 1.0, 1.1)] * 6,
+            # "coords_out": "xyz",
+            # "transformation_matrices": [T] * 6,
+            # "constant_hpr": [(0.0, 1.0, 1.1)] * 6,
         },
     }
     adv.set_preprocess_opts(pre_opts)
 
+    uwb = np.empty((adv.n_bursts * 6,))
+    uwp = np.empty((adv.n_bursts * 6,))
     for ii in range(adv.n_bursts):
         burst = adv.load_burst(ii)
-        cov = adv.covariance(burst, method="benilov")
-        diss = adv.dissipation(burst, f_low=1.2, f_high=16)
-        waves = adv.directional_wave_statistics(burst, f_cutoff=1.0)
+        cov1 = adv.covariance(burst, method="benilov")
+        cov2 = adv.covariance(burst, method="phase")
+
+        uwb[ii * 6 : (ii + 1) * 6] = cov1["uw_turb"]
+        uwp[ii * 6 : (ii + 1) * 6] = cov2["uw_turb"]
     t1 = time.time()
     print(f"Time elapsed: {t1 - t0:.2f} seconds")
+
+    plt.plot(uwb, uwp, 'o')
+    plt.show()

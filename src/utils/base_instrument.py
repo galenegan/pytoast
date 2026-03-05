@@ -16,25 +16,25 @@ class BaseInstrument(ABC):
         files: Union[str, List[str]],
         name_map: dict,
         fs: Optional[float] = None,
-        z: Optional[Union[float, List[float]]] = None,
+        z: Optional[Union[float, List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
         """
-        Initialize data manager.
+        Base class initialization.
 
         Parameters
         ----------
         files : str or List[str]
-            Path(s) to data files
+            Path(s) to data file(s)
         name_map : dict
             Mapping of variable names
         fs : float, optional
             Sampling frequency
-        z : float or List[float], optional
+        z : float, List[float], or np.ndarray, optional
             Height coordinates
         data_keys : str or List[str], optional
-            One or more nested keys to traverse after loading (e.g. "Data" or
-            ["Data", "Burst"] if variables live at file["Data"]["Burst"])
+            One or more nested keys to traverse after loading a file (e.g. "Data" if
+            variables in the name_map live at file["Data"]["variable_name"])
         """
         files = files if isinstance(files, list) else [files]
         self.validate_common_inputs(files, name_map, fs, z)
@@ -46,20 +46,12 @@ class BaseInstrument(ABC):
         self._cached_data = None
         self._preprocess_enabled = False
 
-    @property
-    def n_bursts(self):
-        return len(self.files)
-
-    @property
-    def n_heights(self):
-        return len(self.z)
-
     @staticmethod
     def validate_common_inputs(
         files: List[str],
         name_map: dict,
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        fs: Optional[float] = None,
+        z: Optional[Union[float, List[float], np.ndarray]] = None,
     ):
         """
         Validate common input parameters shared across all instruments.
@@ -72,7 +64,7 @@ class BaseInstrument(ABC):
             Variable name mapping
         fs : float, optional
             Sampling frequency
-        z : float or List[float], optional
+        z : float, List[float], or np.ndarray, optional
             Height coordinates
 
         Raises
@@ -167,6 +159,7 @@ class BaseInstrument(ABC):
 
         # Normalize z to a numpy array, or infer from data dimensions
         # TODO: Test this to make sure it's generalizable to xarray DA, numpy array, and pandas df
+        self._physical_z = True
         if z is not None:
             if isinstance(z, (int, float)):
                 z = np.array([z])
@@ -181,6 +174,7 @@ class BaseInstrument(ABC):
             elif isinstance(data[key], np.ndarray):
                 z = data[key]
         else:
+            self._physical_z = False
             non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
             if isinstance(non_time_key, str):
                 data_var = data[non_time_key]
@@ -193,6 +187,7 @@ class BaseInstrument(ABC):
                     z = np.array([0])
             else:
                 z = np.arange(len(non_time_key))
+
 
         # Determine num_samples and infer fs if needed
         if "time" not in self.name_map:
@@ -319,35 +314,20 @@ class BaseInstrument(ABC):
         """Override in subclasses to add preprocessing steps."""
         return burst_data
 
-    def load_burst_range(self, start_idx: int, end_idx: int) -> Dict[str, np.ndarray]:
-        """
-        Load data for a range of bursts.
-
-        Parameters
-        ----------
-        start_idx : int
-            Starting burst index
-        end_idx : int
-            Ending burst index (exclusive)
-
-        Returns
-        -------
-        Dict[str, np.ndarray]
-            Dictionary containing burst data with shape (n_bursts, n_heights, n_samples)
-        """
-        burst_data_list = []
-        for i in range(start_idx, end_idx):
-            burst_data_list.append(self.load_burst(i))
-
-        # Stack bursts
-        stacked_data = {}
-        for key in burst_data_list[0].keys():
-            stacked_data[key] = np.stack([bd[key] for bd in burst_data_list], axis=0)
-
-        return stacked_data
-
     def subsample(self, start_idx: int, end_idx: int):
+        """
+        Subsample the instrument file list from start_idx:end_idx. Must be implemented in derived classes
+        to account for unique initialization calls.
+        """
         raise NotImplementedError("Subclasses must implement subsample()")
+
+    @property
+    def n_bursts(self):
+        return len(self.files)
+
+    @property
+    def n_heights(self):
+        return len(self.z)
 
 # Helper function
 def strip_mat_nulls(obj):

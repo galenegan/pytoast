@@ -22,7 +22,46 @@ class Sonic(BaseInstrument):
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         path_length: float = 0.15,
     ):
+        """
+        Initialize a Sonic anemometer data manager.
+
+        Parameters
+        ----------
+        files : str or List[str]
+            Path(s) to data files. If a list, each element is treated as a file containing data from
+            an individual burst period. Supported formats: .npy (saved as a dict), .mat (saved as a
+            MATLAB struct), .csv (variables in columns). If variables are two-dimensional, the larger
+            dimension is assumed to be time and the shorter dimension a vertical coordinate; in that
+            case a matching `z` list must be provided.
+        name_map : dict
+            Mapping of standard variable names to names in the data files, e.g.:
+            {
+                "u1": "x-velocity variable name" or ["var 1", "var 2", ...],
+                "u2": "y-velocity variable name" or ["var 1", "var 2", ...],
+                "u3": "z-velocity variable name" or ["var 1", "var 2", ...],
+                "Ts": "sonic temperature variable name" or ["var 1", "var 2", ...],
+                "time": "time variable name" or ["var 1", "var 2", ...],
+            }
+            "Ts" and "time" are optional, but an error is raised if "time" is absent and `fs` is
+            also not provided. Lists are used when data from multiple instruments are stored in
+            separate variables rather than a 2-D array.
+        fs : int or float, optional
+            Sampling frequency (Hz). Inferred (rounded to 2 decimal places) from the "time" variable
+            if not provided.
+        z : float, int, or List[float, int], optional
+            Mean height above the surface (m) for each instrument. Defaults to integer indices if not
+            specified.
+        path_length : float, optional
+            Sonic path length (m). Used in the Henjes correction to the spectral curve fit in
+            `Sonic.dissipation`. Defaults to 0.15.
+
+        Returns
+        -------
+        Sonic
+        """
         self.path_length = path_length
+        files_list = files if isinstance(files, list) else [files]
+        Sonic.validate_inputs(files_list, name_map, fs, z, path_length)
         super().__init__(files, name_map, fs, z)
 
     @staticmethod
@@ -46,64 +85,6 @@ class Sonic(BaseInstrument):
 
         if not isinstance(path_length, float):
             raise TypeError("`path length` must be a float")
-
-    @classmethod
-    def from_files(
-        cls,
-        files: Union[str, List],
-        name_map: dict,
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        path_length: Optional[float] = 0.15,
-    ):
-        """
-        Initializes a new Sonic object from data files.
-
-        Parameters
-        ----------
-        files : str or List[str]
-            If str, must be a path to a netCDF file, .mat file, or zarr file store that contains the entire dataset
-            you wish to load. If list, the elements of the list will be interpreted as files containing data from
-            individual measurement burst periods. Supported burst file types are .npy (assuming it was saved as a
-            dictionary), .mat (assuming it was saved as a Matlab Struct) and .csv (with variables in separate
-            columns). If the variables associated with a particular name are two-dimensional, then the larger
-            dimension is assumed to be time and the shorter dimension is assumed to be a vertical coordinate. In this
-            case, a "z" list must be passed as an argument with a length matching the size of the shorter dimension
-
-        name_map : dict
-            a dictionary of the form:
-            {
-                "u1": "x-velocity variable name" or ["var 1", "var 2", etc.],
-                "u2": "y-velocity variable name" or ["var 1", "var 2", etc.],
-                "u3": "z-velocity variable name" or ["var 1", "var 2", etc.],
-                "Ts": "sonic temperature name" or ["var 1", "var 2", etc.],
-                "time": "time variable name" or ["var 1", "var 2", etc.],
-            }
-            Of these, "Ts" and "time" are optional, but an error will be raised if "time" is not specified and a
-            sampling frequency is also not specified. Lists should be provided if data from multiple instruments is
-            stored in multiple variables (as opposed to a 2d array).
-
-        z : float, int or List[float, int], optional
-            mean height above the surface (m) for each instrument. If not specified, the height coordinate in the
-            resulting Sonic object will be integer indices.
-
-        fs : int or float, optional
-            sampling frequency (Hz). If not specified, will be inferred (and rounded to 2 decimal places)
-            from name_map["time"] values
-
-        path_length : float, optional
-            path length (m). Required to implement the Henjes Correction to the spectral curve fit in
-            Sonic.dissipation. Defaults to 0.15 if not specified
-
-
-        Returns
-        -------
-        Sonic object
-
-        """
-        Sonic.validate_inputs(files, name_map, fs, z, path_length)
-
-        return cls(files, name_map, fs, z, path_length)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.

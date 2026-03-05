@@ -18,8 +18,7 @@ from utils.rotate_utils import (
 
 class ADV(BaseInstrument):
     """
-    Refactored ADV class with numpy-based processing and on-demand data loading.
-    No longer stores raw data in xarray, instead uses efficient numpy processing.
+    Class for processing data from Acoustic Doppler Velocimeter (ADV) instruments.
     """
 
     def __init__(
@@ -31,8 +30,53 @@ class ADV(BaseInstrument):
         source_coords: str = "xyz",
         orientation: str = "up",
     ):
+        """
+        Initialize an ADV object.
+
+        Parameters
+        ----------
+        files : str or List[str]
+            Path(s) to data files. If a list, each element is treated as a file containing data from an individual burst
+            period (usually 10-20 minutes for stable turbulence statistics) Supported formats: .npy (saved as a dict),
+            .mat (saved as a MATLAB struct), .csv (variables in columns). If variables are two-dimensional, the larger
+            dimension is assumed to be time and the shorter dimension is assumed to be a vertical coordinate.
+        name_map : dict
+            Mapping of standard variable names to names in the data files, e.g.:
+            {
+                "u1": "first velocity variable name" or ["var 1", "var 2", ...],
+                "u2": "second velocity variable name" or ["var 1", "var 2", ...],
+                "u3": "third velocity variable name" or ["var 1", "var 2", ...],
+                "p": "pressure variable name" or ["var 1", "var 2", ...],
+                "time": "time variable name" or ["var 1", "var 2", ...],
+                "heading": "heading variable name" or ["var 1", "var 2", ...],
+                "pitch": "pitch variable name" or ["var 1", "var 2", ...],
+                "roll": "roll variable name" or ["var 1", "var 2", ...],
+            }
+            `p` and `time` are optional, but an error is raised if `time` is absent and `fs` is also not provided.
+            `heading`, `pitch`, and `roll` are also optional but required for ENU coordinate transformations. Lists are
+            used when data from multiple instruments are stored in separate variables rather than a 2-D array.
+        fs : int or float, optional
+            Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
+            `time` variable
+        z : float, List[float, int], or np.ndarray, optional
+            Mean height above the bed (m) for each instrument. If not provided, it will default to integer indices, in
+            which case certain functionality (e.g., wave statistics) will not be available.
+        source_coords : str, optional
+            Velocity coordinate system in the source files. One of ["xyz", "enu", "beam"].
+            Defaults to "xyz".
+        orientation : str, optional
+            Orientation of the ADV probe. One of ["up", "down"]. Defaults to "up". For Nortek Vector ADVs, this
+            corresponds to the end cap pointing up and the probe pointing down (see
+            https://support.nortekgroup.com/hc/en-us/articles/360029507712-What-do-the-Error-and-Status-codes-mean)
+
+        Returns
+        -------
+        ADV
+        """
         self.source_coords = source_coords
         self.orientation = orientation
+        files_list = files if isinstance(files, list) else [files]
+        ADV.validate_inputs(files_list, name_map, fs, z, source_coords, orientation)
         super().__init__(files, name_map, fs, z)
 
     @staticmethod
@@ -44,8 +88,6 @@ class ADV(BaseInstrument):
         source_coords: Optional[str] = "xyz",
         orientation: Optional[str] = "up",
     ):
-
-        # TODO: check best practice for repeated default arguments among validate_inputs, __init__ and from_raw
 
         # General validation
         BaseInstrument.validate_common_inputs(files, name_map, fs, z)
@@ -65,72 +107,6 @@ class ADV(BaseInstrument):
         if orientation not in ["down", "up"]:
             raise ValueError(f"Invalid value for `orientation`: {orientation}. Must be one of ['down', 'up']")
 
-    @classmethod
-    def from_files(
-        cls,
-        files: Union[str, List],
-        name_map: dict,
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
-        source_coords: Optional[str] = "xyz",
-        orientation: Optional[str] = "up",
-    ):
-        """
-        Initializes a new ADV object from data files.
-
-        Parameters
-        ----------
-        files : str or List[str]
-            If str, must be a path to a netCDF file, .mat file, or zarr file store that contains the
-            entire dataset you wish to load. If list, the elements of the list will be interpreted as files containing data
-            from individual measurement burst periods. Supported burst file types are .npy (assuming it was saved as a
-            dictionary), .mat (assuming it was saved as a Matlab Struct) and .csv (with variables in separate columns).
-            If the variables associated with a particular name are two-dimensional, then the larger dimension is
-            assumed to be time and the shorter dimension is assumed to be a vertical coordinate. In this case,
-            a "z" list must be passed as an argument with a length matching the size of the shorter dimension
-
-        name_map : dict
-            a dictionary of the form:
-            {
-                "u1": "first velocity variable name" or ["var 1", "var 2", etc.],
-                "u2": "second velocity variable name" or ["var 1", "var 2", etc.],
-                "u3": "third velocity variable name" or ["var 1", "var 2", etc.],
-                "p": "pressure variable name" or ["var 1", "var 2", etc.],
-                "time": "time variable name" or ["var 1", "var 2", etc.],
-                "heading": "heading variable name" or ["var 1", "var 2", etc.],
-                "pitch": "pitch variable name" or ["var 1", "var 2", etc.],
-                "roll": "roll variable name" or ["var 1", "var 2", etc.],
-            }
-            "p" and "time" are optional, but an error will be raised if "time" is not specified and a sampling
-            frequency is also not specified. "heading", "pitch", and "roll" are also optional but an error will be
-            raised if they are missing and a transformation to ENU coordinates is requested.
-            Lists should be provided if data from multiple instruments are stored in multiple variables,
-            as opposed to storing data from multiple instruments in a 2d array).
-
-        z : float, int or List[float, int], optional
-            mean height above the bed (m) for each instrument. If not specified, the height coordinate in the resulting
-            ADV object will be integer indices.
-
-        fs : int or float, optional
-            sampling frequency (Hz). If not specified, will be inferred (and rounded to 2 decimel places)
-            from name_map["time"] values
-
-        source_coords : str, optional
-            Velocity coordinate system in the source files. One of ["enu", "xyz", "beam"].
-            Default is "xyz" if not specified.
-
-        orientation : str, optional
-            Orientation of ADV probe. One of ["up", "down"]. Default is "up" if not specified.
-
-
-        Returns
-        -------
-        ADV object
-
-        """
-        ADV.validate_inputs(files, name_map, fs, z, source_coords, orientation)
-        return cls(files, name_map, fs, z, source_coords, orientation)
-
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
 
@@ -143,8 +119,10 @@ class ADV(BaseInstrument):
                 Options for despiking. If not specified, no despiking is applied. Supported keys:
 
                 method : {'threshold', 'gn'}
+                    If `threshold`, data is despiked by replacing any samples with a magnitude outside a specified
+                    range. If `gn`, data is despiked using the Goring & Nikora (2002) algorithm.
 
-                If ``{'method': 'gn', ...}``, additional keys can be:
+                If ``{'method': 'gn', ...}``, additional keys can be (see _apply_gn_despike docstring):
                     remaining_spikes : int
                     max_iter : int
                     robust_statistics : bool
@@ -158,25 +136,26 @@ class ADV(BaseInstrument):
                 Supported keys:
 
                 coords_out : str, optional
-                    Coordinates for ADV.coords to be transformed to. One of ["beam", "xyz", "enu"].
+                    Coordinates for burst data to be transformed to. One of {`beam`, `xyz`, `enu`}.
 
                 transformation_matrices : List[np.ndarray], optional
-                    Transformation matrices for the instruments. Length should match ADV.n_heights.
+                    Transformation matrices for the instruments. Length must match ADV.n_heights.
 
                 declination : float, optional
                     Magnetic declination in degrees. Added to heading for coordinate transformations.
 
                 constant_hpr : List[Tuple[float]], optional
-                    Constant heading, pitch, and roll angles to apply at each instrument. Length should match ADV.n_heights
+                    Constant heading, pitch, and roll angles to apply at each instrument in lieu of full heading, pitch
+                    and roll arrays in the burst. Length of the list must match ADV.n_heights
 
                 flow_rotation : str or Tuple[float], optional.
-                    One of ["align_principal", "align_current", or (horizontal_angle, vertical_angle)].
-                    If "align_principal" then the velocity will be rotated to align with the principal axes of the flow.
-                    If "align_current" then the velocity will be rotated to align with the horizontal current magnitude
-                    sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float angles are
-                    specified in a tuple, the flow will be rotated by those angles in the horizontal and vertical
-                    planes. Specifying any option will throw an error if ADV.coords == "beam", unless a
-                    coordinate system change to "xyz" or "enu" is also requested.
+                    One of {`align_principal`, `align_current`, or (horizontal_angle_degrees, vertical_angle_degrees)}.
+                    If `align_principal`, then the velocity will be rotated to align with the principal axes of the
+                    flow. If `align_current`, then the velocity will be rotated to align with the horizontal current
+                    magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float angles
+                    are specified in a tuple, the flow will be rotated by those angles in the horizontal and vertical
+                    planes. Specifying any option will throw an error if `burst["coords"] == "beam"`, unless a
+                    coordinate system change to `xyz` or `enu` is also requested.
         """
         self._preprocess_opts = opts
         self._preprocess_enabled = True
@@ -191,6 +170,9 @@ class ADV(BaseInstrument):
         self._cached_data = None
 
     def _apply_preprocessing(self, burst_data):
+        """
+        Applies preprocessing to a burst data dictionary during loading.
+        """
         burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
             return burst_data
@@ -224,17 +206,16 @@ class ADV(BaseInstrument):
         """
         Transform velocity components between coordinate systems.
 
-        Uses configuration stored in self._rotate (transformation_matrices, declination,
-        constant_hpr). Can be called from _apply_preprocessing during standard burst
-        loading, or directly from analysis methods when on-the-fly transformation is needed.
+        Uses configuration stored in self._rotate. Can be called from _apply_preprocessing during standard burst
+        loading, or directly from analysis methods when transformation is needed.
 
         Parameters
         ----------
         burst_data : dict
-            Burst data dictionary. burst_data["coords"] must reflect the current
+            Burst data dictionary. `burst_data["coords"]` must reflect the current
             coordinate system of u1/u2/u3.
         coords_out : str
-            Target coordinate system. One of ["beam", "xyz", "enu"].
+            Target coordinate system. One of {`beam`, `xyz`, `enu`}.
 
         Returns
         -------
@@ -293,14 +274,14 @@ class ADV(BaseInstrument):
 
     def _apply_flow_rotation(self, burst_data, flow_rotation):
         """
-        Rotate u1/u2/u3 to align with the burst-mean flow direction.
+        Rotate u1/u2/u3 to align with a particular flow direction
 
         Parameters
         ----------
         burst_data : dict
             Burst data dictionary. Must be in non-beam coordinates.
         flow_rotation : str or tuple
-            "align_principal", "align_current", or (theta_h_deg, theta_v_deg).
+            `align_principal`, `align_current`, or (theta_h_deg, theta_v_deg).
 
         Returns
         -------
@@ -336,6 +317,24 @@ class ADV(BaseInstrument):
         threshold_min: float = -3.0,
         threshold_max: float = 3.0,
     ):
+        """
+        Threshold-based despiking
+
+        Parameters
+        ----------
+        u : np.ndarray
+            Velocity array to despike
+        threshold_min : float, optional
+            Value below which samples are set to np.nan and interpolated over
+        threshold_max
+            Value above which samples are set to np.nan and interpolated over
+
+        Returns
+        -------
+        u_out : np.ndarray
+            Velocity array with spikes removed and interpolated over
+
+        """
         u_out = u.copy()
         bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
         u_out[bad_rows] = np.nan
@@ -351,7 +350,7 @@ class ADV(BaseInstrument):
     ):
         """
         Implements the Goring & Nikora (2002) phase-space de-spiking algorithm,
-        returning data with modified data["u"], data["v"], and data["w"].
+        returning modified velocity array
 
         Parameters
         ----------
@@ -371,8 +370,15 @@ class ADV(BaseInstrument):
 
         Returns
         -------
-        data : dict
-            Original data dictionary with "u", "v", and "w" velocity arrays despiked
+        u_out : np.ndarray
+            Velocity array with spikes removed and interpolated over
+
+        References
+        ----------
+        Goring, D. G., & Nikora, V. I. (2002). Despiking acoustic Doppler velocimeter data. Journal of hydraulic
+            engineering, 128(1), 117-126.
+        Wahl, T. L. (2003). Discussion of “Despiking acoustic doppler velocimeter data” by
+            Derek G. Goring and Vladimir I. Nikora. Journal of Hydraulic Engineering, 129(6), 484-487.
 
         """
 
@@ -382,7 +388,7 @@ class ADV(BaseInstrument):
             du = np.gradient(u, axis=1) / 2
             du2 = np.gradient(du, axis=1) / 2
 
-            # Per-row statistics → (n_heights,)
+            # Per-row statistics
             if robust_statistics:
                 sigma_u = median_abs_deviation(u, axis=1, nan_policy="omit")
                 sigma_du = median_abs_deviation(du, axis=1, nan_policy="omit")
@@ -402,10 +408,10 @@ class ADV(BaseInstrument):
             n = u.shape[1]
             lam = np.sqrt(2 * np.log(n))
 
-            # Rotation angle per row → (n_heights,)
+            # Rotation angle per row
             theta = np.arctan(np.nansum(u * du2, axis=1) / np.nansum(u**2, axis=1))
 
-            # Ellipse axes (unrotated) → (n_heights,)
+            # Ellipse axes (unrotated)
             a1 = lam * sigma_u
             b1 = lam * sigma_du
             a3 = lam * sigma_du
@@ -424,7 +430,7 @@ class ADV(BaseInstrument):
             a2 = np.sqrt(x[:, 0])
             b2 = np.sqrt(x[:, 1])
 
-            # Broadcast all (n_heights,) stats to (n_heights, 1) for element-wise tests
+            # Broadcast all (n_heights,) stats to (n_heights, 1)
             u_bar = u_bar[:, np.newaxis]
             du_bar = du_bar[:, np.newaxis]
             du2_bar = du2_bar[:, np.newaxis]
@@ -500,15 +506,23 @@ class ADV(BaseInstrument):
             lower frequency bound of spectral sum
         f_high : float, optional
             upper frequency bound of spectral sum
-        kwargs: Additional arguments passed to spectral_utils.psd.
+        kwargs: Additional arguments passed to spectral_utils.psd/csd.
                 See spectral_utils.psd for parameter definitions.
 
         Returns
         -------
-        Tuple of turbulent and wave momentum flux components
+        Dictionary of turbulent and wave momentum flux components
+
+        References
+        ----------
+        Benilov, A. Y., & Filyushkin, B. N. (1970). Application of methods of linear filtration to an analysis of
+            fluctuations in the surface layer of the sea. Izv., Acad. Sci., USSR, Atmos. Oceanic Phys, 68, 810-819.
         """
 
-        h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth
+        if not self._physical_z:
+            raise ValueError("`z` values must be specified during initialization for Benilov decomposition.")
+
+        h = 1e4 * np.nanmean(p) / (rho * g) + mab  # Average water depth before detrending
 
         u = sig.detrend(u)
         v = sig.detrend(v)
@@ -588,6 +602,41 @@ class ADV(BaseInstrument):
         f_wave_high: Optional[float] = None,
         **kwargs,
     ):
+        """
+        Bricker & Monismith (2007) phase method for wave-turbulence decomposition. Unlike the Benilov method, no
+        pressure data are required.
+
+        Parameters
+        ----------
+        u : np.ndarray
+            x-component of velocity (m/s)
+        v : np.ndarray
+            y-component of velocity (m/s)
+        w : np.ndarray
+            z-component of velocity (m/s)
+        f_low : float, optional
+            lower frequency bound of spectral sum
+        f_high : float, optional
+            upper frequency bound of spectral sum
+        f_wave_low : float, optional
+            lower frequency bound of wave range. If not specified, the range is assumed to start at 0.35 f_max below
+            the wave peak f_max
+        f_wave_high : float, optional
+            upper frequency bound of the wave range. If not specified, the range is assumed to end at 0.8 f_max above
+            the wave peak f_max
+        kwargs: Additional arguments passed to spectral_utils.psd/csd.
+                See spectral_utils.psd for parameter definitions.
+
+        Returns
+        -------
+        Dictionary of turbulent and wave momentum flux components
+
+        References
+        ----------
+        Bricker, J. D., & Monismith, S. G. (2007). Spectral wave–turbulence decomposition. Journal of Atmospheric and
+            Oceanic Technology, 24(8), 1479-1487.
+
+        """
 
         out = {}
 
@@ -674,21 +723,14 @@ class ADV(BaseInstrument):
         Pww_wave[Pww_wave < 0] = 0
 
         # Wave Fourier components
-        Amu_wave = np.sqrt((Puu_wave + 0j) * df)
-        Amv_wave = np.sqrt((Pvv_wave + 0j) * df)
-        Amw_wave = np.sqrt((Pww_wave + 0j) * df)
-
-        # TODO: This 0j doesn't do anything probably
-
-        # Wave Magnitudes
-        Um_wave = np.sqrt(np.real(Amu_wave) ** 2 + np.imag(Amu_wave) ** 2)
-        Vm_wave = np.sqrt(np.real(Amv_wave) ** 2 + np.imag(Amv_wave) ** 2)
-        wm_wave = np.sqrt(np.real(Amw_wave) ** 2 + np.imag(Amw_wave) ** 2)
+        Um_wave = np.sqrt(Puu_wave * df)
+        Vm_wave = np.sqrt(Pvv_wave * df)
+        Wm_wave = np.sqrt(Pww_wave * df)
 
         # Wave reynolds stress
-        out["uw_wave"] = np.nansum(Um_wave * wm_wave * np.cos(phase_uw[waverange]))
+        out["uw_wave"] = np.nansum(Um_wave * Wm_wave * np.cos(phase_uw[waverange]))
         out["uv_wave"] = np.nansum(Um_wave * Vm_wave * np.cos(phase_uv[waverange]))
-        out["vw_wave"] = np.nansum(Vm_wave * wm_wave * np.cos(phase_vw[waverange]))
+        out["vw_wave"] = np.nansum(Vm_wave * Wm_wave * np.cos(phase_vw[waverange]))
 
         out["uu_wave"] = np.nansum(Puu_wave * df)
         out["vv_wave"] = np.nansum(Pvv_wave * df)
@@ -731,13 +773,13 @@ class ADV(BaseInstrument):
         Parameters
         ----------
         burst_data : dict
-            tbfi
+            Burst data dictionary. Must be in non-beam coordinates.
         method : str
             Method to calculate covariances. Options are:
-            - 'cov': Standard covariance calculation using the built-in np.cov
-            - 'spectral_integral': Integrate the cross-spectrum over a specified frequency range
-            - 'benilov': Benilov wave-turbulence decomposition
-            - 'phase':  Bricker & Monismith phase-method wave-turbulence decomposition
+            - `cov`: Standard covariance calculation using the built-in np.cov
+            - `spectral_integral`: Integrate the cross-spectrum over a specified frequency range
+            - `benilov`: Benilov wave-turbulence decomposition
+            - `phase`:  Bricker & Monismith phase-method wave-turbulence decomposition
         f_low : float, optional
             Lower frequency bound (Hz) for spectral integration, by default None
         f_high : float, optional
@@ -746,7 +788,7 @@ class ADV(BaseInstrument):
             Water density (kg/m^3), by default 1020
         phase_kwargs : dict, optional
             Additional arguments specific to phase decomposition method, by default None. If specified, should include
-            keys 'f_wave_low' and 'f_wave_high' to define the frequency range of the wave band.
+            keys `f_wave_low` and `f_wave_high` to define the frequency range of the wave band.
         **kwargs
             Additional arguments passed to spectral calculations
 
@@ -861,8 +903,7 @@ class ADV(BaseInstrument):
 
         elif method == "phase":
             # Extract phase method-specific kwargs with error handling
-            if phase_kwargs is None:
-                phase_kwargs = {}
+            phase_kwargs = phase_kwargs or {}
             f_wave_low = phase_kwargs.get("f_wave_low", None)
             f_wave_high = phase_kwargs.get("f_wave_high", None)
 
@@ -914,35 +955,40 @@ class ADV(BaseInstrument):
 
         return out
 
-    def dissipation(self, burst_data: dict, f_low: float, f_high: float, **kwargs) -> (float, float, int):
+    def dissipation(self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs) -> Dict[np.ndarray]:
         """
-        Estimate the dissipation rate of TKE using the Gerbi et al. (2009)
-        spectral curve fitting method. This is nearly equivalent to the
-        Feddersen et al. (2007) method, but it uses a more efficient numerical
-        integration and estimates dissipation with a least squares fit rather
-        than a mean over the inertial range.
+        Estimate the dissipation rate of TKE using the Gerbi et al. (2009) spectral curve fitting method. This is nearly
+        equivalent to the Feddersen et al. (2007) method, but it uses a more efficient numerical integration and
+        estimates dissipation with a least squares fit rather than a mean over the inertial range.
 
         Parameters
         ----------
         f_low : float
             Lower frequency bound (Hz) for inertial subrange where -5/3 law applies
-
         f_high : float
             Upper frequency bound (Hz) for inertial subrange where -5/3 law applies
-
         **kwargs
             Additional arguments passed to spectral_utils.psd.
             See spectral_utils.psd for parameter definitions.
 
         Returns
         -------
-        eps : float
-            dissipation rate of TKE (m^2/s^3)
-        noise: float
-            intercept from dissipation linear regression
-        quality_flag: int
-            1 for good eps estimate, 0 for bad eps estimate.
-            Defined based on Gerbi Eq. X
+        Dictionary with the following keys/values at each height:
+            eps : float
+                dissipation rate of TKE (m^2/s^3)
+            noise : float
+                intercept from dissipation linear regression
+            quality_flag : int
+                1 for good eps estimate, 0 for bad eps estimate.
+                Defined based on Gerbi Eq. 11
+
+        References
+        ----------
+        Feddersen, F., Trowbridge, J. H., & Williams, A. J. (2007). Vertical structure of dissipation in the nearshore.
+            Journal of Physical Oceanography, 37(7), 1764-1777.
+        Gerbi, G. P., Trowbridge, J. H., Terray, E. A., Plueddemann, A. J., & Kukulka, T. (2009). Observations of
+            turbulence in the ocean surface boundary layer: Energetics and transport. Journal of Physical Oceanography,
+            39(5), 1077-1096.
         """
 
         def calcJ33(sig1, sig2, sig3, u1, u2):
@@ -1064,7 +1110,21 @@ class ADV(BaseInstrument):
 
         return out
 
-    def tke(self, burst_data: Dict[str, np.ndarray]):
+    def tke(self, burst_data: Dict[str, np.ndarray]) -> np.ndarray:
+        """
+        Calculates turbulent kinetic energy
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary containing velocity components u1/u2/u3
+
+        Returns
+        -------
+        tke_out : np.ndarray
+            TKE at each measurement height
+
+        """
         if burst_data["coords"] == "beam":
             raise ValueError(
                 "TKE is not implemented for beam coordinates. Switch to either xyz or enu as a preprocessing step"
@@ -1090,7 +1150,53 @@ class ADV(BaseInstrument):
         f_cutoff: Optional[float] = 1.0,
         rho: Optional[float] = 1020,
         **kwargs,
-    ):
+    ) -> dict:
+        """
+        Calculate directional wave statistics from velocity and pressure measurements.
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst dictionary containing u1/u2 velocities and pressure. Cannot be in beam coordinates.
+        band_definitions : dict, optional
+            Dictionary defining frequency bands for spectral sums of the form
+             `{"infragravity": (f_low, f_high), "swell": (f_low, f_high), "sea": (f_low, f_high)}`
+             If None, uses default bands:
+            - infragravity: 1/250 to 1/25 Hz
+            - swell: 1/25 to 0.2 Hz
+            - sea: 0.2 to 0.5 Hz
+            Statistics for the full frequency range (`all`) will be calculated as well.
+        sea_correction : bool, optional
+            Whether to apply Jones-Monismith correction for sea waves, by default True
+        f_cutoff : float, optional
+            Upper bound for spectral integration to avoid high frequency noise. Defaults to 1.0 Hz.
+        rho : float
+            Water density (kg/m³)
+        **kwargs
+            Additional arguments passed to spectral analysis functions
+
+        Returns
+        -------
+        dict
+            Dictionary of wave statistics. Scalar variables (e.g. `Hsig_all`) have shape
+            `(n_heights,)`; spectral variables (e.g. `P_uu`) have shape `(n_heights, n_freqs)`.
+
+        References
+        ----------
+        Herbers, T. H. C., Elgar, S., & Guza, R. T. (1999). Directional spreading of waves in the nearshore. Journal of
+            Geophysical Research: Oceans, 104(C4), 7683-7693.
+        Jones, N. L., & Monismith, S. G. (2007). Measuring short‐period wind waves in a tidally forced environment with
+            a subsurface pressure gauge. Limnology and Oceanography: Methods, 5(10), 317-327.
+        Kumar, N., Cahl, D. L., Crosby, S. C., & Voulgaris, G. (2017). Bulk versus spectral wave parameters:
+            Implications on stokes drift estimates, regional wave modeling, and HF radars applications. Journal of
+            Physical Oceanography, 47(6), 1413-1431.
+        Madsen, O. S. (1994). Spectral wave-current bottom boundary layer flows. In Coastal engineering 1994 (pp.
+            384-398).
+        Mei, C. C., Stiassnie, M. A., & Yue, D. K. P. (2005). Theory and applications of ocean surface waves: Part 1:
+            linear aspects.
+        Wiberg, P. L., & Sherwood, C. R. (2008). Calculating wave-generated bottom orbital velocities from surface-wave
+            parameters. Computers & Geosciences, 34(10), 1243-1262.
+        """
         if "p" not in burst_data.keys():
             raise ValueError("Pressure must be included in dataset to calculate directional wave statistics")
 
@@ -1098,12 +1204,12 @@ class ADV(BaseInstrument):
             raise ValueError("Directional wave statistics not implemented for beam coordinates.")
 
         n_heights = self.n_heights
-        out = {}
+        results = []
         for height_idx in range(n_heights):
             u = burst_data["u1"][height_idx, :]
             v = burst_data["u2"][height_idx, :]
             p = burst_data["p"][height_idx, :]
-            out[height_idx] = self.wave_worker(
+            results.append(self.wave_worker(
                 u=u,
                 v=v,
                 p=p,
@@ -1113,9 +1219,9 @@ class ADV(BaseInstrument):
                 sea_correction=sea_correction,
                 f_cutoff=f_cutoff,
                 **kwargs,
-            )
+            ))
 
-        return out
+        return {key: np.array([r[key] for r in results]) for key in results[0]}
 
     def wave_worker(
         self,
@@ -1130,64 +1236,7 @@ class ADV(BaseInstrument):
         **kwargs,
     ) -> dict:
         """
-        Calculate directional wave statistics from velocity and pressure measurements.
-
-        This method computes comprehensive wave statistics including wave height, direction,
-        spreading, period, and energy flux using the cross-spectral method. The analysis
-        includes separate calculations for different wave bands (infragravity, swell, sea)
-        and applies depth corrections for pressure measurements.
-
-        Parameters
-        ----------
-        u : np.ndarray
-            Horizontal velocity component in x-direction (m/s)
-        v : np.ndarray
-            Horizontal velocity component in y-direction (m/s)
-        p : np.ndarray
-            Pressure measurements (dbar)
-        mab : float
-            Height of pressure sensor above bed (m)
-        rho : float
-            Water density (kg/m³)
-        band_definitions : dict, optional
-            Dictionary defining frequency bands for spectral sums of the form
-             {"infragravity": (f_low, f_high), "swell": (f_low, f_high), "sea": (f_low, f_high)}
-             If None, uses default bands:
-            - infragravity: 1/250 to 1/25 Hz
-            - swell: 1/25 to 0.2 Hz
-            - sea: 0.2 to 0.5 Hz
-            Statistics for the full frequency range ("all") will be calculated as well.
-        sea_correction : bool, optional
-            Whether to apply Jones-Monismith correction for sea waves, by default True
-        f_cutoff : float, optional
-            Upper bound for spectral integration to avoid high frequency noise. Defaults to 1.0 Hz.
-        **kwargs
-            Additional arguments passed to spectral analysis functions
-
-        Returns
-        -------
-        dict
-            Dictionary containing wave statistics with keys including:
-            - 'Hsig_all', 'Hsig_swell', 'Hsig_sea', 'Hsig_ig': Significant wave heights (m)
-            - 'Hrms_all', 'Hrms_swell', 'Hrms_sea', 'Hrms_ig': RMS wave heights (m)
-            - 'Tp_all', 'Tp_swell', 'Tp_sea', 'Tp_ig': Peak periods (s)
-            - 'Tm_all', 'Tm_swell', 'Tm_sea', 'Tm_ig': Mean periods (s)
-            - 'dir_all1', 'dir_swell1', 'dir_sea1', 'dir_ig1': Wave directions (degrees)
-            - 'spread_all1', 'spread_swell1', 'spread_sea1', 'spread_ig1': Directional spread (degrees)
-            - 'Us_bulk', 'Vs_bulk': Bulk Stokes drift velocities (m/s)
-            - 'Us_spec', 'Vs_spec': Spectral Stokes drift velocities (m/s)
-            - 'Sxx_swell', 'Syy_swell', 'Sxy_swell': Radiation stress components (N/m)
-            - 'ub_var', 'ub_spec': Bottom orbital velocity statistics (m/s)
-
-        Notes
-        -----
-        This method implements the cross-spectral directional wave analysis technique,
-        which uses the coherence and phase relationships between pressure and velocity
-        measurements to determine wave direction and spreading characteristics.
-
-        The method applies depth corrections to convert pressure measurements to sea
-        surface elevation using linear wave theory, accounting for the attenuation
-        of pressure fluctuations with depth.
+        Helper function for directional wave statistics.
         """
 
         # Calculate water depth (m) prior to detrending
@@ -1365,7 +1414,7 @@ class ADV(BaseInstrument):
                 * np.sin(np.radians(out[f"dir1_{band_name}"]))
             )
 
-            # Spectral Stokes drift (unfortunately different from the bulk estimate -- see Kumar et al. 2017, appendix)
+            # Spectral Stokes drift
             out[f"Us_spec_{band_name}"] = np.sum(
                 P_etaeta[band_indices]
                 * omega[band_indices]
@@ -1384,7 +1433,24 @@ class ADV(BaseInstrument):
             )
         return out
 
-    def subsample(self, start_idx, end_idx):
+    def subsample(self, start_idx: int, end_idx: int):
+        """
+        Subsample the ADV object between files[start_idx] and files[end_idx].
+
+        Parameters
+        ----------
+        start_idx : int
+            First file to include in subsampling
+        end_idx : int
+            Upper bound (exclusive) on file index \in subsampling
+
+
+        Returns
+        -------
+        new_adv : ADV
+            Subsampled ADV object
+
+        """
         new_adv = self.__class__(
             self.files[start_idx:end_idx],
             self.name_map,
