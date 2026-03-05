@@ -124,7 +124,7 @@ class BaseInstrument(ABC):
         else:
             raise Exception(f"Unrecognized file type .{suffix} for filepath input")
 
-        for key in (data_keys or []):
+        for key in data_keys or []:
             data = data[key]
 
         return data, file_type
@@ -187,7 +187,6 @@ class BaseInstrument(ABC):
                     z = np.array([0])
             else:
                 z = np.arange(len(non_time_key))
-
 
         # Determine num_samples and infer fs if needed
         if "time" not in self.name_map:
@@ -299,7 +298,7 @@ class BaseInstrument(ABC):
                     var_data = np.expand_dims(var_data, axis=0)  # 2D even if only one height
 
             # Enforcing byte order in case there is a mismatch
-            var_data = var_data.astype(var_data.dtype.newbyteorder('='))
+            var_data = var_data.astype(var_data.dtype.newbyteorder("="))
 
             burst_data[out_key] = var_data
 
@@ -329,10 +328,11 @@ class BaseInstrument(ABC):
     def n_heights(self):
         return len(self.z)
 
+
 # Helper function
 def strip_mat_nulls(obj):
     if isinstance(obj, dict):
-        return {k.rstrip('\x00'): strip_mat_nulls(v) for k, v in obj.items()}
+        return {k.rstrip("\x00"): strip_mat_nulls(v) for k, v in obj.items()}
     elif isinstance(obj, (list, tuple)):
         return type(obj)(strip_mat_nulls(i) for i in obj)
     return obj

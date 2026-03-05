@@ -48,5 +48,5 @@ if __name__ == "__main__":
     t1 = time.time()
     print(f"Time elapsed: {t1 - t0:.2f} seconds")
 
-    plt.plot(uwb, uwp, 'o')
+    plt.plot(uwb, uwp, "o")
     plt.show()

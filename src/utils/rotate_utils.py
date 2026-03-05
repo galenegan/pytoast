@@ -437,5 +437,6 @@ def rotate_velocity_by_theta(u1, u2, u3, theta_h, theta_v):
     w_rot = -u1 * cos_h * sin_v - u2 * sin_h * sin_v + u3 * cos_v
     return u_rot, v_rot, w_rot
 
+
 def min_angle(alpha):
     return (alpha + 180) % 360 - 180

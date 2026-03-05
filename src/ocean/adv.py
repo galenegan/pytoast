@@ -1209,17 +1209,19 @@ class ADV(BaseInstrument):
             u = burst_data["u1"][height_idx, :]
             v = burst_data["u2"][height_idx, :]
             p = burst_data["p"][height_idx, :]
-            results.append(self.wave_worker(
-                u=u,
-                v=v,
-                p=p,
-                mab=self.z[height_idx],
-                rho=rho,
-                band_definitions=band_definitions,
-                sea_correction=sea_correction,
-                f_cutoff=f_cutoff,
-                **kwargs,
-            ))
+            results.append(
+                self.wave_worker(
+                    u=u,
+                    v=v,
+                    p=p,
+                    mab=self.z[height_idx],
+                    rho=rho,
+                    band_definitions=band_definitions,
+                    sea_correction=sea_correction,
+                    f_cutoff=f_cutoff,
+                    **kwargs,
+                )
+            )
 
         return {key: np.array([r[key] for r in results]) for key in results[0]}
 

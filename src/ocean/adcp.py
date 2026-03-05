@@ -15,7 +15,7 @@ from utils.rotate_utils import (
     coord_transform_3_beam_nortek,
     coord_transform_4_beam_nortek,
     coord_transform_4_beam_rdi,
-    min_angle
+    min_angle,
 )
 
 
@@ -94,7 +94,9 @@ class ADCP(BaseInstrument):
         self.beam_angle = beam_angle
         self.manufacturer = manufacturer
         files_list = files if isinstance(files, list) else [files]
-        ADCP.validate_inputs(files_list, name_map, fs, z, data_keys, source_coords, orientation, beam_angle, manufacturer)
+        ADCP.validate_inputs(
+            files_list, name_map, fs, z, data_keys, source_coords, orientation, beam_angle, manufacturer
+        )
         super().__init__(files, name_map, fs, z, data_keys)
 
     @staticmethod
@@ -745,7 +747,6 @@ class ADCP(BaseInstrument):
             out["eps"] = np.nanmean(eps, axis=1)
 
         return out
-
 
     @property
     def beam_keys(self):

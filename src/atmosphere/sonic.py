@@ -120,7 +120,6 @@ class Sonic(BaseInstrument):
                 burst_data[key] = self._apply_threshold_despike(burst_data[key], **self._despike_opts)
 
         if self._rotate:
-
             flow_rotation = self._rotate.get("flow_rotation")
             if flow_rotation:
                 burst_data = self._apply_flow_rotation(burst_data, flow_rotation)
