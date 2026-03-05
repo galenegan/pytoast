@@ -2,7 +2,7 @@ import numpy as np
 import scipy.signal as sig
 from scipy.stats import linregress
 from typing import Optional, Union, List, Dict, Any
-from src.utils.interp_utils import interp_rows
+from src.utils.despike_utils import apply_threshold_despike
 from src.utils.spectral_utils import psd, csd, get_frequency_range
 from src.utils.base_instrument import BaseInstrument
 from src.utils.constants import GRAVITATIONAL_ACCELERATION as g
@@ -20,6 +20,7 @@ class Sonic(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        data_keys: Optional[Union[str, List[str]]] = None,
         path_length: float = 0.15,
     ):
         """
@@ -51,6 +52,9 @@ class Sonic(BaseInstrument):
         z : float, int, or List[float, int], optional
             Mean height above the surface (m) for each instrument. Defaults to integer indices if not
             specified.
+        data_keys : str or List[str], optional
+            One or more nested keys to traverse after loading the file (e.g. "Data" if the variables
+            in name_map are stored at `burst["Data"]["variable_name"]`).
         path_length : float, optional
             Sonic path length (m). Used in the Henjes correction to the spectral curve fit in
             `Sonic.dissipation`. Defaults to 0.15.
@@ -61,8 +65,8 @@ class Sonic(BaseInstrument):
         """
         self.path_length = path_length
         files_list = files if isinstance(files, list) else [files]
-        Sonic.validate_inputs(files_list, name_map, fs, z, path_length)
-        super().__init__(files, name_map, fs, z)
+        Sonic.validate_inputs(files_list, name_map, fs, z, data_keys, path_length)
+        super().__init__(files, name_map, fs, z, data_keys)
 
     @staticmethod
     def validate_inputs(
@@ -70,6 +74,7 @@ class Sonic(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        data_keys: Optional[Union[str, List[str]]] = None,
         path_length: Optional[float] = 0.15,
     ):
 
@@ -117,7 +122,7 @@ class Sonic(BaseInstrument):
 
         if self._despike:
             for key in self.beam_keys:
-                burst_data[key] = self._apply_threshold_despike(burst_data[key], **self._despike_opts)
+                burst_data[key] = apply_threshold_despike(burst_data[key], **self._despike_opts)
 
         if self._rotate:
             flow_rotation = self._rotate.get("flow_rotation")
@@ -125,18 +130,6 @@ class Sonic(BaseInstrument):
                 burst_data = self._apply_flow_rotation(burst_data, flow_rotation)
 
         return burst_data
-
-    def _apply_threshold_despike(
-        self,
-        u: np.ndarray,
-        threshold_min: float = -3.0,
-        threshold_max: float = 3.0,
-    ):
-        u_out = u.copy()
-        bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
-        u_out[bad_rows] = np.nan
-        interp_rows(u_out)
-        return u_out
 
     def _apply_flow_rotation(self, burst_data, flow_rotation):
         """
@@ -349,14 +342,9 @@ class Sonic(BaseInstrument):
             self.name_map,
             self.fs,
             self.z,
+            self.data_keys,
             self.path_length,
-            self.orientation,
         )
         if self._preprocess_enabled:
             new_sonic.set_preprocess_opts(self._preprocess_opts)
-
         return new_sonic
-
-    def subsample(self, start_idx, end_idx):
-        files = self.files[start_idx:end_idx]
-        return self.__class__(files, self.name_map, self.fs, self.z, self.path_length)

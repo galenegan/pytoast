@@ -5,7 +5,7 @@ from scipy.optimize import curve_fit
 from scipy.stats import circmean, linregress
 from typing import Optional, Union, List, Dict, Any
 from utils.base_instrument import BaseInstrument
-from utils.interp_utils import interp_rows
+from utils.despike_utils import apply_threshold_despike
 from utils.spectral_utils import psd
 
 from utils.rotate_utils import (
@@ -21,15 +21,19 @@ from utils.rotate_utils import (
 
 class ADCP(BaseInstrument):
     """
-    ADCP class.
+    Class for processing data from Acoustic Doppler Current Profiler (ADCP) instruments. Contains methods for:
+    - Loading data from source files
+    - Preprocessing (despiking, coordinate transformations, flow-dependent rotations)
+    - Calculating mean shear
+    - Calculating turbulence statistics: TKE dissipation, Reynolds stress
     """
 
     def __init__(
         self,
         files: Union[str, List],
         name_map: dict,
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
+        fs: Optional[float] = None,
+        z: Optional[Union[List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: str = "beam",
         orientation: str = "up",
@@ -45,8 +49,7 @@ class ADCP(BaseInstrument):
             Path(s) to data files. If a list, each element is treated as a file containing data from
             an individual burst period. Supported formats: .npy (saved as a dict), .mat (saved as a
             MATLAB struct), .csv (variables in columns). If variables are two-dimensional, the larger
-            dimension is assumed to be time and the shorter dimension a vertical coordinate; in that
-            case a matching `z` list must be provided.
+            dimension is assumed to be time and the shorter dimension a vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
             {
@@ -62,32 +65,34 @@ class ADCP(BaseInstrument):
                 "p": "pressure variable name",        # optional
                 "time": "time variable name",         # optional
             }
-            An error is raised if "time" is absent and `fs` is also not provided. "z" in the
-            name_map is only used if the `z` argument is not specified directly.
-        fs : int or float, optional
+            An error is raised if `time` is absent and `fs` is also not provided. `z` in the name_map is only used if
+            the `z` argument is not specified directly. `heading`, `pitch`, and `roll` are required for any coordinate
+            transformation involving ENU coordinates. "u4" and "u5" can be optionally specified for instruments with
+            4 or 5 beams.
+        fs : float, optional
             Sampling frequency (Hz). Inferred from the "time" variable if not provided.
-        z : List[float, int] or np.ndarray, optional
-            Vertical coordinate for each cell (m above bed if `orientation="up"`, m below surface if
+        z : List[float] or np.ndarray, optional
+            Vertical coordinate for each cell (interpreted as m above bed if `orientation="up"`, m below surface if
             `orientation="down"`). Defaults to integer indices if not specified.
         data_keys : str or List[str], optional
-            One or more nested keys to traverse after loading the file (e.g. "Data" or
-            ["Data", "Burst"]) if variables are not at the top level.
+            One or more nested keys to traverse after loading the file (e.g. "Data" if the variables in name_map are
+            stored at `burst["Data"]["variable_name"]`).
         source_coords : str, optional
-            Velocity coordinate system in the source files. One of ["beam", "xyz", "enu"].
-            Defaults to "beam".
+            Velocity coordinate system in the source files. One of {`beam`, `xyz`, `enu`}.
+            Defaults to `beam`.
         orientation : str, optional
-            Instrument orientation. One of ["up", "down"]. Affects interpretation of the vertical
-            coordinate. Defaults to "up".
+            Instrument orientation. One of {`up`, `down`}. Affects interpretation of the vertical
+            coordinate. Defaults to `up`.
         beam_angle : float, optional
             Beam angle from vertical (degrees). Used in beam-to-xyz coordinate transformations.
             Defaults to 25.0.
         manufacturer : str, optional
-            Instrument manufacturer. One of ["nortek", "rdi"]. Determines the beam transformation
-            matrix used. Only relevant when `source_coords="beam"`. Defaults to "nortek".
+            Instrument manufacturer. One of {`nortek` `rdi`}. Determines the coordinate transformation logic. Defaults
+            to `nortek`.
 
         Returns
         -------
-        ADCP
+        ADCP object
         """
         self.source_coords = source_coords
         self.orientation = orientation
@@ -113,7 +118,7 @@ class ADCP(BaseInstrument):
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]
@@ -139,7 +144,8 @@ class ADCP(BaseInstrument):
             )
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
-        """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
+        """
+        Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
 
         Parameters
         ----------
@@ -147,42 +153,32 @@ class ADCP(BaseInstrument):
             Preprocessing options. Supported keys:
 
             despike : dict, optional
-                Options for simple threshold-based despiking. If not specified, no despiking is applied.
-                Supported keys:
-
-                threshold_min : float
-
-                threshold_max : float
+                Options for simple threshold-based despiking. If not specified, no despiking is applied. Supported keys:
+                    threshold_min : float
+                    threshold_max : float
 
             rotate : dict, optional
                 Options for rotations and coordinate transformations. If not specified, no rotations applied.
                 Supported keys:
 
-                coords_out : str, optional
-                    Coordinates for ADCP.coords to be transformed to. One of ["beam", "xyz", "enu"].
-
-                transformation_matrix : np.ndarray, optional
-                    Transformation matrix for the instrument. Must be specified for coordinate transformation if
-                    manufacturer = 'nortek'. May be excluded if manufacturer = 'rdi' if beam angle is specified
-
-                beam_angle : float, optional
-                    Beam angle in degrees. If manufacturer = 'rdi', may be specified instead of transformation_matrix
-                    for coordinate transformations.
-
-                declination : float, optional
-                    Magnetic declination in degrees. Added to heading for coordinate transformations.
-
-                constant_hpr : Tuple[float], optional
-                    Constant heading, pitch, and roll angles to apply.
-
-                flow_rotation : str or Tuple[float], optional.
-                    One of ["align_principal", "align_current", or (horizontal_angle, vertical_angle)].
-                    If "align_principal" then the velocity will be rotated to align with the principal axes of the flow.
-                    If "align_current" then the velocity will be rotated to align with the horizontal current magnitude
-                    sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float angles are
-                    specified in a tuple, the flow will be rotated by those angles in the horizontal and vertical
-                    planes. Specifying any option will throw an error if ADCP.coords == "beam", unless a
-                    coordinate system change to "xyz" or "enu" is also requested.
+                    coords_out : str, optional
+                        Coordinates for burst["coords"] to be transformed to. One of {`beam`, `xyz`, `enu`}.
+                    transformation_matrix : np.ndarray, optional
+                        Transformation matrix for the instrument. Must be specified for coordinate transformation if
+                        manufacturer = 'nortek'. May be excluded if manufacturer = 'rdi' in which case ADCP.beam_angle
+                        is used to compute the transformation matrix.
+                    declination : float, optional
+                        Magnetic declination in degrees. Added to heading for coordinate transformations.
+                    constant_hpr : Tuple[float], optional
+                        Constant heading, pitch, and roll angles to apply.
+                    flow_rotation : str or Tuple[float], optional.
+                        One of ["align_principal", "align_current", or (horizontal_angle, vertical_angle)]. If
+                        "align_principal" then the velocity will be rotated to align with the principal axes of the
+                        flow. If "align_current" then the velocity will be rotated to align with the horizontal current
+                        magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float
+                        angles are specified in a tuple, the flow will be rotated by those angles in the horizontal and
+                        vertical planes. Specifying any option will throw an error if burst["coords"] == "beam", unless
+                        a coordinate system change to "xyz" or "enu" is also requested.
         """
 
         self._preprocess_opts = opts
@@ -203,7 +199,7 @@ class ADCP(BaseInstrument):
 
         if self._despike:
             for key in self.beam_keys:
-                burst_data[key] = self._apply_threshold_despike(burst_data[key], **self._despike_opts)
+                burst_data[key] = apply_threshold_despike(burst_data[key], **self._despike_opts)
 
         if self._rotate:
             coords_out = self._rotate.get("coords_out")
@@ -225,16 +221,13 @@ class ADCP(BaseInstrument):
         """
         Transform velocity components between coordinate systems.
 
-        Uses configuration stored in self._rotate (transformation_matrix, declination,
-        constant_hpr). Can be called from _apply_preprocessing during standard burst
-        loading, or directly from analysis methods (e.g. covariance) when on-the-fly
-        transformation is needed.
+        Uses configuration stored in self._rotate. Can be called from _apply_preprocessing during standard burst
+        loading, or directly from analysis methods (e.g., covariance).
 
         Parameters
         ----------
         burst_data : dict
-            Burst data dictionary. burst_data["coords"] must reflect the current
-            coordinate system of u1/u2/u3.
+            Burst data dictionary, with burst_data["coords"] reflecting the current velocity coordinate system
         coords_out : str
             Target coordinate system. One of ["beam", "xyz", "enu"].
 
@@ -264,8 +257,8 @@ class ADCP(BaseInstrument):
                     "Heading, pitch, and roll must be provided for any coordinate transformation to/from ENU"
                 )
 
-        # HPR is instrument-level (one time series for the whole instrument), not
-        # indexed per depth bin. Pass the same heading/pitch/roll to every bin.
+        # Unlike with an ADV stack, HPR is instrument-level and not indexed per depth bin. Therefore, pass the same
+        # heading/pitch/roll to every bin.
         for height_idx in range(self.n_heights):
             u1 = burst_data["u1"][height_idx, :]
             u2 = burst_data["u2"][height_idx, :]
@@ -340,7 +333,7 @@ class ADCP(BaseInstrument):
 
     def _apply_flow_rotation(self, burst_data, flow_rotation):
         """
-        Rotate u1/u2/u3 to align with the burst-mean flow direction.
+        Rotate u1/u2/u3 to align with with a particular flow direction
 
         Parameters
         ----------
@@ -376,18 +369,6 @@ class ADCP(BaseInstrument):
         burst_data["u3"] = u3_new
         burst_data["rotation"] = flow_rotation
         return burst_data
-
-    def _apply_threshold_despike(
-        self,
-        u: np.ndarray,
-        threshold_min: float = -3.0,
-        threshold_max: float = 3.0,
-    ):
-        u_out = u.copy()
-        bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
-        u_out[bad_rows] = np.nan
-        interp_rows(u_out)
-        return u_out
 
     def shear(self, burst_data):
         if burst_data["coords"] == "beam":

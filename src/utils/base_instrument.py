@@ -52,6 +52,7 @@ class BaseInstrument(ABC):
         name_map: dict,
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float], np.ndarray]] = None,
+        data_keys: Optional[Union[str, List[str]]] = None,
     ):
         """
         Validate common input parameters shared across all instruments.
@@ -66,6 +67,8 @@ class BaseInstrument(ABC):
             Sampling frequency
         z : float, List[float], or np.ndarray, optional
             Height coordinates
+        data_keys : str or List[str], optional
+            Additional keys to traverse after loading a file
 
         Raises
         ------
@@ -105,6 +108,11 @@ class BaseInstrument(ABC):
         # Validate "fs"
         if fs is not None and not isinstance(fs, (int, float)):
             raise TypeError("`fs` must be either an int or a float")
+
+        # Validate "data_keys"
+        if data_keys is not None:
+            if not isinstance(data_keys, (str, list)):
+                raise TypeError("`data_keys` must be either a string or a list")
 
     @staticmethod
     def _load_file(file_path, data_keys=None):

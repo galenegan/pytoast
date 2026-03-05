@@ -2,9 +2,9 @@ import numpy as np
 import scipy.signal as sig
 from typing import Optional, Union, List, Dict, Any
 from utils.base_instrument import BaseInstrument
-from utils.interp_utils import interp_rows
+from utils.despike_utils import apply_threshold_despike, apply_gn_despike
 from utils.wave_utils import get_wavenumber, get_cg, jones_monismith_correction
-from scipy.stats import median_abs_deviation, linregress
+from scipy.stats import linregress
 
 from utils.spectral_utils import psd, csd, get_frequency_range
 from utils.constants import GRAVITATIONAL_ACCELERATION as g
@@ -18,7 +18,11 @@ from utils.rotate_utils import (
 
 class ADV(BaseInstrument):
     """
-    Class for processing data from Acoustic Doppler Velocimeter (ADV) instruments.
+    Class for processing data from Acoustic Doppler Velocimeter (ADV) instruments. Contains methods for:
+    - Loading data from source files
+    - Preprocessing (despiking, coordinate transformations, flow-dependent rotations)
+    - Calculating turbulence statistics: TKE, TKE dissipation, Reynolds stress (including wave-turbulence decomposed)
+    - Calculating directional wave statistics
     """
 
     def __init__(
@@ -27,6 +31,7 @@ class ADV(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
+        data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: str = "xyz",
         orientation: str = "up",
     ):
@@ -37,9 +42,9 @@ class ADV(BaseInstrument):
         ----------
         files : str or List[str]
             Path(s) to data files. If a list, each element is treated as a file containing data from an individual burst
-            period (usually 10-20 minutes for stable turbulence statistics) Supported formats: .npy (saved as a dict),
-            .mat (saved as a MATLAB struct), .csv (variables in columns). If variables are two-dimensional, the larger
-            dimension is assumed to be time and the shorter dimension is assumed to be a vertical coordinate.
+            period. Supported formats: .npy (saved as a dict), mat (saved as a MATLAB struct), .csv (variables in
+            columns). If variables are two-dimensional, the larger dimension is assumed to be time and the shorter
+            dimension is assumed to be a vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
             {
@@ -61,6 +66,9 @@ class ADV(BaseInstrument):
         z : float, List[float, int], or np.ndarray, optional
             Mean height above the bed (m) for each instrument. If not provided, it will default to integer indices, in
             which case certain functionality (e.g., wave statistics) will not be available.
+        data_keys : str or List[str], optional
+            One or more nested keys to traverse after loading the file (e.g. "Data" if the variables in name_map are
+            stored at `burst["Data"]["variable_name"]`).
         source_coords : str, optional
             Velocity coordinate system in the source files. One of ["xyz", "enu", "beam"].
             Defaults to "xyz".
@@ -76,8 +84,8 @@ class ADV(BaseInstrument):
         self.source_coords = source_coords
         self.orientation = orientation
         files_list = files if isinstance(files, list) else [files]
-        ADV.validate_inputs(files_list, name_map, fs, z, source_coords, orientation)
-        super().__init__(files, name_map, fs, z)
+        ADV.validate_inputs(files_list, name_map, fs, z, data_keys, source_coords, orientation)
+        super().__init__(files, name_map, fs, z, data_keys)
 
     @staticmethod
     def validate_inputs(
@@ -85,12 +93,13 @@ class ADV(BaseInstrument):
         name_map: dict,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]], np.ndarray]] = None,
+        data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: Optional[str] = "xyz",
         orientation: Optional[str] = "up",
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]
@@ -108,7 +117,8 @@ class ADV(BaseInstrument):
             raise ValueError(f"Invalid value for `orientation`: {orientation}. Must be one of ['down', 'up']")
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
-        """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
+        """
+        Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
 
         Parameters
         ----------
@@ -178,7 +188,7 @@ class ADV(BaseInstrument):
             return burst_data
 
         if self._despike:
-            despike_fn = {"gn": self._apply_gn_despike, "threshold": self._apply_threshold_despike}.get(
+            despike_fn = {"gn": apply_gn_despike, "threshold": apply_threshold_despike}.get(
                 self._despike_method
             )
             if despike_fn is None:
@@ -310,167 +320,6 @@ class ADV(BaseInstrument):
         burst_data["u3"] = u3_new
         burst_data["rotation"] = flow_rotation
         return burst_data
-
-    def _apply_threshold_despike(
-        self,
-        u: np.ndarray,
-        threshold_min: float = -3.0,
-        threshold_max: float = 3.0,
-    ):
-        """
-        Threshold-based despiking
-
-        Parameters
-        ----------
-        u : np.ndarray
-            Velocity array to despike
-        threshold_min : float, optional
-            Value below which samples are set to np.nan and interpolated over
-        threshold_max
-            Value above which samples are set to np.nan and interpolated over
-
-        Returns
-        -------
-        u_out : np.ndarray
-            Velocity array with spikes removed and interpolated over
-
-        """
-        u_out = u.copy()
-        bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
-        u_out[bad_rows] = np.nan
-        interp_rows(u_out)
-        return u_out
-
-    def _apply_gn_despike(
-        self,
-        u: np.ndarray,
-        remaining_spikes: int = 5,
-        max_iter: int = 10,
-        robust_statistics: bool = False,
-    ):
-        """
-        Implements the Goring & Nikora (2002) phase-space de-spiking algorithm,
-        returning modified velocity array
-
-        Parameters
-        ----------
-        u : np.ndarray
-            Velocity array to despike.
-
-        remaining_spikes : int
-            Iterations will stop once there are remaining_spikes or fewer bad samples
-
-        max_iter : int
-            Maximum number of iterations
-
-        robust_statistics : bool
-            If True, ellipsoid centers will be based on the median and axis lengths will be based on median absolute
-            deviation as suggested by Wahl (2003). If False, mean and standard deviation are used, consistent with the
-            original Goring & Nikora implementation.
-
-        Returns
-        -------
-        u_out : np.ndarray
-            Velocity array with spikes removed and interpolated over
-
-        References
-        ----------
-        Goring, D. G., & Nikora, V. I. (2002). Despiking acoustic Doppler velocimeter data. Journal of hydraulic
-            engineering, 128(1), 117-126.
-        Wahl, T. L. (2003). Discussion of “Despiking acoustic doppler velocimeter data” by
-            Derek G. Goring and Vladimir I. Nikora. Journal of Hydraulic Engineering, 129(6), 484-487.
-
-        """
-
-        def flag_bad_indices(u: np.ndarray) -> np.ndarray:
-            """Flag spikes in a 2D array (n_heights, n_samples) using phase-space method."""
-            # Gradients along time axis
-            du = np.gradient(u, axis=1) / 2
-            du2 = np.gradient(du, axis=1) / 2
-
-            # Per-row statistics
-            if robust_statistics:
-                sigma_u = median_abs_deviation(u, axis=1, nan_policy="omit")
-                sigma_du = median_abs_deviation(du, axis=1, nan_policy="omit")
-                sigma_du2 = median_abs_deviation(du2, axis=1, nan_policy="omit")
-                u_bar = np.nanmedian(u, axis=1)
-                du_bar = np.nanmedian(du, axis=1)
-                du2_bar = np.nanmedian(du2, axis=1)
-            else:
-                sigma_u = np.nanstd(u, axis=1)
-                sigma_du = np.nanstd(du, axis=1)
-                sigma_du2 = np.nanstd(du2, axis=1)
-                u_bar = np.nanmean(u, axis=1)
-                du_bar = np.nanmean(du, axis=1)
-                du2_bar = np.nanmean(du2, axis=1)
-
-            # Expected absolute maximum
-            n = u.shape[1]
-            lam = np.sqrt(2 * np.log(n))
-
-            # Rotation angle per row
-            theta = np.arctan(np.nansum(u * du2, axis=1) / np.nansum(u**2, axis=1))
-
-            # Ellipse axes (unrotated)
-            a1 = lam * sigma_u
-            b1 = lam * sigma_du
-            a3 = lam * sigma_du
-            b3 = lam * sigma_du2
-
-            # Rotated ellipse axes via batched 2x2 solve
-            cos_t = np.cos(theta)
-            sin_t = np.sin(theta)
-            A = np.empty((u.shape[0], 2, 2))
-            A[:, 0, 0] = cos_t**2
-            A[:, 0, 1] = sin_t**2
-            A[:, 1, 0] = sin_t**2
-            A[:, 1, 1] = cos_t**2
-            b_vec = np.stack([(lam * sigma_u) ** 2, (lam * sigma_du2) ** 2], axis=1)  # (n_heights, 2)
-            x = np.linalg.solve(A, b_vec[:, :, None]).squeeze(-1)  # (n_heights, 2)
-            a2 = np.sqrt(x[:, 0])
-            b2 = np.sqrt(x[:, 1])
-
-            # Broadcast all (n_heights,) stats to (n_heights, 1)
-            u_bar = u_bar[:, np.newaxis]
-            du_bar = du_bar[:, np.newaxis]
-            du2_bar = du2_bar[:, np.newaxis]
-            a1 = a1[:, np.newaxis]
-            b1 = b1[:, np.newaxis]
-            a2 = a2[:, np.newaxis]
-            b2 = b2[:, np.newaxis]
-            a3 = a3[:, np.newaxis]
-            b3 = b3[:, np.newaxis]
-            cos_t = cos_t[:, np.newaxis]
-            sin_t = sin_t[:, np.newaxis]
-
-            # u vs du
-            bad_u_du = (u - u_bar) ** 2 / a1**2 + (du - du_bar) ** 2 / b1**2 > 1
-
-            # u vs du2 (rotated ellipse)
-            bad_u_du2 = (
-                (cos_t * (u - u_bar) + sin_t * (du2 - du2_bar)) ** 2 / a2**2
-                + (sin_t * (u - u_bar) - cos_t * (du2 - du2_bar)) ** 2 / b2**2
-            ) > 1
-
-            # du vs du2
-            bad_du_du2 = (du - du_bar) ** 2 / a3**2 + (du2 - du2_bar) ** 2 / b3**2 > 1
-
-            return bad_u_du | bad_u_du2 | bad_du_du2
-
-        u_out = u.copy()
-        bad_index = flag_bad_indices(u_out)
-        total_bad = np.sum(bad_index, axis=1)
-        iterations = 0
-
-        while np.any(total_bad > remaining_spikes) and iterations < max_iter:
-            u_out[bad_index] = np.nan
-            interp_rows(u_out)
-            bad_index = flag_bad_indices(u_out)
-            total_bad = np.sum(bad_index, axis=1)
-            iterations += 1
-
-        interp_rows(u_out)
-        return u_out
 
     def benilov_decomposition(
         self,
@@ -1458,6 +1307,7 @@ class ADV(BaseInstrument):
             self.name_map,
             self.fs,
             self.z,
+            self.data_keys,
             self.source_coords,
             self.orientation,
         )
