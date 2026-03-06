@@ -3,7 +3,7 @@ from scipy.stats import median_abs_deviation
 from utils.interp_utils import interp_rows
 
 
-def apply_threshold_despike(
+def threshold(
     u: np.ndarray,
     threshold_min: float = -3.0,
     threshold_max: float = 3.0,
@@ -33,7 +33,7 @@ def apply_threshold_despike(
     return u_out
 
 
-def apply_gn_despike(
+def goring_nikora(
     u: np.ndarray,
     remaining_spikes: int = 5,
     max_iter: int = 10,
@@ -162,3 +162,11 @@ def apply_gn_despike(
 
     interp_rows(u_out)
     return u_out
+
+def recursive_gaussian():
+    pass
+    # TODO: Implement recursive Gaussian despike
+
+def kernel_density():
+    pass
+    # TODO: Implement kernel density despike

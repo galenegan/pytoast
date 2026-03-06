@@ -440,3 +440,43 @@ def rotate_velocity_by_theta(u1, u2, u3, theta_h, theta_v):
 
 def min_angle(alpha):
     return (alpha + 180) % 360 - 180
+
+
+def apply_flow_rotation(burst_data, flow_rotation):
+    """
+    Rotate u1/u2/u3 to align with a particular flow direction.
+
+    Parameters
+    ----------
+    burst_data : dict
+        Burst data dictionary. Must be in non-beam coordinates.
+    flow_rotation : str or tuple
+        `align_principal`, `align_streamwise`, or (theta_h_deg, theta_v_deg).
+
+    Returns
+    -------
+    dict
+        burst_data with u1/u2/u3 rotated and burst_data["rotation"] set.
+    """
+    if isinstance(flow_rotation, str):
+        if flow_rotation == "align_principal":
+            theta_h, theta_v = align_with_principal_axis(burst_data["u1"], burst_data["u2"], burst_data["u3"])
+        elif flow_rotation == "align_streamwise":
+            theta_h, theta_v = align_with_flow(burst_data["u1"], burst_data["u2"], burst_data["u3"])
+        else:
+            raise ValueError(
+                f"Invalid flow_rotation '{flow_rotation}'. Must be 'align_principal' or 'align_streamwise'."
+            )
+    elif isinstance(flow_rotation, tuple):
+        theta_h, theta_v = flow_rotation
+    else:
+        raise TypeError(f"flow_rotation must be a str or tuple, got {type(flow_rotation)}")
+
+    u1_new, u2_new, u3_new = rotate_velocity_by_theta(
+        burst_data["u1"], burst_data["u2"], burst_data["u3"], theta_h, theta_v
+    )
+    burst_data["u1"] = u1_new
+    burst_data["u2"] = u2_new
+    burst_data["u3"] = u3_new
+    burst_data["rotation"] = flow_rotation
+    return burst_data

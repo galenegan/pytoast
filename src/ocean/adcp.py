@@ -5,17 +5,15 @@ from scipy.optimize import curve_fit
 from scipy.stats import circmean, linregress
 from typing import Optional, Union, List, Dict, Any, Tuple
 from utils.base_instrument import BaseInstrument
-from utils.despike_utils import apply_threshold_despike
+from utils.despike_utils import threshold, goring_nikora
 from utils.spectral_utils import psd
 
 from utils.rotate_utils import (
-    align_with_principal_axis,
-    align_with_flow,
-    rotate_velocity_by_theta,
     coord_transform_3_beam_nortek,
     coord_transform_4_beam_nortek,
     coord_transform_4_beam_rdi,
     min_angle,
+    apply_flow_rotation,
 )
 
 
@@ -41,7 +39,7 @@ class ADCP(BaseInstrument):
         manufacturer: str = "nortek",
     ):
         """
-        Initialize an ADCP data manager.
+        Initialize an ADCP object.
 
         Parameters
         ----------
@@ -70,7 +68,8 @@ class ADCP(BaseInstrument):
             transformation involving ENU coordinates. "u4" and "u5" can be optionally specified for instruments with
             4 or 5 beams.
         fs : float, optional
-            Sampling frequency (Hz). Inferred from the "time" variable if not provided.
+            Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
+            `time` variable
         z : List[float] or np.ndarray, optional
             Vertical coordinate for each cell (interpreted as m above bed if `orientation="up"`, m below surface if
             `orientation="down"`). Defaults to integer indices if not specified.
@@ -172,9 +171,9 @@ class ADCP(BaseInstrument):
                     constant_hpr : Tuple[float], optional
                         Constant heading, pitch, and roll angles to apply.
                     flow_rotation : str or Tuple[float], optional.
-                        One of {`align_principal`, `align_current`, or (horizontal_angle, vertical_angle)}. If
+                        One of {`align_principal`, `align_streamwise`, or (horizontal_angle, vertical_angle)}. If
                         `align_principal` then the velocity will be rotated to align with the principal axes of the
-                        flow. If `align_current` then the velocity will be rotated to align with the horizontal current
+                        flow. If `align_streamwise` then the velocity will be rotated to align with the horizontal current
                         magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float
                         angles are specified in a tuple, the flow will be rotated by those angles in the horizontal and
                         vertical planes. Specifying any option will throw an error if `burst["coords"]` == `"beam"`,
@@ -186,7 +185,8 @@ class ADCP(BaseInstrument):
 
         self._despike = opts.get("despike", {})
         if self._despike:
-            self._despike_opts = {key: val for key, val in self._despike.items()}
+            self._despike_method = self._despike.get("method")
+            self._despike_opts = {key: val for key, val in self._despike.items() if key != "method"}
 
         self._rotate = opts.get("rotate", {})
         self._cached_idx = None
@@ -198,8 +198,11 @@ class ADCP(BaseInstrument):
             return burst_data
 
         if self._despike:
+            despike_fn = {"goring_nikora": goring_nikora, "threshold": threshold}.get(self._despike_method)
+            if despike_fn is None:
+                raise ValueError(f"Invalid despiking method '{self._despike_method}'")
             for key in self.beam_keys:
-                burst_data[key] = apply_threshold_despike(burst_data[key], **self._despike_opts)
+                burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
 
         if self._rotate:
             coords_out = self._rotate.get("coords_out")
@@ -213,7 +216,7 @@ class ADCP(BaseInstrument):
                         "Cannot apply flow rotation in beam coordinates. Specify 'coords_out' "
                         "as 'xyz' or 'enu' in rotate options."
                     )
-                burst_data = self._apply_flow_rotation(burst_data, flow_rotation)
+                burst_data = apply_flow_rotation(burst_data, flow_rotation)
 
         return burst_data
 
@@ -329,47 +332,6 @@ class ADCP(BaseInstrument):
                 )
 
         burst_data["coords"] = coords_out
-        return burst_data
-
-    def _apply_flow_rotation(
-        self, burst_data: Dict[str, np.ndarray], flow_rotation: Union[str, Tuple[float]]
-    ) -> Dict[str, np.ndarray]:
-        """
-        Rotate u1/u2/u3 to align with with a particular flow direction
-
-        Parameters
-        ----------
-        burst_data : dict
-            Burst data dictionary. Must be in non-beam coordinates.
-        flow_rotation : str or tuple
-            `align_principal`, `align_current`, or (theta_h_deg, theta_v_deg).
-
-        Returns
-        -------
-        dict
-            burst_data with u1/u2/u3 rotated and burst_data["rotation"] set.
-        """
-        if isinstance(flow_rotation, str):
-            if flow_rotation == "align_principal":
-                theta_h, theta_v = align_with_principal_axis(burst_data["u1"], burst_data["u2"], burst_data["u3"])
-            elif flow_rotation == "align_current":
-                theta_h, theta_v = align_with_flow(burst_data["u1"], burst_data["u2"], burst_data["u3"])
-            else:
-                raise ValueError(
-                    f"Invalid flow_rotation '{flow_rotation}'. Must be 'align_principal' or 'align_current'."
-                )
-        elif isinstance(flow_rotation, tuple):
-            theta_h, theta_v = flow_rotation
-        else:
-            raise TypeError(f"flow_rotation must be a str or tuple, got {type(flow_rotation)}")
-
-        u1_new, u2_new, u3_new = rotate_velocity_by_theta(
-            burst_data["u1"], burst_data["u2"], burst_data["u3"], theta_h, theta_v
-        )
-        burst_data["u1"] = u1_new
-        burst_data["u2"] = u2_new
-        burst_data["u3"] = u3_new
-        burst_data["rotation"] = flow_rotation
         return burst_data
 
     def shear(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -702,6 +664,12 @@ class ADCP(BaseInstrument):
         eps : np.ndarray
             Vertical profile of dissipation for the burst period
 
+        References
+        ----------
+        McMillan, J. M., Hay, A. E., Lueck, R. G., & Wolk, F. (2016). Rates of dissipation of turbulent kinetic energy
+            in a high Reynolds number tidal channel. Journal of Atmospheric and Oceanic Technology, 33(4), 817-837.
+        McMillan, J. M., & Hay, A. E. (2017). Spectral and structure function estimates of turbulence dissipation rates
+            in a high-flow tidal channel using broadband ADCPs. Journal of Atmospheric and Oceanic Technology, 34(1), 5-20.
         """
 
         if burst_data["coords"] != "beam":
@@ -717,7 +685,7 @@ class ADCP(BaseInstrument):
                 f"Invalid dissipation method '{method}'. Must be '4beam_spectral', '5th_beam_spectral', or 'structure_function'."
             )
 
-        # Kolmogorov constants
+        # Kolmogorov constants. Some people prefer 0.52 and 0.69, but it only 4% matters.
         C_u = 0.5
         C_w = 0.67
 

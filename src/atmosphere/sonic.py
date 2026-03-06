@@ -2,29 +2,31 @@ import numpy as np
 import scipy.signal as sig
 from scipy.stats import linregress
 from typing import Optional, Union, List, Dict, Any
-from src.utils.despike_utils import apply_threshold_despike
+from src.utils.despike_utils import threshold, goring_nikora
 from src.utils.spectral_utils import psd, csd, get_frequency_range
 from src.utils.base_instrument import BaseInstrument
 from src.utils.constants import GRAVITATIONAL_ACCELERATION as g
-from src.utils.rotate_utils import (
-    align_with_principal_axis,
-    align_with_flow,
-    rotate_velocity_by_theta,
-)
+from src.utils.rotate_utils import apply_flow_rotation
 
 
 class Sonic(BaseInstrument):
+    """
+    Class for processing data from Sonic anemometers. Contains methods for:
+    - Loading data from source files
+    - Preprocessing (despiking, flow-dependent rotations)
+    - Calculating turbulence statistics: TKE dissipation, Reynolds stress, TKE, buoyancy flux
+    """
     def __init__(
         self,
         files: Union[str, List],
         name_map: dict,
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        fs: Optional[float] = None,
+        z: Optional[Union[float, List[float]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
         path_length: float = 0.15,
     ):
         """
-        Initialize a Sonic anemometer data manager.
+        Initialize a Sonic object.
 
         Parameters
         ----------
@@ -32,8 +34,7 @@ class Sonic(BaseInstrument):
             Path(s) to data files. If a list, each element is treated as a file containing data from
             an individual burst period. Supported formats: .npy (saved as a dict), .mat (saved as a
             MATLAB struct), .csv (variables in columns). If variables are two-dimensional, the larger
-            dimension is assumed to be time and the shorter dimension a vertical coordinate; in that
-            case a matching `z` list must be provided.
+            dimension is assumed to be time and the shorter dimension a vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
             {
@@ -46,10 +47,10 @@ class Sonic(BaseInstrument):
             "Ts" and "time" are optional, but an error is raised if "time" is absent and `fs` is
             also not provided. Lists are used when data from multiple instruments are stored in
             separate variables rather than a 2-D array.
-        fs : int or float, optional
-            Sampling frequency (Hz). Inferred (rounded to 2 decimal places) from the "time" variable
-            if not provided.
-        z : float, int, or List[float, int], optional
+        fs : float, optional
+            Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
+            `time` variable
+        z : float or List[float], optional
             Mean height above the surface (m) for each instrument. Defaults to integer indices if not
             specified.
         data_keys : str or List[str], optional
@@ -75,11 +76,11 @@ class Sonic(BaseInstrument):
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
-        path_length: Optional[float] = 0.15,
+        path_length: float = 0.15,
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]
@@ -92,16 +93,40 @@ class Sonic(BaseInstrument):
             raise TypeError("`path length` must be a float")
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
-        """Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
+        """
+        Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
 
         Parameters
         ----------
-        opts : Dict[str, Any]
-            Options for preprocessing. Currently supports the following keys/values
-            {
-                "rotate": "align_wind", "align_principal", or (horizontal_angle(s), vertical_angle(s))
-                "despike": bool
-            }
+        opts : dict
+            Preprocessing options. Supported keys:
+
+            despike : dict, optional
+                Options for despiking. If not specified, no despiking is applied. Supported keys:
+
+                method : {'threshold', 'goring_nikora'}
+                    If `threshold`, data is despiked by replacing any samples with a magnitude outside a specified
+                    range. If `goring_nikora`, data is despiked using the Goring & Nikora (2002) algorithm.
+
+                If ``{'method': 'goring_nikora', ...}``, additional keys can be (see `despike_utils::goring_nikora`
+                docstring):
+                    remaining_spikes : int
+                    max_iter : int
+                    robust_statistics : bool
+
+                If ``{'method': 'threshold', ...}``, additional keys can be:
+                    threshold_min : float
+                    threshold_max : float
+
+            rotate : dict, optional
+                Options for rotations. If not specified, no rotations applied. Supported keys:
+                    flow_rotation : str or Tuple[float], optional.
+                        One of {`align_principal`, `align_streamwise`, or (horizontal_angle_degrees,
+                        vertical_angle_degrees)}. If `align_principal`, then the velocity will be rotated to align with
+                        the principal axes of the flow. If `align_streamwise`, then the velocity will be rotated to
+                        align with the horizontal wind magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity
+                        will be minimized. If float angles are specified in a tuple, the flow will be rotated by those
+                        angles in the horizontal and vertical planes.
         """
 
         self._preprocess_opts = opts
@@ -109,7 +134,8 @@ class Sonic(BaseInstrument):
 
         self._despike = opts.get("despike", {})
         if self._despike:
-            self._despike_opts = {key: val for key, val in self._despike.items()}
+            self._despike_method = self._despike.get("method")
+            self._despike_opts = {key: val for key, val in self._despike.items() if key != "method"}
 
         self._rotate = opts.get("rotate", {})
         self._cached_idx = None
@@ -121,53 +147,17 @@ class Sonic(BaseInstrument):
             return burst_data
 
         if self._despike:
-            for key in self.beam_keys:
-                burst_data[key] = apply_threshold_despike(burst_data[key], **self._despike_opts)
+            despike_fn = {"goring_nikora": goring_nikora, "threshold": threshold}.get(self._despike_method)
+            if despike_fn is None:
+                raise ValueError(f"Invalid despiking method '{self._despike_method}'")
+            for key in ["u1", "u2", "u3"]:
+                burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
 
         if self._rotate:
             flow_rotation = self._rotate.get("flow_rotation")
             if flow_rotation:
-                burst_data = self._apply_flow_rotation(burst_data, flow_rotation)
+                burst_data = apply_flow_rotation(burst_data, flow_rotation)
 
-        return burst_data
-
-    def _apply_flow_rotation(self, burst_data, flow_rotation):
-        """
-        Rotate u1/u2/u3 to align with the burst-mean flow direction.
-
-        Parameters
-        ----------
-        burst_data : dict
-            Burst data dictionary. Must be in non-beam coordinates.
-        flow_rotation : str or tuple
-            `align_principal`, `align_current`, or (theta_h_deg, theta_v_deg).
-
-        Returns
-        -------
-        dict
-            burst_data with u1/u2/u3 rotated and burst_data["rotation"] set.
-        """
-        if isinstance(flow_rotation, str):
-            if flow_rotation == "align_principal":
-                theta_h, theta_v = align_with_principal_axis(burst_data["u1"], burst_data["u2"], burst_data["u3"])
-            elif flow_rotation == "align_current":
-                theta_h, theta_v = align_with_flow(burst_data["u1"], burst_data["u2"], burst_data["u3"])
-            else:
-                raise ValueError(
-                    f"Invalid flow_rotation '{flow_rotation}'. Must be 'align_principal' or 'align_current'."
-                )
-        elif isinstance(flow_rotation, tuple):
-            theta_h, theta_v = flow_rotation
-        else:
-            raise TypeError(f"flow_rotation must be a str or tuple, got {type(flow_rotation)}")
-
-        u1_new, u2_new, u3_new = rotate_velocity_by_theta(
-            burst_data["u1"], burst_data["u2"], burst_data["u3"], theta_h, theta_v
-        )
-        burst_data["u1"] = u1_new
-        burst_data["u2"] = u2_new
-        burst_data["u3"] = u3_new
-        burst_data["rotation"] = flow_rotation
         return burst_data
 
     def dissipation(
@@ -179,16 +169,35 @@ class Sonic(BaseInstrument):
         **kwargs,
     ) -> np.ndarray:
         """
+        Estimate the dissipation rate of TKE via spectral curve fit to the streamwise wavenumber spectrum. Choice of
+        constant is consistent with Edson and Fairall (1998), and the path length correction of Henjes et al (1999) can
+        be optionally applied as well.
 
         Parameters
         ----------
-        f_low
-        f_high
-        henjes_correction
-        kwargs
+        burst_data : dict
+            Burst data dictionary containing `u1` key. This should correspond to the streamwise velocity (e.g., by
+            specifying `align_streamwise` in the preprocessing options) but this is not explicitly enforced.
+        f_low : float
+            Lower bound (Hz) of inertial subrange where the curve fit is carried out
+        f_high : float
+            Upper bound (Hz) of inertial subrange where the curve fit is carried out
+        henjes_correction : bool
+            If True, apply the Henjes et al. path length correction to the spectral curve fit
+        kwargs : dict
+            Additional keyword arguments to pass to `spectral_utils.psd`
 
         Returns
         -------
+        eps : np.ndarray
+            Dissipation rate of TKE at each height
+
+        References
+        ----------
+        Edson, J. B., & Fairall, C. W. (1998). Similarity relationships in the marine atmospheric surface layer for
+            terms in the TKE and scalar variance budgets. Journal of the atmospheric sciences, 55(13), 2311-2328.
+        Henjes, K., Taylor, P. K., & Yelland, M. J. (1999). Effect of pulse averaging on sonic anemometer spectra.
+            Journal of Atmospheric and Oceanic Technology, 16(1), 181-184.
 
         """
 
@@ -205,7 +214,7 @@ class Sonic(BaseInstrument):
             f, S = psd(u_prime, fs=self.fs, onesided=False, **kwargs)
 
             if henjes_correction:
-                fs = kwargs.get("fs", self.fs)
+                fs = self.fs
                 L = self.path_length
                 delta_t = 1 / fs
 
@@ -241,7 +250,7 @@ class Sonic(BaseInstrument):
         n_heights = self.n_heights
         eps = np.empty((n_heights,))
         for height_idx in range(n_heights):
-            u = burst_data["u"][height_idx, :]
+            u = burst_data["u1"][height_idx, :]
             eps[height_idx] = spectral_fit(
                 u,
                 henjes_correction=henjes_correction,
@@ -260,6 +269,29 @@ class Sonic(BaseInstrument):
         f_high: Optional[float] = None,
         **kwargs,
     ):
+        """
+        Calculate components of the covariance matrix (i.e., the Reynolds stress)
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary.
+        method : str
+            Method to calculate covariances. Options are:
+            - `cov`: Standard covariance calculation using the built-in `np.cov`
+            - `spectral_integral`: Integrate the cross-spectrum over a specified frequency range
+        f_low : float, optional
+            Lower frequency bound (Hz) for spectral integration, by default None
+        f_high : float, optional
+            Upper frequency bound (Hz) for spectral integration, by default None
+        **kwargs
+            Additional arguments passed to spectral calculations
+
+        Returns
+        -------
+        out : dict
+            Dictionary containing covariance components.
+        """
         out = {}
         n_heights = self.n_heights
         if method == "cov":
@@ -337,6 +369,23 @@ class Sonic(BaseInstrument):
         return B
 
     def subsample(self, start_idx, end_idx):
+        """
+        Subsample the Sonic object between files[start_idx] and files[end_idx].
+
+        Parameters
+        ----------
+        start_idx : int
+            First file to include in subsampling
+        end_idx : int
+            Upper bound (exclusive) on file index in subsampling
+
+
+        Returns
+        -------
+        new_sonic : Sonic
+            Subsampled Sonic object
+
+        """
         new_sonic = self.__class__(
             self.files[start_idx:end_idx],
             self.name_map,
