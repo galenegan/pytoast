@@ -188,9 +188,7 @@ class ADV(BaseInstrument):
             return burst_data
 
         if self._despike:
-            despike_fn = {"gn": apply_gn_despike, "threshold": apply_threshold_despike}.get(
-                self._despike_method
-            )
+            despike_fn = {"gn": apply_gn_despike, "threshold": apply_threshold_despike}.get(self._despike_method)
             if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
             for key in ["u1", "u2", "u3"]:

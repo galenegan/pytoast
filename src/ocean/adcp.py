@@ -3,7 +3,7 @@ import numpy as np
 from scipy.integrate import cumulative_trapezoid
 from scipy.optimize import curve_fit
 from scipy.stats import circmean, linregress
-from typing import Optional, Union, List, Dict, Any
+from typing import Optional, Union, List, Dict, Any, Tuple
 from utils.base_instrument import BaseInstrument
 from utils.despike_utils import apply_threshold_despike
 from utils.spectral_utils import psd
@@ -177,8 +177,8 @@ class ADCP(BaseInstrument):
                         flow. If `align_current` then the velocity will be rotated to align with the horizontal current
                         magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float
                         angles are specified in a tuple, the flow will be rotated by those angles in the horizontal and
-                        vertical planes. Specifying any option will throw an error if `burst["coords"]` == `"beam"`, unless
-                        a coordinate system change to `xyz` or `enu` is also requested.
+                        vertical planes. Specifying any option will throw an error if `burst["coords"]` == `"beam"`,
+                        unless a coordinate system change to `xyz` or `enu` is also requested.
         """
 
         self._preprocess_opts = opts
@@ -235,7 +235,7 @@ class ADCP(BaseInstrument):
         -------
         dict
             burst_data with velocity components transformed in-place and
-            burst_data["coords"] updated to coords_out.
+            `burst_data["coords"]` updated to `coords_out`.
         """
         coords_in = burst_data["coords"]
         transformation_matrix = self._rotate.get("transformation_matrix")
@@ -331,7 +331,9 @@ class ADCP(BaseInstrument):
         burst_data["coords"] = coords_out
         return burst_data
 
-    def _apply_flow_rotation(self, burst_data, flow_rotation):
+    def _apply_flow_rotation(
+        self, burst_data: Dict[str, np.ndarray], flow_rotation: Union[str, Tuple[float]]
+    ) -> Dict[str, np.ndarray]:
         """
         Rotate u1/u2/u3 to align with with a particular flow direction
 
@@ -370,7 +372,22 @@ class ADCP(BaseInstrument):
         burst_data["rotation"] = flow_rotation
         return burst_data
 
-    def shear(self, burst_data):
+    def shear(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        """
+        Calculates the mean vertical shear of the 3 cartesian velocity components. Uses numpy's gradient function with
+        second-order accuracy at the boundaries.
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary. Must be in non-beam coordinates.
+
+        Returns
+        -------
+        out : dict
+            Dictionary containing vertical shear profiles for each velocity component.
+
+        """
         if burst_data["coords"] == "beam":
             raise ValueError(
                 "Shear calculation is not supported for beam coordinates. "
@@ -397,6 +414,52 @@ class ADCP(BaseInstrument):
         roll: np.ndarray = np.array([0.0]),
         **kwargs,
     ):
+        """
+        Calculate Reynolds stress components for a given burst.
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary (any coordinates allowed)
+        method : str
+            One of {`variance`, `ogive_fit`, `5beam`}, corresponding to the methods of Stacey et al. (1999),
+            Kirincich et al. (2010), and Guerra and Thomson (2017), respectively. All methods assume that the
+            ADCP beam axes (e.g., 1-3 and 2-4 for Nortek instruments) are aligned with the principal axes of the
+            flow. If this is the case, then the `uw` component can be interpreted as the Reynolds stress along the
+            major axis and `vw` as the Reynolds stress along the minor axis.
+        f_cutoff_ogive : float
+            Upper frequency bound (Hz) for the `ogive_fit` method, which should correspond to the frequency at which
+            waves begin to significantly contaminate the velocity signal. Defaults to 0.1 Hz.
+        ogive_r2_min : float
+            Minimum coefficient of determination (r^2) for the `ogive_fit` method to ensure consistency with the
+            theoretical Kaimal spectrum. Defaults to 0.9.
+        sigma_wave_ratio_max : float
+            Maximum ratio of the wave velocity standard deviation to mean velocity for the `ogive_fit` method. If not
+            specified then no maximum is applied.
+        pitch : np.ndarray
+            Instrument pitch angle (degrees) for the burst period. Used in the `5beam` method, defaults to 0.0
+        roll : np.ndarray
+            Instrument roll angle (degrees) for the burst period. Used in the `5beam` method, defaults to 0.0
+        kwargs : dict
+            Additional arguments passed to spectral_utils.csd
+
+        Returns
+        -------
+        out : dict
+            Dictionary containing vertical profiles for the various Reynolds stress components. `variance` and
+            `ogive_fit` methods only return `uw` and `vw`, while `5beam` additionally returns `uu`, `vv`, and `ww`.
+
+        References
+        ----------
+        Stacey, M. T., Monismith, S. G., & Burau, J. R. (1999). Measurements of Reynolds stress profiles in unstratified
+            tidal flow. Journal of Geophysical Research: Oceans, 104(C5), 10933-10949.
+        Kirincich, A. R., Lentz, S. J., & Gerbi, G. P. (2010). Calculating Reynolds stresses from ADCP measurements in
+            the presence of surface gravity waves using the cospectra-fit method. Journal of Atmospheric and Oceanic
+            Technology, 27(5), 889-907.
+        Guerra, M., & Thomson, J. (2017). Turbulence measurements from five-beam acoustic Doppler current profilers.
+            Journal of Atmospheric and Oceanic Technology, 34(6), 1267-1284.
+
+        """
 
         if method not in ["variance", "ogive_fit", "5beam"]:
             raise ValueError(f"Invalid covariance method '{method}'. Must be 'variance', 'ogive_fit', or '5beam'.")
@@ -431,22 +494,17 @@ class ADCP(BaseInstrument):
                 if method == "variance":
                     out[stress_key] = stress_estimate
                 elif method == "ogive_fit":
-                    # Traditional (decreasing) ogive fit based on Kaimal spectrum
-                    # (Kirincich et al. 2010, Eq. 13).
-                    #
-                    # The ogive is Og(k) = ∫_k^∞ Co(k') dk', a decreasing function:
-                    # at low k it plateaus near u'w'; at high k it drops to 0.
-                    # Fitting in the low-k (sub-wave) band therefore reads u'w' directly
-                    # from the plateau, regardless of k0.  The reversed (cumulative from
-                    # low k) form used previously was approximately linear in the fit
-                    # range, making the (uw, k0) optimization ill-conditioned and biased.
+
                     def model_ogive(k, uw, k0):
                         A = (7 / (3 * np.pi)) * np.sin(3 * np.pi / 7)
                         cospectrum = uw * A * (1 / k0) / (1 + (k / k0) ** (7 / 3))
-                        # Traditional: remaining stress at scales larger than 1/k.
-                        # The Kaimal total ∫_0^∞ Co dk = uw exactly, so:
-                        cum = cumulative_trapezoid(cospectrum, k, initial=0)
-                        return uw - cum
+                        ogive_curve = cumulative_trapezoid(cospectrum, k, initial=0)
+                        # In the standard formulation (e.g., their Figure 4, panel 3) the Ogive curve is an increasing
+                        # function of k/k0 that plateaus at the stress u'w' at high wavenumbers. Here, we subtract that
+                        # curve from the stress that we want so that the plateau is at low wavenumbers where we carry
+                        # out the fit.
+                        flipped_ogive = uw - ogive_curve
+                        return flipped_ogive
 
                     out[stress_key] = np.full((self.n_heights,), np.nan)
                     for height_idx in range(self.n_heights):
@@ -457,21 +515,19 @@ class ADCP(BaseInstrument):
                         Co_measured = (P_u1 - P_u2) / (2 * np.sin(2 * beam_angle_rad))
                         Co_measured_k = Co_measured * u_bar_z / (2 * np.pi)
 
-                        # Traditional ogive: cumulate from high k to low k
+                        # Same flipping around of the measured Ogive curve as we did with the model
                         ogive_cumulative = cumulative_trapezoid(Co_measured_k, k_measured, initial=0)
                         ogive_measured = ogive_cumulative[-1] - ogive_cumulative
 
                         k_cutoff = 2 * np.pi * f_cutoff_ogive / u_bar_z
                         fit_indices = (k_measured > 0) & (k_measured < k_cutoff)
 
-                        # QC 1: wave contamination — σ_wave / u_bar must be below threshold.
-                        # Wave variance is estimated from beam PSD above the cutoff frequency.
-                        # High σ_wave / u_bar means Taylor's frozen-turbulence hypothesis
-                        # may not hold in the wave band.
+                        # sigma_wave_ratio_max check
+                        # wave variance is estimated from beam PSD above the cutoff frequency.
                         if sigma_wave_ratio_max is not None:
                             wave_indices = f > f_cutoff_ogive
                             if wave_indices.any():
-                                sigma_wave_sq = np.trapz(
+                                sigma_wave_sq = np.trapezoid(
                                     (P_u1[wave_indices] + P_u2[wave_indices]) / 2,
                                     f[wave_indices],
                                 )
@@ -489,7 +545,7 @@ class ADCP(BaseInstrument):
                         else:
                             k0_0 = k_cutoff / 2
 
-                        # QC 2: convergence
+                        # Wrap in a try/except in case it doesn't converge
                         try:
                             popt, _ = curve_fit(
                                 f=model_ogive,
@@ -504,12 +560,11 @@ class ADCP(BaseInstrument):
 
                         uw_fit, k0_fit = popt
 
-                        # QC 3: k₀ must be positive (already enforced by bounds, but
-                        # guard against edge cases).
+                        # Make sure that k0 is positive (should be enforced by bounds, but guard against edge cases).
                         if k0_fit <= 0:
                             continue
 
-                        # QC 4: goodness-of-fit (R²) between model and measured ogive
+                        # r^2 between model and measured ogive
                         ogive_model = model_ogive(k_measured[fit_indices], uw_fit, k0_fit)
                         ss_res = np.sum((ogive_measured[fit_indices] - ogive_model) ** 2)
                         ss_tot = np.sum((ogive_measured[fit_indices] - np.mean(ogive_measured[fit_indices])) ** 2)
@@ -611,7 +666,43 @@ class ADCP(BaseInstrument):
 
         return out
 
-    def dissipation(self, burst_data, method="4beam_spectral", sf_kwargs=None, **kwargs):
+    def dissipation(
+        self, burst_data: Dict[str, np.ndarray], method: str = "4beam_spectral", sf_kwargs: dict = None, **kwargs
+    ) -> np.ndarray:
+        """
+        Estimate the dissipation rate of TKE for a given burst
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary (any coordinates allowed)
+        method : str
+            One of {`4beam_spectral`, `5th_beam_spectral`, `structure_function`}. The spectral methods follow
+            McMillan et al. (2016) and the structure function method follows McMillan and Hay (2017).
+        sf_kwargs : dict
+            Additional keyword arguments to pass to the structure function method. Keys allowed:
+                z_start_idx : int
+                    Lower bound index of self.z to include in the structure function calculation. Defaults to 0.
+                z_end_idx : int
+                    Upper bound index of self.z to include in the structure function calculation. Defaults to self.n_heights.
+                r_min : float
+                    Minimum separation to include in the regression for epsilon. Default None
+                r_max : float
+                    Maximum separation to include in the regression for epsilon. Default None
+                min_points : float
+                    Minimum number of data points to include in the regression. Defaults to 3
+                beams : List[str]
+                    Beam names (e.g., ["u1", "u2"]) to average over. Defaults to self.beam_keys
+
+        kwargs : dict
+            Additional keyword arguments to pass to the spectral utils.
+
+        Returns
+        -------
+        eps : np.ndarray
+            Vertical profile of dissipation for the burst period
+
+        """
 
         if burst_data["coords"] != "beam":
             u_bar = np.mean(np.sqrt(burst_data["u1"] ** 2 + burst_data["u2"] ** 2), axis=1)
@@ -685,18 +776,12 @@ class ADCP(BaseInstrument):
             sf_kwargs = sf_kwargs or {}
             z_start = sf_kwargs.get("z_start_idx", 0)
             z_end = sf_kwargs.get("z_end_idx", self.n_heights)
-            min_points = sf_kwargs.get("min_points", 3)
-            beams = sf_kwargs.get("beams", self.beam_keys)
-            # r_min / r_max restrict the fit to the inertial subrange.
-            # Including large separations (r >> outer scale) causes D_LL to
-            # saturate at 2σ² >> 2.1·ε^(2/3)·r^(2/3), which inflates the
-            # fitted slope and ε by orders of magnitude.  r_max should be set
-            # to a value below the outer/integral length scale (often a few
-            # times the bin spacing, or ~10% of the measurement span).
             r_min = sf_kwargs.get("r_min", None)
             r_max = sf_kwargs.get("r_max", None)
-            heights = self.z[z_start:z_end]
+            beams = sf_kwargs.get("beams", self.beam_keys)
+            min_points = sf_kwargs.get("min_points", 3)
 
+            heights = self.z[z_start:z_end]
             # z x r x beam
             D_ll = np.full((len(heights), len(heights), len(beams)), np.nan)
             eps = np.full((len(heights), len(beams)), np.nan)
@@ -704,7 +789,7 @@ class ADCP(BaseInstrument):
                 u = burst_data[vel_beam]
                 u_bar = np.mean(u, axis=1, keepdims=True)
                 u_prime = u - u_bar
-                for ii in range(min(len(heights) - min_points, z_end)):
+                for ii in range(len(heights) - min_points):
                     D_ll[ii, ii:z_end, jj] = np.mean((u_prime[ii:z_end, :] - u_prime[ii, :]) ** 2, axis=1)
                     r = heights[ii:z_end] - heights[ii]
                     X = 2.1 * r ** (2 / 3)
@@ -725,9 +810,9 @@ class ADCP(BaseInstrument):
                         eps[ii, jj] = np.nan
 
             # Averaging over beams
-            out["eps"] = np.nanmean(eps, axis=1)
+            eps_out = np.nanmean(eps, axis=1)
 
-        return out
+        return eps_out
 
     @property
     def beam_keys(self):
