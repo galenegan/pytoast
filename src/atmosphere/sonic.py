@@ -353,27 +353,60 @@ class Sonic(BaseInstrument):
 
         return out
 
-    def tke(self, burst_data: Dict[str, np.ndarray]):
-        u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
-        v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
-        w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
+    def tke(self, burst_data: Dict[str, np.ndarray]) -> np.ndarray:
+        """
+        Calculates turbulent kinetic energy
 
-        u_prime = burst_data["u"] - u_bar
-        v_prime = burst_data["v"] - v_bar
-        w_prime = burst_data["w"] - w_bar
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary containing velocity components u1/u2/u3
+
+        Returns
+        -------
+        tke_out : np.ndarray
+            TKE at each measurement height
+
+        """
+        u_bar = np.mean(burst_data["u1"], axis=1, keepdims=True)
+        v_bar = np.mean(burst_data["u2"], axis=1, keepdims=True)
+        w_bar = np.mean(burst_data["u3"], axis=1, keepdims=True)
+
+        u_prime = burst_data["u1"] - u_bar
+        v_prime = burst_data["u2"] - v_bar
+        w_prime = burst_data["u3"] - w_bar
 
         tke_prime = 0.5 * (u_prime**2 + v_prime**2 + w_prime**2)
         tke_out = np.mean(tke_prime, axis=1)
+
         return tke_out
 
     def buoyancy_flux(self, burst_data: Dict[str, np.ndarray]):
+        """
+        Buoyancy flux from the sonic temperature/vertical velocity covariance (e.g., Liu et al., (2001)).
+
+        Parameters
+        ----------
+        burst_data : dict
+            Burst data dictionary containing u3 and Ts
+
+        Returns
+        -------
+        B : np.ndarray
+            Buoyancy flux at each measurement height
+
+        References
+        ----------
+        Liu, H., Peters, G., & Foken, T. (2001). New equations for sonic temperature variance and buoyancy heat flux
+            with an omnidirectional sonic anemometer. Boundary-Layer Meteorology, 100(3), 459-468.
+        """
         if "Ts" not in burst_data:
             raise ValueError("Cannot compute buoyancy flux without sonic temperature data")
 
         Ts_bar = np.mean(burst_data["Ts"], axis=1, keepdims=True)
-        w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
+        w_bar = np.mean(burst_data["u3"], axis=1, keepdims=True)
         Ts_prime = burst_data["Ts"] - Ts_bar
-        w_prime = burst_data["w"] - w_bar
+        w_prime = burst_data["u3"] - w_bar
         B = g * np.mean(Ts_prime * w_prime, axis=1) / (Ts_bar + 273.15)
         return B
 
@@ -387,7 +420,6 @@ class Sonic(BaseInstrument):
             First file to include in subsampling
         end_idx : int
             Upper bound (exclusive) on file index in subsampling
-
 
         Returns
         -------
