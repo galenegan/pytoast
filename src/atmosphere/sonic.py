@@ -105,12 +105,12 @@ class Sonic(BaseInstrument):
             despike : dict, optional
                 Options for despiking. If not specified, no despiking is applied. Supported keys:
 
-                method : {'threshold', 'goring_nikora'}
+                method : {'threshold', 'goring_nikora', 'recursive_gaussian'}
                     If `threshold`, data is despiked by replacing any samples with a magnitude outside a specified
-                    range. If `goring_nikora`, data is despiked using the Goring & Nikora (2002) algorithm.
+                    range. If `goring_nikora`, data is despiked using the Goring & Nikora (2002) algorithm. If
+                    `recursive_gaussian`, data is despiked using a recursive Gaussian filter.
 
-                If ``{'method': 'goring_nikora', ...}``, additional keys can be (see `despike_utils::goring_nikora`
-                docstring):
+                If ``{'method': 'goring_nikora', ...}``, additional keys can be (see `goring_nikora` docstring):
                     remaining_spikes : int
                     max_iter : int
                     robust_statistics : bool
@@ -118,6 +118,10 @@ class Sonic(BaseInstrument):
                 If ``{'method': 'threshold', ...}``, additional keys can be:
                     threshold_min : float
                     threshold_max : float
+
+                If ``{'method': 'recursive_gaussian', ...}``, additional keys can be:
+                    alpha : float
+                    max_iter : int
 
             rotate : dict, optional
                 Options for rotations. If not specified, no rotations applied. Supported keys:
@@ -148,7 +152,11 @@ class Sonic(BaseInstrument):
             return burst_data
 
         if self._despike:
-            despike_fn = {"goring_nikora": goring_nikora, "threshold": threshold}.get(self._despike_method)
+            despike_fn = {
+                "goring_nikora": goring_nikora,
+                "threshold": threshold,
+                "recursive_guassian": recursive_gaussian,
+            }.get(self._despike_method)
             if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
             for key in ["u1", "u2", "u3"]:

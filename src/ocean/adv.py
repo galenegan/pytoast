@@ -2,7 +2,7 @@ import numpy as np
 import scipy.signal as sig
 from typing import Optional, Union, List, Dict, Any
 from utils.base_instrument import BaseInstrument
-from utils.despike_utils import threshold, goring_nikora
+from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from utils.wave_utils import get_wavenumber, get_cg, jones_monismith_correction
 from scipy.stats import linregress
 
@@ -126,11 +126,12 @@ class ADV(BaseInstrument):
             despike : dict, optional
                 Options for despiking. If not specified, no despiking is applied. Supported keys:
 
-                method : {'threshold', 'gn'}
+                method : {'threshold', 'goring_nikora', 'recursive_gaussian'}
                     If `threshold`, data is despiked by replacing any samples with a magnitude outside a specified
-                    range. If `gn`, data is despiked using the Goring & Nikora (2002) algorithm.
+                    range. If `goring_nikora`, data is despiked using the Goring & Nikora (2002) algorithm. If
+                    `recursive_gaussian`, data is despiked using a recursive Gaussian filter.
 
-                If ``{'method': 'gn', ...}``, additional keys can be (see `apply_gn_despike` docstring):
+                If ``{'method': 'goring_nikora', ...}``, additional keys can be (see `goring_nikora` docstring):
                     remaining_spikes : int
                     max_iter : int
                     robust_statistics : bool
@@ -138,6 +139,10 @@ class ADV(BaseInstrument):
                 If ``{'method': 'threshold', ...}``, additional keys can be:
                     threshold_min : float
                     threshold_max : float
+
+                If ``{'method': 'recursive_gaussian', ...}``, additional keys can be:
+                    alpha : float
+                    max_iter : int
 
             rotate : dict, optional
                 Options for rotations and coordinate transformations. If not specified, no rotations applied.
@@ -186,7 +191,11 @@ class ADV(BaseInstrument):
             return burst_data
 
         if self._despike:
-            despike_fn = {"goring_nikora": goring_nikora, "threshold": threshold}.get(self._despike_method)
+            despike_fn = {
+                "goring_nikora": goring_nikora,
+                "threshold": threshold,
+                "recursive_guassian": recursive_gaussian,
+            }.get(self._despike_method)
             if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
             for key in ["u1", "u2", "u3"]:
@@ -959,7 +968,7 @@ class ADV(BaseInstrument):
                     f_wave_high=f_wave_high,
                     rank_truncation=rank_truncation,
                     time_delay_size=time_delay_size,
-                    return_time_series=return_time_series
+                    return_time_series=return_time_series,
                 )
 
                 out["uu_turb"][height_idx] = d_out["uu_turb"]
@@ -988,7 +997,9 @@ class ADV(BaseInstrument):
 
         return out
 
-    def dissipation(self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs) -> Dict[str, np.ndarray]:
+    def dissipation(
+        self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs
+    ) -> Dict[str, np.ndarray]:
         """
         Estimate the dissipation rate of TKE using the Gerbi et al. (2009) spectral curve fitting method. This is nearly
         equivalent to the Feddersen et al. (2007) method, but it uses a more efficient numerical integration and

@@ -152,9 +152,25 @@ class ADCP(BaseInstrument):
             Preprocessing options. Supported keys:
 
             despike : dict, optional
-                Options for simple threshold-based despiking. If not specified, no despiking is applied. Supported keys:
+                Options for despiking. If not specified, no despiking is applied. Supported keys:
+
+                method : {'threshold', 'goring_nikora', 'recursive_gaussian'}
+                    If `threshold`, data is despiked by replacing any samples with a magnitude outside a specified
+                    range. If `goring_nikora`, data is despiked using the Goring & Nikora (2002) algorithm. If
+                    `recursive_gaussian`, data is despiked using a recursive Gaussian filter.
+
+                If ``{'method': 'goring_nikora', ...}``, additional keys can be (see `goring_nikora` docstring):
+                    remaining_spikes : int
+                    max_iter : int
+                    robust_statistics : bool
+
+                If ``{'method': 'threshold', ...}``, additional keys can be:
                     threshold_min : float
                     threshold_max : float
+
+                If ``{'method': 'recursive_gaussian', ...}``, additional keys can be:
+                    alpha : float
+                    max_iter : int
 
             rotate : dict, optional
                 Options for rotations and coordinate transformations. If not specified, no rotations applied.
@@ -198,10 +214,14 @@ class ADCP(BaseInstrument):
             return burst_data
 
         if self._despike:
-            despike_fn = {"goring_nikora": goring_nikora, "threshold": threshold}.get(self._despike_method)
+            despike_fn = {
+                "goring_nikora": goring_nikora,
+                "threshold": threshold,
+                "recursive_guassian": recursive_gaussian,
+            }.get(self._despike_method)
             if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
-            for key in self.beam_keys:
+            for key in ["u1", "u2", "u3"]:
                 burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
 
         if self._rotate:
