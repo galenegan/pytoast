@@ -3,9 +3,9 @@ import numpy as np
 from scipy.integrate import cumulative_trapezoid
 from scipy.optimize import curve_fit
 from scipy.stats import circmean, linregress
-from typing import Optional, Union, List, Dict, Any, Tuple
+from typing import Optional, Union, List, Dict, Any
 from utils.base_instrument import BaseInstrument
-from utils.despike_utils import threshold, goring_nikora
+from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from utils.spectral_utils import psd
 
 from utils.rotate_utils import (

@@ -2,7 +2,7 @@ import numpy as np
 import scipy.signal as sig
 from scipy.stats import linregress
 from typing import Optional, Union, List, Dict, Any
-from src.utils.despike_utils import threshold, goring_nikora
+from src.utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from src.utils.spectral_utils import psd, csd, get_frequency_range
 from src.utils.base_instrument import BaseInstrument
 from src.utils.constants import GRAVITATIONAL_ACCELERATION as g
