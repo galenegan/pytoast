@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.stats import median_abs_deviation
+from scipy.stats import median_abs_deviation, norm
 from utils.interp_utils import interp_rows
 
 
@@ -163,10 +163,37 @@ def goring_nikora(
     interp_rows(u_out)
     return u_out
 
-def recursive_gaussian():
-    pass
-    # TODO: Implement recursive Gaussian despike
 
-def kernel_density():
-    pass
-    # TODO: Implement kernel density despike
+def recursive_gaussian(
+    u: np.ndarray,
+    alpha: float = 3.0,
+    max_iter: int = 10,
+):
+    """
+
+    Parameters
+    ----------
+    u
+    alpha
+    max_iter
+
+    Returns
+    -------
+
+    """
+    u_out = u.copy()
+    m, n = u_out.shape
+    for ii in range(m):
+        u_row = u_out[ii, :]
+        k = 0
+        num_bad = np.inf
+        while (k < max_iter) and (num_bad > 0):
+            mean, std = norm.fit(u_row)
+            bad_cols = (u_out < mean - alpha * std) | (u_out > mean + alpha * std)
+            u_row[bad_cols] = np.nan
+            num_bad = np.sum(bad_cols)
+            u_row = interp_rows(u_row)
+
+        u_out[ii, :] = u_row
+
+    return u_out

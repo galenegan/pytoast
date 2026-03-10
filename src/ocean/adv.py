@@ -563,6 +563,159 @@ class ADV(BaseInstrument):
 
         return out
 
+    def dmd(
+        self,
+        u: np.ndarray,
+        v: np.ndarray,
+        w: np.ndarray,
+        f_wave_low: float,
+        f_wave_high: float,
+        rank_truncation: Union[int, float] = 0.05,
+        time_delay_size: Optional[int] = None,
+        return_time_series: bool = False,
+    ) -> dict:
+        """
+        Estimate Reynolds stresses with the DMD-based wave-turbulence decomposition of Chavez-Dorado et al. (2025).
+        This function is a Python port (with various simplifications) of the MATLAB implementation found here:
+        https://github.com/DiBenedettoLab/Wave-Turbulence_DMD
+
+        Parameters
+        ----------
+        u : np.ndarray
+            x-component of velocity (m/s)
+        v : np.ndarray
+            y-component of velocity (m/s)
+        w : np.ndarray
+            z-component of velocity (m/s)
+        f_wave_low : float
+            Lower bound (Hz) of the wave frequency band.
+        f_wave_high : float
+            Upper bound (Hz) of the wave frequency band.
+        rank_truncation : int or float, optional
+            Controls how many DMD modes are retained after SVD. If a float, modes are kept if their corresponding
+            singular value is at least `rank_truncation` times the largest singular value. If an int, exactly that many
+            modes are kept. Defaults to 0.05.
+        time_delay_size : int, optional
+            Number of time-lag rows in the Hankel embedding matrix. Defaults to `N // 5`.
+        return_time_series : bool, optional
+            If True, also return the decomposed wave and turbulence time series for each velocity component. Defaults to
+            False.
+
+        Returns
+        -------
+        out : dict
+            Dictionary with turbulence Reynolds stress components: `uu_turb`, `vv_turb`, `ww_turb`,
+            `uw_turb`, `vw_turb`, `uv_turb`, each a scalar. If `return_time_series` is True, also
+            includes `u_wave`, `u_turb`, `v_wave`, `v_turb`, `w_wave`, `w_turb`, each length N-1.
+
+        References
+        ----------
+        Schmid, P. J. (2010). Dynamic mode decomposition of numerical and experimental data. Journal of fluid mechanics,
+            656, 5-28.
+        Chávez-Dorado, J., Scherl, I., & DiBenedetto, M. (2025). Wave and turbulence separation using dynamic mode
+            decomposition. Journal of Atmospheric and Oceanic Technology, 42(5), 509-526.
+        """
+
+        def _decompose(signal: np.ndarray, n: int) -> tuple:
+            """
+            Run DMD on a 1-D signal of length N. Returns (u_wave, u_turb), each length N-1.
+
+            Parameters
+            ----------
+            signal : np.ndarray
+                1-D signal (usually velocity) of length N.
+            n : int
+                Number of time-lag rows for Hankel embedding.
+            """
+            raw = signal - np.mean(signal)
+            N = len(raw)
+            m = N - n
+
+            # Build Hankel matrices: X1[j,i] = raw[i+j], X2[j,i] = raw[i+j+1]
+            # Shape (m, n): rows are snapshot indices, columns are lag indices
+            idx = np.arange(m)[:, None] + np.arange(n)[None, :]  # (m, n)
+            X1 = raw[idx]
+            X2 = raw[idx + 1]
+
+            # SVD of X1
+            U, s, Vh = np.linalg.svd(X1, full_matrices=False)
+            V = Vh.T
+
+            # Rank truncation based on singular values
+            if isinstance(rank_truncation, float):
+                r = int(np.sum(s >= rank_truncation * s[0]))
+                r = max(r, 1)
+            else:
+                r = int(rank_truncation)
+
+            Ur = U[:, :r]
+            Sr_diag = s[:r]
+            Vr = V[:, :r]
+            Sr_inv = np.diag(1.0 / Sr_diag)
+
+            # Low-rank dynamics matrix and eigendecomposition
+            Atilde = Ur.T @ X2 @ Vr @ Sr_inv  # (r, r)
+            lambda_, Wr = np.linalg.eig(Atilde)
+
+            # DMD modes and amplitudes
+            Phi = X2 @ Vr @ Sr_inv @ Wr  # (m, r)
+            alpha1 = Sr_diag * Vr[0, :]  # (r,) first Hankel row scaled by singular values
+            b = np.linalg.solve(Wr @ np.diag(lambda_), alpha1)  # (r,)
+
+            # Frequencies from eigenvalues
+            dt = 1.0 / self.fs
+            f2 = np.imag(np.log(lambda_)) / (2.0 * np.pi * dt)
+
+            # Select wave modes (both positive and negative frequencies)
+            wave_mask = (np.abs(f2) >= f_wave_low) & (np.abs(f2) <= f_wave_high)
+            b_wave = b[wave_mask]
+            Phi_wave = Phi[:, wave_mask]
+            omega_wave = lambda_[wave_mask]
+
+            # Reconstruct wave Hankel block: time_dynamics[k, t] = b_wave[k] * omega_wave[k]^t
+            t = np.arange(n)
+            time_dynamics = b_wave[:, None] * (omega_wave[:, None] ** t)  # (r_wave, n)
+            Xdmd_wave = Phi_wave @ time_dynamics  # (m, n)
+
+            # Unfold Hankel structure: first row (n samples) + last-column tail (m-1 samples)
+            u_wave = np.real(np.concatenate([Xdmd_wave[0, :], Xdmd_wave[1:, -1]]))
+            u_turb = raw[:-1] - u_wave  # length N-1
+
+            return u_wave, u_turb
+
+        N = len(u)
+        n = time_delay_size if time_delay_size is not None else N // 5
+
+        u_wave, u_turb = _decompose(u, n)
+        v_wave, v_turb = _decompose(v, n)
+        w_wave, w_turb = _decompose(w, n)
+
+        # Reynolds stresses from turbulence components
+        out = {
+            "uu_turb": np.mean(u_turb**2),
+            "vv_turb": np.mean(v_turb**2),
+            "ww_turb": np.mean(w_turb**2),
+            "uw_turb": np.mean(u_turb * w_turb),
+            "vw_turb": np.mean(v_turb * w_turb),
+            "uv_turb": np.mean(u_turb * v_turb),
+            "uu_wave": np.mean(u_wave**2),
+            "vv_wave": np.mean(v_wave**2),
+            "ww_wave": np.mean(w_wave**2),
+            "uw_wave": np.mean(u_wave * w_wave),
+            "vw_wave": np.mean(v_wave * w_wave),
+            "uv_wave": np.mean(u_wave * v_wave),
+        }
+
+        if return_time_series:
+            out["u_wave"] = u_wave
+            out["u_turb"] = u_turb
+            out["v_wave"] = v_wave
+            out["v_turb"] = v_turb
+            out["w_wave"] = w_wave
+            out["w_turb"] = w_turb
+
+        return out
+
     def covariance(
         self,
         burst_data: Dict[str, np.ndarray],
@@ -571,6 +724,7 @@ class ADV(BaseInstrument):
         f_high: Optional[float] = None,
         rho: Optional[float] = 1020,
         phase_kwargs: Optional[dict] = None,
+        dmd_kwargs: Optional[dict] = None,
         **kwargs,
     ) -> dict:
         """
@@ -586,6 +740,7 @@ class ADV(BaseInstrument):
             - `spectral_integral`: Integrate the cross-spectrum over a specified frequency range
             - `benilov`: Benilov wave-turbulence decomposition
             - `phase`:  Bricker & Monismith phase-method wave-turbulence decomposition
+            - `dmd`: Chavez-Dorado et al. DMD wave-turbulence decomposition.
         f_low : float, optional
             Lower frequency bound (Hz) for spectral integration, by default None
         f_high : float, optional
@@ -595,6 +750,9 @@ class ADV(BaseInstrument):
         phase_kwargs : dict, optional
             Additional arguments specific to phase decomposition method, by default None. If specified, should include
             keys `f_wave_low` and `f_wave_high` to define the frequency range of the wave band.
+        dmd_kwargs : dict, optional
+            Additional arguments specific to DMD decomposition method, by default None. If specified, should include
+            keys...
         **kwargs
             Additional arguments passed to spectral calculations
 
@@ -756,12 +914,81 @@ class ADV(BaseInstrument):
                 out["uw_wave"][height_idx] = p_out["uw_wave"]
                 out["vw_wave"][height_idx] = p_out["vw_wave"]
                 out["uv_wave"][height_idx] = p_out["uv_wave"]
+        elif method == "dmd":
+            # Extract dmd method-specific kwargs with error handling
+            dmd_kwargs = dmd_kwargs or {}
+            f_wave_low = dmd_kwargs.get("f_wave_low", None)
+            f_wave_high = dmd_kwargs.get("f_wave_high", None)
+            rank_truncation = dmd_kwargs.get("rank_truncation", 0.05)
+            time_delay_size = dmd_kwargs.get("time_delay_size", None)
+            return_time_series = dmd_kwargs.get("return_time_series", False)
+
+            out["uu_turb"] = np.empty((n_heights,))
+            out["vv_turb"] = np.empty((n_heights,))
+            out["ww_turb"] = np.empty((n_heights,))
+            out["uw_turb"] = np.empty((n_heights,))
+            out["vw_turb"] = np.empty((n_heights,))
+            out["uv_turb"] = np.empty((n_heights,))
+
+            out["uu_wave"] = np.empty((n_heights,))
+            out["vv_wave"] = np.empty((n_heights,))
+            out["ww_wave"] = np.empty((n_heights,))
+            out["uw_wave"] = np.empty((n_heights,))
+            out["vw_wave"] = np.empty((n_heights,))
+            out["uv_wave"] = np.empty((n_heights,))
+
+            if return_time_series:
+                N = burst_data["u1"].shape[1]
+                out["u_turb"] = np.empty((n_heights, N))
+                out["v_turb"] = np.empty((n_heights, N))
+                out["w_turb"] = np.empty((n_heights, N))
+                out["u_wave"] = np.empty((n_heights, N))
+                out["v_wave"] = np.empty((n_heights, N))
+                out["w_wave"] = np.empty((n_heights, N))
+
+            for height_idx in range(n_heights):
+                u = burst_data["u1"][height_idx, :]
+                v = burst_data["u2"][height_idx, :]
+                w = burst_data["u3"][height_idx, :]
+
+                d_out = self.dmd(
+                    u=u,
+                    v=v,
+                    w=w,
+                    f_wave_low=f_wave_low,
+                    f_wave_high=f_wave_high,
+                    rank_truncation=rank_truncation,
+                    time_delay_size=time_delay_size,
+                    return_time_series=return_time_series
+                )
+
+                out["uu_turb"][height_idx] = d_out["uu_turb"]
+                out["vv_turb"][height_idx] = d_out["vv_turb"]
+                out["ww_turb"][height_idx] = d_out["ww_turb"]
+                out["uw_turb"][height_idx] = d_out["uw_turb"]
+                out["vw_turb"][height_idx] = d_out["vw_turb"]
+                out["uv_turb"][height_idx] = d_out["uv_turb"]
+
+                out["uu_wave"][height_idx] = d_out["uu_wave"]
+                out["vv_wave"][height_idx] = d_out["vv_wave"]
+                out["ww_wave"][height_idx] = d_out["ww_wave"]
+                out["uw_wave"][height_idx] = d_out["uw_wave"]
+                out["vw_wave"][height_idx] = d_out["vw_wave"]
+                out["uv_wave"][height_idx] = d_out["uv_wave"]
+
+                if return_time_series:
+                    out["u_turb"][height_idx, :] = d_out["u_turb"]
+                    out["v_turb"][height_idx, :] = d_out["v_turb"]
+                    out["w_turb"][height_idx, :] = d_out["w_turb"]
+                    out["u_wave"][height_idx, :] = d_out["u_wave"]
+                    out["v_wave"][height_idx, :] = d_out["v_wave"]
+                    out["w_wave"][height_idx, :] = d_out["w_wave"]
         else:
             raise IOError(f"Unrecognized method {method}")
 
         return out
 
-    def dissipation(self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs) -> Dict[np.ndarray]:
+    def dissipation(self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs) -> Dict[str, np.ndarray]:
         """
         Estimate the dissipation rate of TKE using the Gerbi et al. (2009) spectral curve fitting method. This is nearly
         equivalent to the Feddersen et al. (2007) method, but it uses a more efficient numerical integration and

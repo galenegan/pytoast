@@ -16,6 +16,7 @@ class Sonic(BaseInstrument):
     - Preprocessing (despiking, flow-dependent rotations)
     - Calculating turbulence statistics: TKE dissipation, Reynolds stress, TKE, buoyancy flux
     """
+
     def __init__(
         self,
         files: Union[str, List],
