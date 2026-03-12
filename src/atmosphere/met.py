@@ -38,7 +38,7 @@ class Met(BaseInstrument):
         t         : air temperature (deg C)
         p         : atmospheric pressure (mbar)
         rh        : relative humidity (%)
-        salinity  : seawater salinity (PSU) -- optional, corrects vapor-pressure quantities
+        sp        : seawater salinity (practical, PSS-78) -- optional, corrects vapor-pressure quantities
 
     Output keys added by :meth:`derive`
         e_s         : saturation vapor pressure (mbar)
@@ -186,7 +186,7 @@ class Met(BaseInstrument):
         """Convert pressure from millibar to Pascal."""
         return p * 100
 
-    def saturation_vapor_pressure(self, t: Numeric, p: Numeric, salinity: Optional[Numeric] = None) -> Numeric:
+    def saturation_vapor_pressure(self, t: Numeric, p: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
         Saturation vapor pressure given pressure, temperature, and (optionally) seawater salinity
 
@@ -196,7 +196,7 @@ class Met(BaseInstrument):
             Air temperature in Celcius
         p : Numeric
             Atmospheric pressure in millibar
-        salinity : Numeric, optional
+        sp : Numeric, optional
             If specified, the saturation vapor pressure is corrected to its "above seawater"
             value using salinity in PSU
 
@@ -207,12 +207,12 @@ class Met(BaseInstrument):
 
         """
         e_s = 6.1121 * (1.0007 + 3.46e-6 * p) * np.exp(17.502 * t / (240.97 + t))
-        if salinity is not None:
-            return e_s * (1 - 5.37e-04 * salinity)
+        if sp is not None:
+            return e_s * (1 - 5.37e-04 * sp)
         else:
             return e_s
 
-    def water_vapor_pressure(self, t: Numeric, p: Numeric, rh: Numeric, salinity: Optional[Numeric] = None) -> Numeric:
+    def water_vapor_pressure(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
         Water vapor pressure given temperature, pressure, relative humidity, and (optionally) seawater salinity
 
@@ -224,7 +224,7 @@ class Met(BaseInstrument):
             Atmospheric pressure in millibar
         rh : Numeric
             Relative humidity in %
-        salinity : Numeric, optional
+        sp : Numeric, optional
             If specified, the saturation vapor pressure is corrected to its "above seawater"
             value using salinity in PSU
 
@@ -233,10 +233,10 @@ class Met(BaseInstrument):
         Numeric
             Water vapor pressure in millibar
         """
-        e_s = self.saturation_vapor_pressure(t, p, salinity)
+        e_s = self.saturation_vapor_pressure(t, p, sp)
         return (rh / 100) * e_s
 
-    def water_vapor_density(self, t: Numeric, p: Numeric, rh: Numeric, salinity: Optional[Numeric] = None) -> Numeric:
+    def water_vapor_density(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
         Water vapor density given temperature, pressure, relative humidity, and (optionally) seawater salinity
 
@@ -248,7 +248,7 @@ class Met(BaseInstrument):
             Atmospheric pressure in millibar
         rh : Numeric
             Relative humidity in %
-        salinity : Numeric, optional
+        sp : Numeric, optional
             If specified, the saturation vapor pressure is corrected to its "above seawater"
             value using salinity in PSU
 
@@ -257,10 +257,10 @@ class Met(BaseInstrument):
         Numeric
             Water vapor density in kg/m^3
         """
-        e = self.water_vapor_pressure(t, p, rh, salinity)
+        e = self.water_vapor_pressure(t, p, rh, sp)
         return 100 * e / (R_v * self.t_kelvin(t))
 
-    def mixing_ratio(self, t: Numeric, p: Numeric, rh: Numeric, salinity: Optional[Numeric] = None) -> Numeric:
+    def mixing_ratio(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
         Water vapor mixing ratio given temperature, pressure, relative humidity, and (optionally) seawater salinity
 
@@ -272,7 +272,7 @@ class Met(BaseInstrument):
             Atmospheric pressure in millibar
         rh : Numeric
             Relative humidity in %
-        salinity : Numeric, optional
+        sp : Numeric, optional
             If specified, the saturation vapor pressure is corrected to its "above seawater"
             value using salinity in PSU
 
@@ -281,10 +281,10 @@ class Met(BaseInstrument):
         Numeric
             Mixing ratio in kg/kg
         """
-        e = self.water_vapor_pressure(t, p, rh, salinity)
+        e = self.water_vapor_pressure(t, p, rh, sp)
         return 0.622 * e / (p - e)
 
-    def specific_humidity(self, t: Numeric, p: Numeric, rh: Numeric, salinity: Optional[Numeric] = None) -> Numeric:
+    def specific_humidity(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
         Specific humidity given temperature, pressure, relative humidity, and (optionally) seawater salinity
 
@@ -296,7 +296,7 @@ class Met(BaseInstrument):
             Atmospheric pressure in millibar
         rh : Numeric
             Relative humidity in %
-        salinity : Numeric, optional
+        sp : Numeric, optional
             If specified, the saturation vapor pressure is corrected to its "above seawater"
             value using salinity in PSU
 
@@ -305,11 +305,11 @@ class Met(BaseInstrument):
         Numeric
             Specific humidity in kg/kg
         """
-        e = self.water_vapor_pressure(t, p, rh, salinity)
+        e = self.water_vapor_pressure(t, p, rh, sp)
         q = 0.622 * e / (p - 0.378 * e)
         return q
 
-    def virtual_temperature(self, t: Numeric, p: Numeric, rh: Numeric, salinity: Optional[Numeric] = None) -> Numeric:
+    def virtual_temperature(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
         Virtual temperature given temperature, pressure, relative humidity, and (optionally) seawater salinity
 
@@ -321,7 +321,7 @@ class Met(BaseInstrument):
             Atmospheric pressure in millibar
         rh : Numeric
             Relative humidity in %
-        salinity : Numeric, optional
+        sp : Numeric, optional
             If specified, the saturation vapor pressure is corrected to its "above seawater"
             value using salinity in PSU
 
@@ -330,7 +330,7 @@ class Met(BaseInstrument):
         Numeric
             Virtual temperature in Celcius
         """
-        q = self.specific_humidity(t, p, rh, salinity)
+        q = self.specific_humidity(t, p, rh, sp)
         t_v = t * (1 + 0.61 * q)
         return t_v
 
@@ -454,7 +454,7 @@ class Met(BaseInstrument):
         Each quantity is computed only when all of its required inputs are available as keys in
         ``burst_data``. The method never raises for missing inputs -- it simply skips any
         quantities it cannot compute. Salinity is treated as optional throughout; when the
-        ``"salinity"`` key is present its value is forwarded to the vapor-pressure calculations.
+        ``"sp"`` key is present its value is forwarded to the vapor-pressure calculations.
 
         Height is always taken from ``self.z`` (shape (n_heights,)) and is not read from
         ``burst_data``. When computing potential temperature, ``self.z`` is reshaped to
@@ -465,7 +465,7 @@ class Met(BaseInstrument):
         t         : air temperature (deg C),         shape (n_heights, n_samples)
         p         : atmospheric pressure (mbar),     shape (n_heights, n_samples)
         rh        : relative humidity (%),           shape (n_heights, n_samples)
-        salinity  : seawater salinity (PSU),         shape (n_heights, n_samples) -- optional
+        sp        : seawater salinity (PSS-78),      shape (n_heights, n_samples) -- optional
 
         Output keys added to burst_data (all shape (n_heights, n_samples))
         -------------------------------------------------------------------
@@ -498,7 +498,7 @@ class Met(BaseInstrument):
         t = burst_data.get("t")
         p = burst_data.get("p")
         rh = burst_data.get("rh")
-        salinity = burst_data.get("salinity")
+        sp = burst_data.get("sp")
 
         has_t = t is not None
         has_p = p is not None
@@ -514,16 +514,16 @@ class Met(BaseInstrument):
 
         # Temperature + pressure quantities
         if has_t and has_p:
-            burst_data["e_s"] = self.saturation_vapor_pressure(t, p, salinity)
+            burst_data["e_s"] = self.saturation_vapor_pressure(t, p, sp)
             burst_data["rho_air_dry"] = self.dry_air_density(t, p)
 
         # Temperature + pressure + relative humidity quantities
         if has_t and has_p and has_rh:
-            burst_data["e"] = self.water_vapor_pressure(t, p, rh, salinity)
-            burst_data["rho_v"] = self.water_vapor_density(t, p, rh, salinity)
-            burst_data["w"] = self.mixing_ratio(t, p, rh, salinity)
-            burst_data["q"] = self.specific_humidity(t, p, rh, salinity)
-            burst_data["t_v"] = self.virtual_temperature(t, p, rh, salinity)
+            burst_data["e"] = self.water_vapor_pressure(t, p, rh, sp)
+            burst_data["rho_v"] = self.water_vapor_density(t, p, rh, sp)
+            burst_data["w"] = self.mixing_ratio(t, p, rh, sp)
+            burst_data["q"] = self.specific_humidity(t, p, rh, sp)
+            burst_data["t_v"] = self.virtual_temperature(t, p, rh, sp)
             burst_data["rho_air"] = self.air_density(t, p, rh)
 
         return burst_data
