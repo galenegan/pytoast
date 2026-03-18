@@ -2,8 +2,9 @@ import numpy as np
 from scipy.special import jv, hankel1
 from scipy.optimize import brentq, newton
 from utils.constants import VON_KARMAN as kappa
+from utils.rotate_utils import min_angle
 
-# Default physical/model constants (specific to this module to facilitate testing against Matlab source)
+# Default physical/model constants for Styles model (specific to this module for testing against Matlab source)
 _NU = 1.19e-6  # kinematic viscosity of seawater @ 15 C (m^2/s)
 _G = 9.81  # gravity (m/s^2)
 _S = 2.65  # relative sediment density
@@ -12,7 +13,18 @@ _ALPHA = 0.3  # closure constant
 _CON = 6.4  # closure constant
 _KBR_DEF = 0.03 # default ripple roughness (m)
 
-
+def _fwc_m94(relative_roughness, c_mu):
+    # Wave-current friction factor (Eqs 32 - 33, Madsen 1994)
+    if relative_roughness <= 0.2:
+        print(f"Warning: Relative roughness {relative_roughness} is out of range [0.2, 10000]")
+        return c_mu * np.exp(7.02 * 0.2 ** (-0.078) - 8.82)
+    elif (relative_roughness > 0.2) & (relative_roughness <= 100):
+        return c_mu * np.exp(7.02 * relative_roughness ** (-0.078) - 8.82)
+    elif (relative_roughness > 100) & (relative_roughness <= 10000):
+        return c_mu * np.exp(5.61 * relative_roughness ** (-0.109) - 7.30)
+    else:
+        print(f"Warning: Relative roughness {relative_roughness} is out of range [0.2, 10000]")
+        return c_mu * np.exp(5.61 * 10000 ** (-0.109) - 7.30)
 
 def _shields_critical(star):
     """Critical Shields parameter for initiation of sediment motion (shldc.m)."""
@@ -78,14 +90,14 @@ def _phi2_1(zeta_0, zeta_1, mp):
     nn = mp * k1 + k1p
     argi = bnotp * nn / (bnot * nn - knot * ll) + knotp * ll / (knot * ll - bnot * nn)
     gammai = -kappa * zeta_0 * argi
-    return abs(gammai)
+    return np.abs(gammai)
 
 
 def _phi(zeta_0, zeta_1, mp):
-    """Dispatch to Bessel solution or linear approximation depending on zeta_1/zeta_0."""
+    """Bessel solution or linear approximation depending on zeta_1/zeta_0."""
     if zeta_1 / zeta_0 > 1:
         return _phi2_1(zeta_0, zeta_1, mp)
-    return abs(-kappa * zeta_1 * mp)
+    return np.abs(-kappa * zeta_1 * mp)
 
 
 def _pwave(ab_over_z0, ub_over_ustar_wm, zeta_1, mp, max_iter=40, tol=1e-4):
@@ -98,41 +110,41 @@ def _pwave(ab_over_z0, ub_over_ustar_wm, zeta_1, mp, max_iter=40, tol=1e-4):
     return newton(f, x0=ub_over_ustar_wm, x1=ub_over_ustar_wm * 0.5, tol=tol, maxiter=max_iter)
 
 
-def _bstress2(ub_over_ustar_cw, ab_over_z0, zr_over_z0, ub_over_kappa_ur, theta, alpha_loc, zeta_1, mp):
-    """BBL stress parameters and velocity-profile residual fx (bstress2.m).
+def _bstress2(ub_over_ustar_wc, ab_over_z0, zr_over_z0, ub_over_kappa_ur, theta, alpha_loc, zeta_1, mp):
+    """BBL stress parameters and ub / ustar_wc residual fx (bstress2.m).
 
     Returns
     -------
     (Ro, mu, epsilon, z1_over_z0, z2_over_z0, zr_over_z1, zr_over_z2, fx)
     """
-    Ro = ab_over_z0 / ub_over_ustar_cw
+    Ro = ab_over_z0 / ub_over_ustar_wc
     zeta_0 = 1.0 / (kappa * Ro)
     phi = _phi(zeta_0, zeta_1, mp)
 
-    mu = np.sqrt(ub_over_ustar_cw * phi)
+    mu = np.sqrt(ub_over_ustar_wc * phi)
     eps2 = -(mu**2) * np.abs(np.cos(theta)) + np.sqrt(1.0 - mu**4 * np.sin(theta) ** 2)
     epsilon = np.sqrt(eps2)
 
     Ro_r = Ro / zr_over_z0
-    zr_over_z1 = 1.0 / (alpha_loc * kappa * Ro_r)  # Invoking alpha_loc = z1 / L_cw; L_cw = kappa ustar_cw a_b / u_b
+    zr_over_z1 = 1.0 / (alpha_loc * kappa * Ro_r)  # Invoking alpha_loc = z1 / L_cw; L_cw = kappa ustar_wc a_b / u_b
     zr_over_z2 = epsilon * zr_over_z1
     z1_over_z0 = alpha_loc * kappa * Ro
     z2_over_z0 = z1_over_z0 / epsilon
 
     # Six velocity-profile cases (Table 1, Styles et al. (2017)). Each of these expressions is the deviation between
-    # sigma = ub / ustar_cw and the estimate of ub / ustar_cw (Eq. 2-16)
+    # sigma = ub / ustar_wc and the estimate of ub / ustar_wc (Eq. 2-16)
     if zr_over_z2 > 1 and z1_over_z0 > 1:
-        fx = ub_over_kappa_ur * epsilon * (np.log(zr_over_z2) + 1 - epsilon + epsilon * np.log(z1_over_z0)) - ub_over_ustar_cw
+        fx = ub_over_kappa_ur * epsilon * (np.log(zr_over_z2) + 1 - epsilon + epsilon * np.log(z1_over_z0)) - ub_over_ustar_wc
     elif zr_over_z2 <= 1 and zr_over_z1 > 1 and z1_over_z0 > 1:
-        fx = ub_over_kappa_ur * epsilon**2 * (zr_over_z1 - 1 + np.log(z1_over_z0)) - ub_over_ustar_cw
+        fx = ub_over_kappa_ur * epsilon**2 * (zr_over_z1 - 1 + np.log(z1_over_z0)) - ub_over_ustar_wc
     elif zr_over_z1 <= 1 and z1_over_z0 > 1:
-        fx = ub_over_kappa_ur * epsilon**2 * np.log(zr_over_z0) - ub_over_ustar_cw
+        fx = ub_over_kappa_ur * epsilon**2 * np.log(zr_over_z0) - ub_over_ustar_wc
     elif zr_over_z2 > 1 and z1_over_z0 <= 1 and z2_over_z0 > 1:
-        fx = ub_over_kappa_ur * epsilon * (np.log(zr_over_z2) + 1 - 1.0 / z2_over_z0) - ub_over_ustar_cw
+        fx = ub_over_kappa_ur * epsilon * (np.log(zr_over_z2) + 1 - 1.0 / z2_over_z0) - ub_over_ustar_wc
     elif zr_over_z2 <= 1 and zr_over_z1 > 1 and z1_over_z0 <= 1 and z2_over_z0 > 1:
-        fx = ub_over_kappa_ur * epsilon**2 * (zr_over_z1 - 1.0 / z1_over_z0) - ub_over_ustar_cw
+        fx = ub_over_kappa_ur * epsilon**2 * (zr_over_z1 - 1.0 / z1_over_z0) - ub_over_ustar_wc
     elif zr_over_z2 > 1 and z2_over_z0 <= 1:
-        fx = ub_over_kappa_ur * epsilon * np.log(zr_over_z0) - ub_over_ustar_cw
+        fx = ub_over_kappa_ur * epsilon * np.log(zr_over_z0) - ub_over_ustar_wc
     else:
         raise ValueError(
             f"No velocity profile case matched: "
@@ -140,6 +152,64 @@ def _bstress2(ub_over_ustar_cw, ab_over_z0, zr_over_z0, ub_over_kappa_ur, theta,
         )
 
     return Ro, mu, epsilon, z1_over_z0, z2_over_z0, zr_over_z1, zr_over_z2, fx
+
+def madsen(ub_r, omega_r, uc_r, phi_c, phi_wr, z_r, kN, max_iter=10, tol=1e-4):
+    """
+
+    Parameters
+    ----------
+    ub_r
+    omega_r
+    u_c
+    phi_c
+    phi_wr
+    z_r
+    kN
+    max_iter
+
+    Returns
+    -------
+
+    """
+    phi_wc = np.deg2rad(min_angle(phi_c - phi_wr))
+    z0 = kN / 30
+
+    iter = 0
+    delta_fwc = np.inf
+    c_mu = 1.0  # c_mu when mu = tau_c / tau_wr = 0
+    while (iter < max_iter) and (delta_fwc > tol):
+        relative_roughness = (c_mu * ub_r) / (kN * omega_r)
+
+        # Wave-current friction factor
+        f_wc = _fwc_m94(relative_roughness, c_mu)
+
+        # All the friction velocities
+        ustar_wm = np.sqrt(0.5 * f_wc * ub_r**2)
+        ustar_r = np.sqrt(c_mu * ustar_wm**2)
+
+        if relative_roughness > 8:
+            delta_wc = 2 * kappa * ustar_r / omega_r
+        else:
+            delta_wc = kN
+
+        ustar_c = (
+            (ustar_r / 2)
+            * (np.log(z_r / delta_wc) / np.log(delta_wc / z0))
+            * (-1 + np.sqrt(1 + (4 * kappa * np.log(delta_wc / z0) / np.log(z_r / delta_wc) ** 2) * (uc_r / ustar_r)))
+        )
+
+        mu = (ustar_c / ustar_wm) ** 2
+        c_mu = np.sqrt(1 + 2 * mu * np.abs(np.cos(phi_wc)) + mu**2)
+        f_wc_new = _fwc_m94(relative_roughness, c_mu)
+        delta_fwc = np.abs(f_wc - f_wc_new) / f_wc
+
+    out = {
+        "ustar_c": ustar_c,
+        "ustar_wm": ustar_wm,
+        "ustar_wc": ustar_r,
+        "f_wc": f_wc_new,
+    }
+    return out
 
 def styles(
     ub,
@@ -160,11 +230,11 @@ def styles(
 ):
     """
     Styles et al. (2017) combined wave-current bottom boundary layer model. This is a python port of the Matlab source
-    code (https://cirp.usace.army.mil/products/bblm.php). It has been edited to remove unnecessary input parameters
-    and some variable names have been changed for clarity. The hand-rolled bisection and secant solvers have also been
-    replaced with scipy.optimize.brentq and scipy.optimize.newton, respectively. The output on the provided test data
-    is within an acceptable tolerance despite these changes (see py-tests/). Finally, all inputs and outputs use
-    SI units (m) rather than CGS units (centimeters, grams, seconds) like the source.
+    code (https://cirp.usace.army.mil/products/bblm.php). It has been edited to remove unnecessary input parameters and
+    some variable names have been changed for clarity. The custom bisection and secant solvers have also been
+    replaced with scipy.optimize.brentq and scipy.optimize.newton, respectively. The output on the provided test data is
+    within an acceptable tolerance despite these changes (see py-tests/). Finally, all inputs and outputs use SI units
+    (m) rather than CGS units (centimeters, grams, seconds) like the source.
 
     Parameters
     ----------
@@ -202,9 +272,9 @@ def styles(
     Returns
     -------
     dict with keys:
-        Ro        - internal friction Rossby number (Ab / (z0 * ub / ustar_cw))
-        mu        - sqrt(ub_over_ustar_cw * phi); wave/combined stress ratio parameter
-        epsilon   - ustar_c / ustar_cw
+        Ro        - internal friction Rossby number (Ab / (z0 * ub / ustar_wc))
+        mu        - sqrt(ub_over_ustar_wc * phi); wave/combined stress ratio parameter
+        epsilon   - ustar_c / ustar_wc
         z1_over_z0     - inner wave BBL height / hydraulic roughness
         z2_over_z0     - outer wave BBL height / hydraulic roughness
         zr_over_z1     - measurement height / inner BBL height
@@ -214,7 +284,7 @@ def styles(
         z0      - hydraulic roughness length (m)
         ustar_wm  - maximum wave shear velocity (m/s)
         ustar_c   - time-averaged current shear velocity (m/s)
-        ustar_cw  - combined wave-current shear velocity (m/s)
+        ustar_wc  - combined wave-current shear velocity (m/s)
     """
 
     # Skin friction Shields parameter (Madsen formula)
@@ -255,7 +325,7 @@ def styles(
     delta = 1.0 / np.sqrt(2.0 * zeta_1)
     mp = delta + 1j * delta
 
-    # Bisection to find ub_over_ustar_cw
+    # Bisection to find ub_over_ustar_wc
 
     lower_bound = 1e-6
     # Upper bound: pure-wave limit (pwave.m), uses empirical friction factor parameterization to estimate ub / ustar_wm
@@ -288,11 +358,11 @@ def styles(
     )
     Ro, mu, epsilon, z1_over_z0, z2_over_z0, zr_over_z1, zr_over_z2, _ = _cache[0]
 
-    ustar_cw = Ro * z0 * omega
-    ustar_c = epsilon * ustar_cw
-    ustar_wm = mu * ustar_cw
+    ustar_wc = Ro * z0 * omega
+    ustar_c = epsilon * ustar_wc
+    ustar_wm = mu * ustar_wc
 
-    return {
+    out = {
         "Ro": Ro,
         "mu": mu,
         "epsilon": epsilon,
@@ -305,5 +375,7 @@ def styles(
         "z0": z0,
         "ustar_wm": ustar_wm,
         "ustar_c": ustar_c,
-        "ustar_cw": ustar_cw,
+        "ustar_wc": ustar_wc,
     }
+
+    return out
