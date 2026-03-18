@@ -2,14 +2,7 @@ import numpy as np
 from typing import Optional, Union, List, Dict, Any, TypeAlias
 from src.utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from src.utils.base_instrument import BaseInstrument
-from src.utils.constants import (
-    GRAVITATIONAL_ACCELERATION as g,
-    GAS_CONSTANT_UNIVERSAL as R,
-    GAS_CONSTANT_DRY_AIR as R_a,
-    GAS_CONSTANT_WATER_VAPOR as R_v,
-    MOL_MASS_DRY_AIR as m_a,
-    MOL_MASS_WATER_VAPOR as m_v,
-)
+import src.utils.air_thermo as air_thermo
 
 Numeric: TypeAlias = float | int | np.ndarray
 
@@ -180,11 +173,11 @@ class Met(BaseInstrument):
 
     def t_kelvin(self, t: Numeric) -> Numeric:
         """Convert temperature from Celsius to Kelvin."""
-        return t + 273.15
+        return air_thermo.t_kelvin(t)
 
     def p_pascal(self, p: Numeric) -> Numeric:
         """Convert pressure from millibar to Pascal."""
-        return p * 100
+        return air_thermo.p_pascal(p)
 
     def saturation_vapor_pressure(self, t: Numeric, p: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
@@ -206,11 +199,7 @@ class Met(BaseInstrument):
             Saturation vapor pressure in millibar
 
         """
-        e_s = 6.1121 * (1.0007 + 3.46e-6 * p) * np.exp(17.502 * t / (240.97 + t))
-        if sp is not None:
-            return e_s * (1 - 5.37e-04 * sp)
-        else:
-            return e_s
+        return air_thermo.saturation_vapor_pressure(t, p, sp)
 
     def water_vapor_pressure(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
@@ -233,8 +222,7 @@ class Met(BaseInstrument):
         Numeric
             Water vapor pressure in millibar
         """
-        e_s = self.saturation_vapor_pressure(t, p, sp)
-        return (rh / 100) * e_s
+        return air_thermo.water_vapor_pressure(t, p, rh, sp)
 
     def water_vapor_density(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
@@ -257,8 +245,7 @@ class Met(BaseInstrument):
         Numeric
             Water vapor density in kg/m^3
         """
-        e = self.water_vapor_pressure(t, p, rh, sp)
-        return 100 * e / (R_v * self.t_kelvin(t))
+        return air_thermo.water_vapor_density(t, p, rh, sp)
 
     def mixing_ratio(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
@@ -281,8 +268,7 @@ class Met(BaseInstrument):
         Numeric
             Mixing ratio in kg/kg
         """
-        e = self.water_vapor_pressure(t, p, rh, sp)
-        return 0.622 * e / (p - e)
+        return air_thermo.mixing_ratio(t, p, rh, sp)
 
     def specific_humidity(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
@@ -305,9 +291,7 @@ class Met(BaseInstrument):
         Numeric
             Specific humidity in kg/kg
         """
-        e = self.water_vapor_pressure(t, p, rh, sp)
-        q = 0.622 * e / (p - 0.378 * e)
-        return q
+        return air_thermo.specific_humidity(t, p, rh, sp)
 
     def virtual_temperature(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
@@ -330,9 +314,7 @@ class Met(BaseInstrument):
         Numeric
             Virtual temperature in Celcius
         """
-        q = self.specific_humidity(t, p, rh, sp)
-        t_v = t * (1 + 0.61 * q)
-        return t_v
+        return air_thermo.virtual_temperature(t, p, rh, sp)
 
     def air_density(self, t: Numeric, p: Numeric, rh: Numeric) -> Numeric:
         """
@@ -352,10 +334,7 @@ class Met(BaseInstrument):
         Numeric
             Moist air density in kg/m^3
         """
-        e = self.water_vapor_pressure(t, p, rh)
-        p_dry = p - e
-        rho_air = (self.p_pascal(p_dry) * m_a + self.p_pascal(e) * m_v) / (R * self.t_kelvin(t))
-        return rho_air
+        return air_thermo.air_density(t, p, rh)
 
     def dry_air_density(self, t: Numeric, p: Numeric) -> Numeric:
         """
@@ -373,8 +352,7 @@ class Met(BaseInstrument):
         Numeric
             Dry air density in kg/m^3
         """
-        rho_air_dry = self.p_pascal(p) / (R_a * self.t_kelvin(t))
-        return rho_air_dry
+        return air_thermo.dry_air_density(t, p)
 
     def specific_heat(self, t: Numeric) -> Numeric:
         """
@@ -390,7 +368,7 @@ class Met(BaseInstrument):
         Numeric
             Specific heat capacity in J/(kg K)
         """
-        return 1005.6 + 0.0172 * t + 0.000392 * t**2
+        return air_thermo.specific_heat(t)
 
     def latent_heat_of_vaporization(self, t: Numeric) -> Numeric:
         """
@@ -406,7 +384,7 @@ class Met(BaseInstrument):
         Numeric
             Latent heat of vaporization in J/kg
         """
-        return (2.501 - 0.00237 * t) * 1e6
+        return air_thermo.latent_heat_of_vaporization(t)
 
     def kinematic_viscosity(self, t: Numeric) -> Numeric:
         """
@@ -422,7 +400,7 @@ class Met(BaseInstrument):
         Numeric
             Kinematic viscosity in m^2/s
         """
-        return 1.326e-5 * (1 + 6.542e-3 * t + 8.301e-6 * t**2 - 4.840e-9 * t**3)
+        return air_thermo.kinematic_viscosity(t)
 
     def potential_temperature(self, t: Numeric, z: Numeric) -> Numeric:
         """
@@ -442,9 +420,7 @@ class Met(BaseInstrument):
         Numeric
             Potential temperature in Celcius
         """
-        cp = self.specific_heat(t)
-        theta = t + (g / cp) * z
-        return theta
+        return air_thermo.potential_temperature(t, z)
 
     def derive(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         """

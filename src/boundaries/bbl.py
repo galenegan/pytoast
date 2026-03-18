@@ -160,12 +160,13 @@ def madsen(ub_r, omega_r, uc_r, phi_c, phi_wr, z_r, kN, max_iter=10, tol=1e-4):
     ----------
     ub_r
     omega_r
-    u_c
+    uc_r
     phi_c
     phi_wr
     z_r
     kN
     max_iter
+    tol
 
     Returns
     -------
