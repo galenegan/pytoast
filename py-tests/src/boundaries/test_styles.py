@@ -18,7 +18,22 @@ OUTPUT_DATA_PATH = f"{BBLM_DIR}/model_output_file2017.mat"
 _COL = {
     k: i
     for i, k in enumerate(
-        ["Ro", "mu", "epsilon", "z1_over_z0", "z2_over_z0", "zr_over_z1", "zr_over_z2", "fofx", "kbs", "kbr", "z0", "ub", "ab", "ur"]
+        [
+            "Ro",
+            "mu",
+            "epsilon",
+            "z1_over_z0",
+            "z2_over_z0",
+            "zr_over_z1",
+            "zr_over_z2",
+            "fofx",
+            "kbs",
+            "kbr",
+            "z0",
+            "ub",
+            "ab",
+            "ur",
+        ]
     )
 }
 
@@ -54,45 +69,31 @@ def results():
 
 
 def test_Ro(results, ref):
-    npt.assert_allclose(
-        [r["Ro"] for r in results], ref[:, _COL["Ro"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["Ro"] for r in results], ref[:, _COL["Ro"]], rtol=RTOL)
 
 
 def test_mu(results, ref):
-    npt.assert_allclose(
-        [r["mu"] for r in results], ref[:, _COL["mu"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["mu"] for r in results], ref[:, _COL["mu"]], rtol=RTOL)
 
 
 def test_epsilon(results, ref):
-    npt.assert_allclose(
-        [r["epsilon"] for r in results], ref[:, _COL["epsilon"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["epsilon"] for r in results], ref[:, _COL["epsilon"]], rtol=RTOL)
 
 
 def test_z1_over_z0(results, ref):
-    npt.assert_allclose(
-        [r["z1_over_z0"] for r in results], ref[:, _COL["z1_over_z0"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["z1_over_z0"] for r in results], ref[:, _COL["z1_over_z0"]], rtol=RTOL)
 
 
 def test_z2_over_z0(results, ref):
-    npt.assert_allclose(
-        [r["z2_over_z0"] for r in results], ref[:, _COL["z2_over_z0"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["z2_over_z0"] for r in results], ref[:, _COL["z2_over_z0"]], rtol=RTOL)
 
 
 def test_zr_over_z1(results, ref):
-    npt.assert_allclose(
-        [r["zr_over_z1"] for r in results], ref[:, _COL["zr_over_z1"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["zr_over_z1"] for r in results], ref[:, _COL["zr_over_z1"]], rtol=RTOL)
 
 
 def test_zr_over_z2(results, ref):
-    npt.assert_allclose(
-        [r["zr_over_z2"] for r in results], ref[:, _COL["zr_over_z2"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["zr_over_z2"] for r in results], ref[:, _COL["zr_over_z2"]], rtol=RTOL)
 
 
 # ---------------------------------------------------------------------------
@@ -101,18 +102,12 @@ def test_zr_over_z2(results, ref):
 
 
 def test_kbs(results, ref):
-    npt.assert_allclose(
-        [r["kbs"] for r in results], ref[:, _COL["kbs"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["kbs"] for r in results], ref[:, _COL["kbs"]], rtol=RTOL)
 
 
 def test_kbr(results, ref):
-    npt.assert_allclose(
-        [r["kbr"] for r in results], ref[:, _COL["kbr"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["kbr"] for r in results], ref[:, _COL["kbr"]], rtol=RTOL)
 
 
 def test_z0(results, ref):
-    npt.assert_allclose(
-        [r["z0"] for r in results], ref[:, _COL["z0"]], rtol=RTOL
-    )
+    npt.assert_allclose([r["z0"] for r in results], ref[:, _COL["z0"]], rtol=RTOL)

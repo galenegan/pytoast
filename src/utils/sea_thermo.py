@@ -1176,6 +1176,12 @@ def buoyancy_frequency(
     return g * (alpha_mid * dct / dz[:, np.newaxis] - beta_mid * dsa / dz[:, np.newaxis])
 
 
+def gravity_at_lat(lat: Numeric) -> Numeric:
+    sin2 = np.sin(np.deg2rad(lat)) ** 2
+    g = 9.780318 * (1.0 + 5.2788e-3 * sin2 + 2.36e-5 * sin2**2)
+    return g
+
+
 def depth_from_pressure(p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
     """
     Depth from sea pressure using the UNESCO (1983) formula with optional
@@ -1197,8 +1203,7 @@ def depth_from_pressure(p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
         Depth (positive downward) [m]
     """
     if lat is not None:
-        sin2 = np.sin(np.deg2rad(lat)) ** 2
-        g_lat = 9.780318 * (1.0 + 5.2788e-3 * sin2 + 2.36e-5 * sin2**2)
+        g_lat = gravity_at_lat(lat)
     else:
         g_lat = g
 

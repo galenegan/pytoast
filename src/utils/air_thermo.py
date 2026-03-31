@@ -151,6 +151,32 @@ def specific_humidity(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric]
     return q
 
 
+def saturation_specific_humidity(t: Numeric, p: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+    """
+    Specific humidity given temperature, pressure, relative humidity, and (optionally) seawater salinity
+
+    Parameters
+    ----------
+    t : Numeric
+        Air temperature in Celcius
+    p : Numeric
+        Atmospheric pressure in millibar
+    rh : Numeric
+        Relative humidity in %
+    sp : Numeric, optional
+        If specified, the saturation vapor pressure is corrected to its "above seawater"
+        value using salinity in PSU
+
+    Returns
+    -------
+    Numeric
+        Specific humidity in kg/kg
+    """
+    e_s = saturation_vapor_pressure(t, p, sp)
+    q_s = 0.622 * e_s / (p - 0.378 * e_s)
+    return q_s
+
+
 def virtual_temperature(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
     """
     Virtual temperature given temperature, pressure, relative humidity, and (optionally) seawater salinity
@@ -236,6 +262,21 @@ def specific_heat(t: Numeric) -> Numeric:
         Specific heat capacity in J/(kg K)
     """
     return 1005.6 + 0.0172 * t + 0.000392 * t**2
+
+
+def dry_adiabatic_lapse_rate(t: Numeric, g_lat: Numeric = g) -> Numeric:
+    """
+
+    Parameters
+    ----------
+    t
+
+    Returns
+    -------
+
+    """
+    cp = specific_heat(t)
+    return -g_lat / cp
 
 
 def latent_heat_of_vaporization(t: Numeric) -> Numeric:

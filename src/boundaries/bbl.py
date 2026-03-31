@@ -11,7 +11,8 @@ _S = 2.65  # relative sediment density
 _BETA = 0.7  # closure constant
 _ALPHA = 0.3  # closure constant
 _CON = 6.4  # closure constant
-_KBR_DEF = 0.03 # default ripple roughness (m)
+_KBR_DEF = 0.03  # default ripple roughness (m)
+
 
 def _fwc_m94(relative_roughness, c_mu):
     # Wave-current friction factor (Eqs 32 - 33, Madsen 1994)
@@ -25,6 +26,7 @@ def _fwc_m94(relative_roughness, c_mu):
     else:
         print(f"Warning: Relative roughness {relative_roughness} is out of range [0.2, 10000]")
         return c_mu * np.exp(5.61 * 10000 ** (-0.109) - 7.30)
+
 
 def _shields_critical(star):
     """Critical Shields parameter for initiation of sediment motion (shldc.m)."""
@@ -102,6 +104,7 @@ def _phi(zeta_0, zeta_1, mp):
 
 def _pwave(ab_over_z0, ub_over_ustar_wm, zeta_1, mp, max_iter=40, tol=1e-4):
     """Pure-wave ub/ustar_wm via secant method (pwave.m)."""
+
     def f(x):
         zeta_0 = 1.0 / (kappa * (ab_over_z0 / x))
         phi = _phi(zeta_0, zeta_1, mp)
@@ -134,7 +137,10 @@ def _bstress2(ub_over_ustar_wc, ab_over_z0, zr_over_z0, ub_over_kappa_ur, theta,
     # Six velocity-profile cases (Table 1, Styles et al. (2017)). Each of these expressions is the deviation between
     # sigma = ub / ustar_wc and the estimate of ub / ustar_wc (Eq. 2-16)
     if zr_over_z2 > 1 and z1_over_z0 > 1:
-        fx = ub_over_kappa_ur * epsilon * (np.log(zr_over_z2) + 1 - epsilon + epsilon * np.log(z1_over_z0)) - ub_over_ustar_wc
+        fx = (
+            ub_over_kappa_ur * epsilon * (np.log(zr_over_z2) + 1 - epsilon + epsilon * np.log(z1_over_z0))
+            - ub_over_ustar_wc
+        )
     elif zr_over_z2 <= 1 and zr_over_z1 > 1 and z1_over_z0 > 1:
         fx = ub_over_kappa_ur * epsilon**2 * (zr_over_z1 - 1 + np.log(z1_over_z0)) - ub_over_ustar_wc
     elif zr_over_z1 <= 1 and z1_over_z0 > 1:
@@ -152,6 +158,7 @@ def _bstress2(ub_over_ustar_wc, ab_over_z0, zr_over_z0, ub_over_kappa_ur, theta,
         )
 
     return Ro, mu, epsilon, z1_over_z0, z2_over_z0, zr_over_z1, zr_over_z2, fx
+
 
 def madsen(ub_r, omega_r, uc_r, phi_c, phi_wr, z_r, kN, max_iter=10, tol=1e-4):
     """
@@ -211,6 +218,7 @@ def madsen(ub_r, omega_r, uc_r, phi_c, phi_wr, z_r, kN, max_iter=10, tol=1e-4):
         "f_wc": f_wc_new,
     }
     return out
+
 
 def styles(
     ub,
@@ -302,7 +310,7 @@ def styles(
     if psi - psicr <= 0:
         kbr = kbr_def
     else:
-        chi = 4.0 * nu * ub ** 2 / (d_median * ((s - 1) * g * d_median) ** 1.5)
+        chi = 4.0 * nu * ub**2 / (d_median * ((s - 1) * g * d_median) ** 1.5)
         if chi < 2:
             eta = ab * 0.30 * chi ** (-0.39)
         else:
@@ -336,27 +344,21 @@ def styles(
     elif ab_over_z0 < 10:
         ub_over_ustar_wm = np.exp(1.488) * ab_over_z0 ** (-0.653) * ab_over_z0 ** (0.185 * np.log(ab_over_z0))
     elif ab_over_z0 < 100:
-        ub_over_ustar_wm = np.exp(0.4599) * ab_over_z0 ** 0.1977 * ab_over_z0 ** (0.0085 * np.log(ab_over_z0))
+        ub_over_ustar_wm = np.exp(0.4599) * ab_over_z0**0.1977 * ab_over_z0 ** (0.0085 * np.log(ab_over_z0))
     else:
-        ub_over_ustar_wm = np.exp(0.13996) * ab_over_z0 ** 0.3539 * ab_over_z0 ** (-0.0106 * np.log(ab_over_z0))
+        ub_over_ustar_wm = np.exp(0.13996) * ab_over_z0**0.3539 * ab_over_z0 ** (-0.0106 * np.log(ab_over_z0))
 
     upper_bound = _pwave(ab_over_z0, ub_over_ustar_wm, zeta_1, mp)
 
-
     # Wrapper function for the bisection with a cache for the extra variables we want
     _cache = [None]
+
     def _brent_f(x):
         result = _bstress2(x, ab_over_z0, zr_over_z0, ub_over_kappa_ur, theta, alpha_loc, zeta_1, mp)
         _cache[0] = result
         return result[-1]  # fx
 
-    brentq(
-        _brent_f,
-        a=upper_bound,
-        b=lower_bound,
-        maxiter=max_iter,
-        xtol=tol
-    )
+    brentq(_brent_f, a=upper_bound, b=lower_bound, maxiter=max_iter, xtol=tol)
     Ro, mu, epsilon, z1_over_z0, z2_over_z0, zr_over_z1, zr_over_z2, _ = _cache[0]
 
     ustar_wc = Ro * z0 * omega
