@@ -407,7 +407,7 @@ def coare36(
     # Air specific humidity [g/kg] and vapor pressure [mb]
     # q_air_gkg, vapor_pressure = _qsat_air(t, p_tq, rh)
     # q_air = q_air_gkg / 1000  # [kg/kg]
-    q_air = at.specific_humidity(t, p_tq, rh, surface_salinity)
+    q_air = at.specific_humidity(t, p_tq, rh)
 
     # # Sea-surface saturation specific humidity [g/kg] and [kg/kg]
     # q_s_gkg = _qsat_sea(ts, p, surface_salinity, t_freeze)

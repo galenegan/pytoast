@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Optional, TypeAlias
 
-from src.utils.constants import (
+from utils.constants import (
     GRAVITATIONAL_ACCELERATION as g,
     SSO,
     T0,

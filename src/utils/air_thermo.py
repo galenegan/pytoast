@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Optional, TypeAlias
 
-from src.utils.constants import (
+from utils.constants import (
     GRAVITATIONAL_ACCELERATION as g,
     GAS_CONSTANT_UNIVERSAL as R,
     GAS_CONSTANT_DRY_AIR as R_a,
@@ -305,7 +305,7 @@ def dry_adiabatic_lapse_rate(t: Numeric, g_lat: Numeric = g) -> Numeric:
 
     """
     cp = specific_heat(t)
-    return -g_lat / cp
+    return g_lat / cp
 
 
 def latent_heat_of_vaporization(t: Numeric) -> Numeric:
