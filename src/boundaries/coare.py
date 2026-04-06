@@ -1,10 +1,5 @@
 import numpy as np
-from typing import Tuple, Optional, Dict
-
-try:
-    from typing import TypeAlias
-except ImportError:
-    from typing_extensions import TypeAlias
+from typing import Tuple, Optional, Dict, TypeAlias
 from utils.constants import (
     SSO,
     VON_KARMAN as KAPPA,
@@ -13,6 +8,7 @@ from utils.constants import (
     _PAYNE_TABLE,
     T0,
     KINEMATIC_VISCOSITY_AIR as NU_A,
+    GAS_CONSTANT_DRY_AIR as R_AIR,
 )
 import utils.air_thermo as at
 import utils.sea_thermo as st
@@ -21,23 +17,22 @@ Numeric: TypeAlias = float | int | np.ndarray
 
 # Gustiness scaling coefficient (Fairall et al. 1996)
 BETA = 1.2
-# Dry air gas constant [J/(kg K)]
-_R_AIR = 287.1
-# Specific heat of air at constant pressure [J/(kg K)]  (treated as constant in COARE)
-_CP_AIR = 1004.67
+
 # Ratio of molecular weight of water to dry air (used in stability calculations)
-_EPSILON = 0.61
+EPSILON = 0.61
+
 # Sea ice aerodynamic roughness length [m]
-_Z0_ICE = 0.0005
+Z0_ICE = 0.0005
+
 # Number of bulk-loop iterations
-_N_ITER = 10
+N_ITER = 10
+
 # Ratio of scalar (heat/moisture) to momentum transfer coefficient (= 1 for COARE)
-_FDG = 1.0
+SCHMIDT = 1.0
 
 
-# ─── Private stability/profile functions ──────────────────────────────────────
 
-
+# Private stability/profile functions
 def _psit_26(zeta: np.ndarray) -> np.ndarray:
     """
     Monin-Obukhov temperature/humidity profile correction function.
@@ -110,52 +105,52 @@ def _psiu_40(zeta: np.ndarray) -> np.ndarray:
 
 
 # ─── Private thermodynamic helpers ────────────────────────────────────────────
+#
+#
+# def _saturation_vp(t: np.ndarray, p: np.ndarray, t_freeze: np.ndarray) -> np.ndarray:
+#     """
+#     Saturation vapor pressure [mb] using the Buck (1981) formula.
+#     Uses different coefficients below the freezing point (ice phase).
+#     """
+#     exx = 6.1121 * np.exp(17.502 * t / (t + 240.97)) * (1.0007 + 3.46e-6 * p)
+#     ice = t < t_freeze
+#     if np.any(ice):
+#         exx[ice] = 6.1115 * np.exp(22.452 * t[ice] / (t[ice] + 272.55)) * (1.0003 + 4.18e-6 * p[ice])
+#     return exx
+#
+#
+# def _qsat_sea(ts: np.ndarray, p: np.ndarray, ss: np.ndarray, t_freeze: np.ndarray) -> np.ndarray:
+#     """
+#     Saturation specific humidity at the sea surface [g/kg].
+#     Salinity reduces the vapor pressure by (1 - 0.02*Ss/35).
+#     """
+#     ex = _saturation_vp(ts, p, t_freeze)
+#     salinity_correction = 1 - 0.02 * ss / 35
+#     es = salinity_correction * ex
+#     return 622 * es / (p - 0.378 * es)
+#
+#
+# def _qsat_air(t: np.ndarray, p: np.ndarray, rh: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+#     """
+#     Air specific humidity [g/kg] and vapor pressure [mb] from T [°C], P [mb], RH [%].
+#     No ice branch — air is assumed to be above 0 °C for saturation purposes.
+#     """
+#     es = 6.1121 * np.exp(17.502 * t / (t + 240.97)) * (1.0007 + 3.46e-6 * p)
+#     vapor_pressure = rh / 100 * es
+#     q = 622 * vapor_pressure / (p - 0.378 * vapor_pressure)
+#     return q, vapor_pressure
+#
+#
+# def _rh_calc(t: np.ndarray, p: np.ndarray, q_kgkg: np.ndarray, t_freeze: np.ndarray) -> np.ndarray:
+#     """
+#     Relative humidity [%] from T [°C], P [mb], specific humidity [kg/kg].
+#     """
+#     es = _saturation_vp(t, p, t_freeze)
+#     vapor_pressure = q_kgkg * p / (0.378 * q_kgkg + 0.622)
+#     return 100 * vapor_pressure / es
+#
 
-
-def _saturation_vp(t: np.ndarray, p: np.ndarray, t_freeze: np.ndarray) -> np.ndarray:
-    """
-    Saturation vapor pressure [mb] using the Buck (1981) formula.
-    Uses different coefficients below the freezing point (ice phase).
-    """
-    exx = 6.1121 * np.exp(17.502 * t / (t + 240.97)) * (1.0007 + 3.46e-6 * p)
-    ice = t < t_freeze
-    if np.any(ice):
-        exx[ice] = 6.1115 * np.exp(22.452 * t[ice] / (t[ice] + 272.55)) * (1.0003 + 4.18e-6 * p[ice])
-    return exx
-
-
-def _qsat_sea(ts: np.ndarray, p: np.ndarray, ss: np.ndarray, t_freeze: np.ndarray) -> np.ndarray:
-    """
-    Saturation specific humidity at the sea surface [g/kg].
-    Salinity reduces the vapor pressure by (1 - 0.02*Ss/35).
-    """
-    ex = _saturation_vp(ts, p, t_freeze)
-    salinity_correction = 1 - 0.02 * ss / 35
-    es = salinity_correction * ex
-    return 622 * es / (p - 0.378 * es)
-
-
-def _qsat_air(t: np.ndarray, p: np.ndarray, rh: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Air specific humidity [g/kg] and vapor pressure [mb] from T [°C], P [mb], RH [%].
-    No ice branch — air is assumed to be above 0 °C for saturation purposes.
-    """
-    es = 6.1121 * np.exp(17.502 * t / (t + 240.97)) * (1.0007 + 3.46e-6 * p)
-    vapor_pressure = rh / 100 * es
-    q = 622 * vapor_pressure / (p - 0.378 * vapor_pressure)
-    return q, vapor_pressure
-
-
-def _rh_calc(t: np.ndarray, p: np.ndarray, q_kgkg: np.ndarray, t_freeze: np.ndarray) -> np.ndarray:
-    """
-    Relative humidity [%] from T [°C], P [mb], specific humidity [kg/kg].
-    """
-    es = _saturation_vp(t, p, t_freeze)
-    vapor_pressure = q_kgkg * p / (0.378 * q_kgkg + 0.622)
-    return 100 * vapor_pressure / es
-
-
-# ─── Public helper functions ───────────────────────────────────────────────────
+# Public helper functions
 
 
 def charnock_roughness(ustar: Numeric, g: float = G, nu_air: float = NU_A) -> Numeric:
@@ -267,8 +262,7 @@ def sea_surface_albedo(
     return alb, transmission, solarmax, solar_altitude
 
 
-# ─── Main COARE 3.6 function ──────────────────────────────────────────────────
-
+# Main COARE 3.6 function
 
 def coare36(
     u: Numeric,
@@ -353,19 +347,8 @@ def coare36(
     -------
     Dict[str, np.ndarray]
         Dictionary of output variables. Sign convention: sensible, latent, and
-        rain heat fluxes are *positive when cooling the ocean*; radiation fluxes
+        rain heat fluxes are *positive when cooling the ocean*; radiative fluxes
         are *positive when heating the ocean*.
-
-        Key outputs:
-        ustar, tau, hs, hl, hrain, h_buoyancy, h_buoyancy_sonic, hl_webb,
-        tstar, qstar, z0, z0t, z0q, Cd, Ch, Ce, Cdn10, Chn10, Cen10,
-        L, zeta, dT_skin, dq_skin [g/kg], dz_skin, T_skin,
-        sw_net, lw_net, Le, rho_air,
-        U10, U10N, UN, Urf, UrfN,
-        T10, T10N, Trf, TrfN,
-        Q10 [g/kg], Q10N [g/kg], Qrf [g/kg], QrfN [g/kg], Qs [g/kg],
-        RH10, RHrf, P10, rho_air10,
-        evap, gust, whitecap_fraction, wave_break_dissipation.
 
     References
     ----------
@@ -408,54 +391,74 @@ def coare36(
     else:
         h_sig = np.full(N, np.nan)
 
-    # ── Freezing point and ice mask ──────────────────────────────────────────
-    t_freeze = -0.0575 * surface_salinity + 0.00171052 * surface_salinity**1.5 - 0.0002154996 * surface_salinity**2
+    # Freezing point and ice mask
+    # t_freeze =  -0.0575 * surface_salinity + 0.00171052 * surface_salinity**1.5 - 0.0002154996 * surface_salinity**2
+
+    surface_salinity_abs = st.sa_from_sp(surface_salinity)
+    t_freeze = st.freezing_temperature(surface_salinity_abs, p=0)
     idx_ice = ts < t_freeze
     # Cool-skin active only when sea surface is above freezing
     j_cool = np.where(idx_ice, 0.0, 1.0)
 
-    # ── Humidity at T/q measurement height ──────────────────────────────────
+    # Humidity at T/q measurement height
     # Pressure at temperature/humidity measurement height (hydrostatic)
     p_tq = p - 0.125 * z_t
+
     # Air specific humidity [g/kg] and vapor pressure [mb]
-    q_air_gkg, vapor_pressure = _qsat_air(t, p_tq, rh)
-    q_air = q_air_gkg / 1000  # [kg/kg]
+    # q_air_gkg, vapor_pressure = _qsat_air(t, p_tq, rh)
+    # q_air = q_air_gkg / 1000  # [kg/kg]
+    q_air = at.specific_humidity(t, p_tq, rh, surface_salinity)
 
-    # Sea-surface saturation specific humidity [g/kg] and [kg/kg]
-    q_s_gkg = _qsat_sea(ts, p, surface_salinity, t_freeze)
-    q_s = q_s_gkg / 1000  # [kg/kg]
+    # # Sea-surface saturation specific humidity [g/kg] and [kg/kg]
+    # q_s_gkg = _qsat_sea(ts, p, surface_salinity, t_freeze)
+    # q_s = q_s_gkg / 1000  # [kg/kg]
+    q_s = at.saturation_specific_humidity(ts, p, surface_salinity, t_freeze)
 
-    # ── Thermodynamic constants ──────────────────────────────────────────────
+    # Thermodynamic constants
     g = st.gravity_at_lat(lat)
-    # Dry adiabatic lapse rate [K/m] — positive, temperature decreases with height
-    lapse_rate = g / _CP_AIR
+
+    # Specific heat capacity of air
+    CP_AIR = at.specific_heat(t)
+    
+    # # Dry adiabatic lapse rate [K/m] — positive, temperature decreases with height
+    # lapse_rate = g / CP_AIR
+    lapse_rate = at.dry_adiabatic_lapse_rate(t, g)
+
     # Latent heat of vaporization [J/kg] — evaluated at sea surface temperature
-    L_e = (2.501 - 0.00237 * ts) * 1e6
+    # L_e = (2.501 - 0.00237 * ts) * 1e6
+    L_e = at.latent_heat_of_vaporization(ts)
+
     # Air density at T/q measurement height [kg/m³]
-    rho_air = p_tq * 100 / (_R_AIR * (t + T0) * (1 + _EPSILON * q_air))
+    # rho_air = p_tq * 100 / (R_AIR * (t + T0) * (1 + EPSILON * q_air))
+    rho_air = at.air_density(t, p_tq, rh)
+
     # Kinematic viscosity of air [m²/s]
     nu_air = at.kinematic_viscosity(t)
 
     # ── Cool-skin parameterization constants ─────────────────────────────────
     # Thermal expansion coefficient of seawater at surface [1/°C]
-    # (empirical formula from Fairall et al. 1996; not TEOS-10)
     tsw = np.maximum(ts, t_freeze)  # clamp to freeze for stability
-    alpha_35 = 2.1e-5 * (tsw + 3.2) ** 0.79
-    alpha_0 = (2.2 * np.real((tsw - 1 + 0j) ** 0.82) - 5) * 1e-5
-    alpha_sw = alpha_0 + (alpha_35 - alpha_0) * surface_salinity / 35
+    # alpha_35 = 2.1e-5 * (tsw + 3.2) ** 0.79
+    # alpha_0 = (2.2 * np.real((tsw - 1 + 0j) ** 0.82) - 5) * 1e-5
+    # alpha_sw = alpha_0 + (alpha_35 - alpha_0) * surface_salinity / 35
+    ts_conservative = st.ct_from_t(surface_salinity_abs, tsw, p=0)
+    alpha_sw = st.alpha(surface_salinity_abs, ts_conservative, p=0)
+
     # Haline expansion contribution to buoyancy in skin layer
-    haline_buoyancy_coeff = 0.00075 * surface_salinity
-    # Cool-skin / warm-layer water properties
+    # haline_buoyancy_coeff = 0.00075 * surface_salinity
+    haline_buoyancy_coeff = st.beta(surface_salinity_abs, ts_conservative, p=0)
+
+    # Cool-skin / warm-layer water properties. Using the COARE defaults here rather than TEOS-10
     cp_water = 4000.0  # specific heat of seawater [J/(kg K)]
     rho_water = 1022.0  # density of seawater [kg/m³]
     visw = 1e-6  # kinematic viscosity of seawater [m²/s]
     k_water = 0.6  # thermal conductivity of seawater [W/(m K)]
-    # Combined cool-skin parameter (Fairall et al. 1996, Eq. 14)
+    # Combined cool-skin parameter
     cool_skin_param = 16 * g * cp_water * (rho_water * visw) ** 3 / (k_water**2 * rho_air**2)
     # Linearized surface humidity–temperature coefficient [kg/(kg K)]
-    dqs_dT = 0.622 * L_e * q_s / (_R_AIR * (ts + T0) ** 2)
+    dqs_dT = 0.622 * L_e * q_s / (R_AIR * (ts + T0) ** 2)
 
-    # ── Radiative fluxes ─────────────────────────────────────────────────────
+    # Radiative fluxes
     albedo, _, _, _ = sea_surface_albedo(sw_down, julian_day, lat, lon)
     sw_net = (1 - albedo) * sw_down
     # lw_net is positive when cooling the ocean (sign flipped at output)
@@ -466,8 +469,8 @@ def coare36(
     # Temperature difference including lapse-rate correction
     delta_T = ts - t - lapse_rate * z_t
     delta_q = q_s - q_air  # air-sea specific humidity difference [kg/kg]
-    t_kelvin = t + T0  # air temperature [K]
-    t_virtual = t_kelvin * (1 + _EPSILON * q_air)  # virtual temperature [K]
+    t_kelvin = at.t_kelvin(t) # air temperature [K]
+    t_virtual = t_kelvin * (1 + EPSILON * q_air)  # virtual temperature [K]
 
     dT_skin = 0.3  # first-guess cool-skin temperature depression [°C]
     gust = 0.5  # first-guess gustiness [m/s]
@@ -485,14 +488,14 @@ def coare36(
     # Transfer coefficients at measurement heights using 10-m roughness lengths
     Cd = (KAPPA / np.log(z_u / z0_10)) ** 2
     Ct = KAPPA / np.log(z_t / z0t_10)
-    # Coefficient relating bulk Richardson number to stability parameter
+    # Coefficient used for relating bulk Richardson number to stability parameter
     zeta_Ri_coeff = KAPPA * Ct / Cd
 
     # Convective limit for bulk Richardson number
     Ri_bu_conv = -z_u / pbl_height / 0.004 / BETA**3
 
-    # Bulk Richardson number (Eq. 21, Fairall et al. 2003)
-    Ri_bu = -g * z_u / t_kelvin * ((delta_T - dT_skin * j_cool) + _EPSILON * t_kelvin * delta_q) / u_tot**2
+    # Bulk Richardson number
+    Ri_bu = -g * z_u / t_kelvin * ((delta_T - dT_skin * j_cool) + EPSILON * t_kelvin * delta_q) / u_tot**2
 
     # Initial stability parameter
     zeta_u = zeta_Ri_coeff * Ri_bu * (1 + 27 / 9 * Ri_bu / zeta_Ri_coeff)
@@ -511,8 +514,8 @@ def coare36(
 
     # First-guess scaling parameters using psiu_40 stability function
     ustar = u_tot * KAPPA / (np.log(z_u / z0_10) - _psiu_40(z_u / L_10))
-    tstar = -(delta_T - dT_skin * j_cool) * KAPPA * _FDG / (np.log(z_t / z0t_10) - _psit_26(z_t / L_10))
-    qstar = -(delta_q - dqs_dT * dT_skin * j_cool) * KAPPA * _FDG / (np.log(z_rh / z0t_10) - _psit_26(z_rh / L_10))
+    tstar = -(delta_T - dT_skin * j_cool) * KAPPA * SCHMIDT / (np.log(z_t / z0t_10) - _psit_26(z_t / L_10))
+    qstar = -(delta_q - dqs_dT * dT_skin * j_cool) * KAPPA * SCHMIDT / (np.log(z_rh / z0t_10) - _psit_26(z_rh / L_10))
 
     dz_skin = 0.001 * np.ones(N)  # first-guess cool-skin thickness [m]
 
@@ -539,20 +542,20 @@ def coare36(
     L_stable = zeta_stable = dT_skin_stable = dq_skin_stable = dz_skin_stable = None
 
     # ── Bulk iteration loop ───────────────────────────────────────────────────
-    for i_iter in range(_N_ITER):
-        # Monin-Obukhov stability parameter at wind measurement height
-        zeta = KAPPA * g * z_u / t_kelvin * (tstar + _EPSILON * t_kelvin * qstar) / ustar**2
+    for i_iter in range(N_ITER):
+        # MO stability parameter at wind measurement height
+        zeta = KAPPA * g * z_u / t_kelvin * (tstar + EPSILON * t_kelvin * qstar) / ustar**2
         L = z_u / zeta
 
         # Roughness lengths
         z0 = charnock * ustar**2 / g + 0.11 * nu_air / ustar
-        z0[idx_ice] = _Z0_ICE
+        z0[idx_ice] = Z0_ICE
         Re_rough = z0 * ustar / nu_air  # roughness Reynolds number
 
-        # Scalar roughness lengths (Brunke et al. 2003 / COARE 3.0)
+        # Scalar roughness lengths (COARE 3.0)
         z0q = np.minimum(1.6e-4, 5.8e-5 / Re_rough**0.72)
         # Over sea ice: Andreas (1987) parameterization
-        z0t = z0q.copy()  # (Dalton ≈ COARE 3.0 thermal roughness)
+        z0t = z0q.copy()
         if idx_ice.any():
             for ij in np.where(idx_ice)[0]:
                 rr_i = Re_rough[ij]
@@ -568,8 +571,8 @@ def coare36(
 
         # Log-profile transfer coefficients
         c_momentum = KAPPA / (np.log(z_u / z0) - _psiu_26(z_u / L))
-        c_humidity = KAPPA * _FDG / (np.log(z_rh / z0q) - _psit_26(z_rh / L))
-        c_heat = KAPPA * _FDG / (np.log(z_t / z0t) - _psit_26(z_t / L))
+        c_humidity = KAPPA * SCHMIDT / (np.log(z_rh / z0q) - _psit_26(z_rh / L))
+        c_heat = KAPPA * SCHMIDT / (np.log(z_t / z0t) - _psit_26(z_t / L))
 
         # Update scaling parameters
         ustar = u_tot * c_momentum
@@ -577,9 +580,9 @@ def coare36(
         tstar = -(delta_T - dT_skin * j_cool) * c_heat
 
         # Buoyancy flux scaling (Stull 1988 formulation used in COARE 3.6)
-        tstar_virtual = tstar * (1 + _EPSILON * q_air) + _EPSILON * t_kelvin * qstar
+        tstar_virtual = tstar * (1 + EPSILON * q_air) + EPSILON * t_kelvin * qstar
         # Original COARE buoyancy flux (retained for hbb/hsbb outputs)
-        tstar_virtual_orig = tstar + _EPSILON * t_kelvin * qstar
+        tstar_virtual_orig = tstar + EPSILON * t_kelvin * qstar
         tstar_sonic_orig = tstar + 0.51 * t_kelvin * qstar
 
         # Gustiness (convective velocity scale)
@@ -589,7 +592,7 @@ def coare36(
         gust_factor = u_tot / delta_u
 
         # Intermediate heat fluxes for cool-skin calculation
-        hs_iter = -rho_air * _CP_AIR * ustar * tstar
+        hs_iter = -rho_air * CP_AIR * ustar * tstar
         hl_iter = -rho_air * L_e * ustar * qstar
         q_net = lw_net + hs_iter + hl_iter  # net cooling flux into cool skin
 
@@ -600,7 +603,7 @@ def coare36(
         # Buoyancy flux into skin layer (thermal + haline terms)
         buoyancy_flux_skin = alpha_sw * q_net_skin + haline_buoyancy_coeff * hl_iter * cp_water / L_e
 
-        # Cool-skin thickness (Fairall et al. 1996)
+        # Cool-skin thickness
         lambda_cool = 6.0 * np.ones(N)
         dz_skin = np.minimum(0.01, lambda_cool * visw / (np.sqrt(rho_air / rho_water) * ustar))
         warm_skin = buoyancy_flux_skin > 0
@@ -635,7 +638,7 @@ def coare36(
             dq_skin_stable = dq_skin[idx_very_stable].copy()
             dz_skin_stable = dz_skin[idx_very_stable].copy()
 
-    # ── Restore first-iteration values where stability is extreme (zeta > 50) ─
+    # Restore first-iteration values where stability is extreme (zeta > 50)
     ustar[idx_very_stable] = ustar_stable
     tstar[idx_very_stable] = tstar_stable
     qstar[idx_very_stable] = qstar_stable
@@ -645,15 +648,15 @@ def coare36(
     dq_skin[idx_very_stable] = dq_skin_stable
     dz_skin[idx_very_stable] = dz_skin_stable
 
-    # ── Compute output fluxes ─────────────────────────────────────────────────
+    # Compute output fluxes
     tau = rho_air * ustar**2 / gust_factor  # wind stress [N/m²]
-    hs = -rho_air * _CP_AIR * ustar * tstar  # sensible heat [W/m²]
+    hs = -rho_air * CP_AIR * ustar * tstar  # sensible heat [W/m²]
     hl = -rho_air * L_e * ustar * qstar  # latent heat [W/m²]
-    h_buoyancy = -rho_air * _CP_AIR * ustar * tstar_virtual_orig
-    h_buoyancy_sonic = -rho_air * _CP_AIR * ustar * tstar_sonic_orig
+    h_buoyancy = -rho_air * CP_AIR * ustar * tstar_virtual_orig
+    h_buoyancy_sonic = -rho_air * CP_AIR * ustar * tstar_sonic_orig
 
-    # Webb-Pearman-Leuning density correction for latent heat
-    w_bar = 1.61 * hl / L_e / (1 + 1.61 * q_air) / rho_air + hs / rho_air / _CP_AIR / t_kelvin
+    # Webb correction
+    w_bar = 1.61 * hl / L_e / (1 + 1.61 * q_air) / rho_air + hs / rho_air / CP_AIR / t_kelvin
     hl_webb = rho_air * w_bar * q_air * L_e
 
     evap = 1000 * hl / L_e / 1000 * 3600  # evaporation [mm/hr]
@@ -664,8 +667,8 @@ def coare36(
     Ce = -ustar * qstar / (delta_q - dq_skin * j_cool) / u_tot
     # Neutral transfer coefficients at 10 m
     Cdn10 = KAPPA**2 / np.log(10 / z0) ** 2
-    Chn10 = KAPPA**2 * _FDG / (np.log(10 / z0) * np.log(10 / z0t))
-    Cen10 = KAPPA**2 * _FDG / (np.log(10 / z0) * np.log(10 / z0q))
+    Chn10 = KAPPA**2 * SCHMIDT / (np.log(10 / z0) * np.log(10 / z0t))
+    Cen10 = KAPPA**2 * SCHMIDT / (np.log(10 / z0) * np.log(10 / z0q))
 
     # ── Reference-height and 10-m profiles ───────────────────────────────────
     psi_u = _psiu_26(z_u / L)
@@ -702,23 +705,22 @@ def coare36(
 
     # Relative humidities at reference heights
     t_freeze_10 = t_freeze  # same salinity → same freeze point
-    RH10 = _rh_calc(T10, P10, q_air_10_gkg / 1000, t_freeze_10)
-    RHrf = _rh_calc(Trf, P_ref, q_air_rf_gkg / 1000, t_freeze_10)
+    RH10 = at.relative_humidity_from_specific_humidity(T10, P10, q_air_10_gkg / 1000, t_freeze_10)
+    RHrf = at.relative_humidity_from_specific_humidity(Trf, P_ref, q_air_rf_gkg / 1000, t_freeze_10)
 
     # Air density at 10 m
-    rho_air10 = P10 * 100 / (_R_AIR * (T10 + T0) * (1 + _EPSILON * q_air_10_gkg / 1000))
+    rho_air10 = at.air_density(T10, P10, RH10)
 
-    # ── Rain heat flux ────────────────────────────────────────────────────────
-    # (Fairall et al. 1996 / COARE 3.6 rain flux formulation)
+    # Rain heat flux
     diffusivity_water_vapor = 2.11e-5 * ((t + T0) / T0) ** 1.94
-    diffusivity_heat = (1 + 3.309e-3 * t - 1.44e-6 * t**2) * 0.02411 / (rho_air * _CP_AIR)
-    dqs_dT_bulk = q_air * L_e / (_R_AIR * (t + T0) ** 2)
-    alfac = 1 / (1 + 0.622 * dqs_dT_bulk * L_e * diffusivity_water_vapor / (_CP_AIR * diffusivity_heat))
+    diffusivity_heat = (1 + 3.309e-3 * t - 1.44e-6 * t**2) * 0.02411 / (rho_air * CP_AIR)
+    dqs_dT_bulk = q_air * L_e / (R_AIR * (t + T0) ** 2)
+    alfac = 1 / (1 + 0.622 * dqs_dT_bulk * L_e * diffusivity_water_vapor / (CP_AIR * diffusivity_heat))
     T_skin = ts - dT_skin * j_cool
     dq_skin_out = dqs_dT * dT_skin * j_cool
-    hrain = rain * alfac * cp_water * ((T_skin - t) + (q_s - q_air - dq_skin_out) * L_e / _CP_AIR) / 3600
+    hrain = rain * alfac * cp_water * ((T_skin - t) + (q_s - q_air - dq_skin_out) * L_e / CP_AIR) / 3600
 
-    # ── Wave breaking statistics ──────────────────────────────────────────────
+    # Wave breaking statistics
     whitecap_fraction = 0.00073 * (U10N - 2) ** 1.43
     whitecap_fraction[U10 < 2.1] = 1e-5
     whitecap_fraction[have_waves] = (
@@ -973,7 +975,7 @@ def coare36_warm_layer(
         tsea = ts[i]
         ss = surface_salinity[i]
         g_i = st.gravity_at_lat(lat[i])
-        rho_air_i = p[i] * 100 / (_R_AIR * (t[i] + T2K))  # approximate dry
+        rho_air_i = p[i] * 100 / (R_AIR * (t[i] + T2K))  # approximate dry
 
         # Solar absorption parameters for warm layer
         Al = 2.1e-5 * (tsea + 3.2) ** 0.79
