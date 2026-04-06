@@ -392,8 +392,6 @@ def coare36(
         h_sig = np.full(N, np.nan)
 
     # Freezing point and ice mask
-    # t_freeze =  -0.0575 * surface_salinity + 0.00171052 * surface_salinity**1.5 - 0.0002154996 * surface_salinity**2
-
     surface_salinity_abs = st.sa_from_sp(surface_salinity)
     t_freeze = st.freezing_temperature(surface_salinity_abs, p=0)
     idx_ice = ts < t_freeze
@@ -404,14 +402,10 @@ def coare36(
     # Pressure at temperature/humidity measurement height (hydrostatic)
     p_tq = p - 0.125 * z_t
 
-    # Air specific humidity [g/kg] and vapor pressure [mb]
-    # q_air_gkg, vapor_pressure = _qsat_air(t, p_tq, rh)
-    # q_air = q_air_gkg / 1000  # [kg/kg]
+    # Air specific humidity [kg/kg] and vapor pressure [mb]
     q_air = at.specific_humidity(t, p_tq, rh)
 
-    # # Sea-surface saturation specific humidity [g/kg] and [kg/kg]
-    # q_s_gkg = _qsat_sea(ts, p, surface_salinity, t_freeze)
-    # q_s = q_s_gkg / 1000  # [kg/kg]
+    # Sea-surface saturation specific humidity [kg/kg]
     q_s = at.saturation_specific_humidity(ts, p, surface_salinity, t_freeze)
 
     # Thermodynamic constants
@@ -420,38 +414,31 @@ def coare36(
     # Specific heat capacity of air
     CP_AIR = at.specific_heat(t)
     
-    # # Dry adiabatic lapse rate [K/m] — positive, temperature decreases with height
-    # lapse_rate = g / CP_AIR
+    # Dry adiabatic lapse rate [K/m] — positive, temperature decreases with height
     lapse_rate = at.dry_adiabatic_lapse_rate(t, g)
 
     # Latent heat of vaporization [J/kg] — evaluated at sea surface temperature
-    # L_e = (2.501 - 0.00237 * ts) * 1e6
     L_e = at.latent_heat_of_vaporization(ts)
 
-    # Air density at T/q measurement height [kg/m³]
-    # rho_air = p_tq * 100 / (R_AIR * (t + T0) * (1 + EPSILON * q_air))
+    # Air density at T/q measurement height [kg/m3]
     rho_air = at.air_density(t, p_tq, rh)
 
-    # Kinematic viscosity of air [m²/s]
+    # Kinematic viscosity of air [m2/s]
     nu_air = at.kinematic_viscosity(t)
 
-    # ── Cool-skin parameterization constants ─────────────────────────────────
-    # Thermal expansion coefficient of seawater at surface [1/°C]
+    # Cool-skin parameterization constants
+    # Thermal expansion coefficient of seawater at surface [1/C]
     tsw = np.maximum(ts, t_freeze)  # clamp to freeze for stability
-    # alpha_35 = 2.1e-5 * (tsw + 3.2) ** 0.79
-    # alpha_0 = (2.2 * np.real((tsw - 1 + 0j) ** 0.82) - 5) * 1e-5
-    # alpha_sw = alpha_0 + (alpha_35 - alpha_0) * surface_salinity / 35
     ts_conservative = st.ct_from_t(surface_salinity_abs, tsw, p=0)
     alpha_sw = st.alpha(surface_salinity_abs, ts_conservative, p=0)
 
     # Haline expansion contribution to buoyancy in skin layer
-    # haline_buoyancy_coeff = 0.00075 * surface_salinity
     haline_buoyancy_coeff = st.beta(surface_salinity_abs, ts_conservative, p=0)
 
     # Cool-skin / warm-layer water properties. Using the COARE defaults here rather than TEOS-10
     cp_water = 4000.0  # specific heat of seawater [J/(kg K)]
-    rho_water = 1022.0  # density of seawater [kg/m³]
-    visw = 1e-6  # kinematic viscosity of seawater [m²/s]
+    rho_water = 1022.0  # density of seawater [kg/m3]
+    visw = 1e-6  # kinematic viscosity of seawater [m2/s]
     k_water = 0.6  # thermal conductivity of seawater [W/(m K)]
     # Combined cool-skin parameter
     cool_skin_param = 16 * g * cp_water * (rho_water * visw) ** 3 / (k_water**2 * rho_air**2)
@@ -470,9 +457,8 @@ def coare36(
     delta_T = ts - t - lapse_rate * z_t
     delta_q = q_s - q_air  # air-sea specific humidity difference [kg/kg]
     t_kelvin = at.t_kelvin(t) # air temperature [K]
-    t_virtual = t_kelvin * (1 + EPSILON * q_air)  # virtual temperature [K]
 
-    dT_skin = 0.3  # first-guess cool-skin temperature depression [°C]
+    dT_skin = 0.3  # first-guess cool-skin temperature depression [C]
     gust = 0.5  # first-guess gustiness [m/s]
     u_tot = np.sqrt(delta_u**2 + gust**2)  # total (gustiness-inclusive) wind speed
 
@@ -519,7 +505,7 @@ def coare36(
 
     dz_skin = 0.001 * np.ones(N)  # first-guess cool-skin thickness [m]
 
-    # ── Charnock coefficient setup ────────────────────────────────────────────
+    # Charnock coefficient setup
     # Wind-speed-dependent Charnock (COARE 3.5 parameterization)
     charn_a1, charn_a2, u10_max = 0.0017, -0.005, 19.0
     charnock = np.clip(charn_a1 * u_10 + charn_a2, None, charn_a1 * u10_max + charn_a2)
@@ -541,7 +527,7 @@ def coare36(
     ustar_stable = tstar_stable = qstar_stable = None
     L_stable = zeta_stable = dT_skin_stable = dq_skin_stable = dz_skin_stable = None
 
-    # ── Bulk iteration loop ───────────────────────────────────────────────────
+    # Bulk iteration loop
     for i_iter in range(N_ITER):
         # MO stability parameter at wind measurement height
         zeta = KAPPA * g * z_u / t_kelvin * (tstar + EPSILON * t_kelvin * qstar) / ustar**2
@@ -649,9 +635,9 @@ def coare36(
     dz_skin[idx_very_stable] = dz_skin_stable
 
     # Compute output fluxes
-    tau = rho_air * ustar**2 / gust_factor  # wind stress [N/m²]
-    hs = -rho_air * CP_AIR * ustar * tstar  # sensible heat [W/m²]
-    hl = -rho_air * L_e * ustar * qstar  # latent heat [W/m²]
+    tau = rho_air * ustar**2 / gust_factor  # wind stress [N/m2]
+    hs = -rho_air * CP_AIR * ustar * tstar  # sensible heat [W/m2]
+    hl = -rho_air * L_e * ustar * qstar  # latent heat [W/m2]
     h_buoyancy = -rho_air * CP_AIR * ustar * tstar_virtual_orig
     h_buoyancy_sonic = -rho_air * CP_AIR * ustar * tstar_sonic_orig
 
@@ -661,7 +647,7 @@ def coare36(
 
     evap = 1000 * hl / L_e / 1000 * 3600  # evaporation [mm/hr]
 
-    # ── Transfer coefficients ─────────────────────────────────────────────────
+    # Transfer coefficients
     Cd = tau / rho_air / u_tot / np.maximum(0.1, delta_u)
     Ch = -ustar * tstar / u_tot / (delta_T - dT_skin * j_cool)
     Ce = -ustar * qstar / (delta_q - dq_skin * j_cool) / u_tot
@@ -670,7 +656,7 @@ def coare36(
     Chn10 = KAPPA**2 * SCHMIDT / (np.log(10 / z0) * np.log(10 / z0t))
     Cen10 = KAPPA**2 * SCHMIDT / (np.log(10 / z0) * np.log(10 / z0q))
 
-    # ── Reference-height and 10-m profiles ───────────────────────────────────
+    # Reference-height and 10-m profiles
     psi_u = _psiu_26(z_u / L)
     psi_10 = _psiu_26(10.0 / L)
     psi_ref_u = _psiu_26(zref_u / L)
@@ -731,7 +717,7 @@ def coare36(
     wave_break_dissipation = 0.095 * rho_air * U10N * ustar**2
     wave_break_dissipation[idx_ice] = 0.0
 
-    # ── Output ────────────────────────────────────────────────────────────────
+    # Output
     # Set NaN outputs for missing wind data
     bad_input = np.isnan(u)
     gust[bad_input] = np.nan
@@ -744,7 +730,7 @@ def coare36(
     dq_skin_out_gkg = dq_skin_out * 1000  # [g/kg]
 
     return {
-        # Turbulent fluxes (positive = cooling ocean, except buoyancy)
+        # Turbulent fluxes (positive = cooling ocean)
         "ustar": ustar,
         "tau": tau,
         "hs": hs,
@@ -811,7 +797,7 @@ def coare36(
     }
 
 
-# ─── Warm-layer wrapper ────────────────────────────────────────────────────────
+# Warm-layer wrapper
 
 
 def coare36_warm_layer(
@@ -916,17 +902,16 @@ def coare36_warm_layer(
     else:
         h_sig = _arr(h_sig)
 
-    # ── Constants for warm-layer model ────────────────────────────────────────
+    # Constants for warm-layer model
     cp_water = 4000.0
     rho_water = 1022.0
     rich = 0.65  # critical Richardson number
     max_warm_depth = 19.0  # maximum warm layer depth [m]
-    T2K = 273.16
 
-    # ── Initialise warm-layer state ───────────────────────────────────────────
-    qcol_ac = 0.0  # accumulated net heat [J/m²]
-    tau_ac = 0.0  # accumulated momentum [N s/m²]
-    dT_warm = 0.0  # warm-layer temperature anomaly [°C]
+    # Initialise warm-layer state
+    qcol_ac = 0.0  # accumulated net heat [J/m2]
+    tau_ac = 0.0  # accumulated momentum [N s/m2]
+    dT_warm = 0.0  # warm-layer temperature anomaly [C]
     du_warm = 0.0  # warm-layer current anomaly [m/s]
     dz_warm = max_warm_depth
     dT_warm_to_skin = 0.0
@@ -975,7 +960,6 @@ def coare36_warm_layer(
         tsea = ts[i]
         ss = surface_salinity[i]
         g_i = st.gravity_at_lat(lat[i])
-        rho_air_i = p[i] * 100 / (R_AIR * (t[i] + T2K))  # approximate dry
 
         # Solar absorption parameters for warm layer
         Al = 2.1e-5 * (tsea + 3.2) ** 0.79
@@ -985,7 +969,7 @@ def coare36_warm_layer(
         # Albedo and sw_net at this time step
         alb_i, _, _, _ = sea_surface_albedo(sw, jd, lat[i], lon[i])
         sw_net_i = (1 - alb_i[0]) * sw
-        lw_net_i = 0.97 * (SB * (tsea - dT_skin_prev + T2K) ** 4 - lw)
+        lw_net_i = 0.97 * (SB * (tsea - dT_skin_prev + T0) ** 4 - lw)
 
         # Local time: determine if we are in the warming window (after local dawn)
         local_hour = (lon[i] + 7.5) / 15 + (jd - np.fix(jd)) * 24
