@@ -23,7 +23,9 @@ def p_pascal(p: Numeric) -> Numeric:
     return p * 100
 
 
-def saturation_vapor_pressure(t: Numeric, p: Numeric, sp: Optional[Numeric] = None, t_freeze: Optional[Numeric] = None) -> Numeric:
+def saturation_vapor_pressure(
+    t: Numeric, p: Numeric, sp: Optional[Numeric] = None, t_freeze: Optional[Numeric] = None
+) -> Numeric:
     """
     Saturation vapor pressure given pressure, temperature, and (optionally) seawater salinity
 
@@ -54,7 +56,9 @@ def saturation_vapor_pressure(t: Numeric, p: Numeric, sp: Optional[Numeric] = No
         t_freeze = np.asarray(t_freeze, dtype=float)
         ice_idx = t < t_freeze
         if np.any(ice_idx):
-            e_s[ice_idx] = 6.1115 * np.exp(22.452 * t[ice_idx] / (t[ice_idx] + 272.55)) * (1.0003 + 4.18e-6 * p[ice_idx])
+            e_s[ice_idx] = (
+                6.1115 * np.exp(22.452 * t[ice_idx] / (t[ice_idx] + 272.55)) * (1.0003 + 4.18e-6 * p[ice_idx])
+            )
 
     if sp is not None:
         return e_s * (1 - 5.37e-04 * sp)
@@ -163,7 +167,9 @@ def specific_humidity(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric]
     return q
 
 
-def saturation_specific_humidity(t: Numeric, p: Numeric, sp: Optional[Numeric] = None, t_freeze: Optional[Numeric] = None) -> Numeric:
+def saturation_specific_humidity(
+    t: Numeric, p: Numeric, sp: Optional[Numeric] = None, t_freeze: Optional[Numeric] = None
+) -> Numeric:
     """
     Specific humidity given temperature, pressure, relative humidity, and (optionally) seawater salinity
 
@@ -188,7 +194,10 @@ def saturation_specific_humidity(t: Numeric, p: Numeric, sp: Optional[Numeric] =
     q_s = 0.622 * e_s / (p - 0.378 * e_s)
     return q_s
 
-def relative_humidity_from_specific_humidity(t: Numeric, p: Numeric, q: Numeric, t_freeze: Optional[Numeric] = None) -> Numeric:
+
+def relative_humidity_from_specific_humidity(
+    t: Numeric, p: Numeric, q: Numeric, t_freeze: Optional[Numeric] = None
+) -> Numeric:
     """
 
     Parameters
@@ -205,6 +214,7 @@ def relative_humidity_from_specific_humidity(t: Numeric, p: Numeric, q: Numeric,
     e_s = saturation_vapor_pressure(t, p, t_freeze=t_freeze)
     vapor_pressure = q * p / (0.622 + 0.378 * q)
     return 100 * vapor_pressure / e_s
+
 
 def virtual_temperature(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
     """

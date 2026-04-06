@@ -3,11 +3,9 @@ from typing import Tuple, Optional, Dict, TypeAlias
 from utils.constants import (
     SSO,
     VON_KARMAN as KAPPA,
-    GRAVITATIONAL_ACCELERATION as G,
     STEFAN_BOLTZMANN as SB,
     _PAYNE_TABLE,
     T0,
-    KINEMATIC_VISCOSITY_AIR as NU_A,
     GAS_CONSTANT_DRY_AIR as R_AIR,
 )
 import utils.air_thermo as at
@@ -15,7 +13,7 @@ import utils.sea_thermo as st
 
 Numeric: TypeAlias = float | int | np.ndarray
 
-# Gustiness scaling coefficient (Fairall et al. 1996)
+# Gustiness scaling coefficient
 BETA = 1.2
 
 # Ratio of molecular weight of water to dry air (used in stability calculations)
@@ -29,7 +27,6 @@ N_ITER = 10
 
 # Ratio of scalar (heat/moisture) to momentum transfer coefficient (= 1 for COARE)
 SCHMIDT = 1.0
-
 
 
 # Private stability/profile functions
@@ -102,76 +99,6 @@ def _psiu_40(zeta: np.ndarray) -> np.ndarray:
     f = zeta[k] ** 2 / (1 + zeta[k] ** 2)
     psi[k] = (1 - f) * psik + f * psic
     return psi
-
-
-# ─── Private thermodynamic helpers ────────────────────────────────────────────
-#
-#
-# def _saturation_vp(t: np.ndarray, p: np.ndarray, t_freeze: np.ndarray) -> np.ndarray:
-#     """
-#     Saturation vapor pressure [mb] using the Buck (1981) formula.
-#     Uses different coefficients below the freezing point (ice phase).
-#     """
-#     exx = 6.1121 * np.exp(17.502 * t / (t + 240.97)) * (1.0007 + 3.46e-6 * p)
-#     ice = t < t_freeze
-#     if np.any(ice):
-#         exx[ice] = 6.1115 * np.exp(22.452 * t[ice] / (t[ice] + 272.55)) * (1.0003 + 4.18e-6 * p[ice])
-#     return exx
-#
-#
-# def _qsat_sea(ts: np.ndarray, p: np.ndarray, ss: np.ndarray, t_freeze: np.ndarray) -> np.ndarray:
-#     """
-#     Saturation specific humidity at the sea surface [g/kg].
-#     Salinity reduces the vapor pressure by (1 - 0.02*Ss/35).
-#     """
-#     ex = _saturation_vp(ts, p, t_freeze)
-#     salinity_correction = 1 - 0.02 * ss / 35
-#     es = salinity_correction * ex
-#     return 622 * es / (p - 0.378 * es)
-#
-#
-# def _qsat_air(t: np.ndarray, p: np.ndarray, rh: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-#     """
-#     Air specific humidity [g/kg] and vapor pressure [mb] from T [°C], P [mb], RH [%].
-#     No ice branch — air is assumed to be above 0 °C for saturation purposes.
-#     """
-#     es = 6.1121 * np.exp(17.502 * t / (t + 240.97)) * (1.0007 + 3.46e-6 * p)
-#     vapor_pressure = rh / 100 * es
-#     q = 622 * vapor_pressure / (p - 0.378 * vapor_pressure)
-#     return q, vapor_pressure
-#
-#
-# def _rh_calc(t: np.ndarray, p: np.ndarray, q_kgkg: np.ndarray, t_freeze: np.ndarray) -> np.ndarray:
-#     """
-#     Relative humidity [%] from T [°C], P [mb], specific humidity [kg/kg].
-#     """
-#     es = _saturation_vp(t, p, t_freeze)
-#     vapor_pressure = q_kgkg * p / (0.378 * q_kgkg + 0.622)
-#     return 100 * vapor_pressure / es
-#
-
-# Public helper functions
-
-
-def charnock_roughness(ustar: Numeric, g: float = G, nu_air: float = NU_A) -> Numeric:
-    """
-    Momentum roughness length [m] from Charnock + smooth-flow (viscous) terms.
-
-    Parameters
-    ----------
-    ustar : Numeric
-        Friction velocity [m/s].
-    g : float
-        Gravitational acceleration [m/s²].
-    nu_air : float
-        Kinematic viscosity of air [m²/s].
-
-    Returns
-    -------
-    Numeric
-        Roughness length z0 [m].
-    """
-    return 0.011 * ustar**2 / g + 0.11 * nu_air / ustar
 
 
 def sea_surface_albedo(
@@ -263,6 +190,7 @@ def sea_surface_albedo(
 
 
 # Main COARE 3.6 function
+
 
 def coare36(
     u: Numeric,
@@ -413,7 +341,7 @@ def coare36(
 
     # Specific heat capacity of air
     CP_AIR = at.specific_heat(t)
-    
+
     # Dry adiabatic lapse rate [K/m] — positive, temperature decreases with height
     lapse_rate = at.dry_adiabatic_lapse_rate(t, g)
 
@@ -456,7 +384,7 @@ def coare36(
     # Temperature difference including lapse-rate correction
     delta_T = ts - t - lapse_rate * z_t
     delta_q = q_s - q_air  # air-sea specific humidity difference [kg/kg]
-    t_kelvin = at.t_kelvin(t) # air temperature [K]
+    t_kelvin = at.t_kelvin(t)  # air temperature [K]
 
     dT_skin = 0.3  # first-guess cool-skin temperature depression [C]
     gust = 0.5  # first-guess gustiness [m/s]
@@ -465,7 +393,7 @@ def coare36(
     # Estimate 10-m wind from log profile with smooth roughness
     u_10 = u_tot * np.log(10 / 1e-4) / np.log(z_u / 1e-4)
     ustar = 0.035 * u_10
-    z0_10 = charnock_roughness(ustar, g, nu_air)
+    z0_10 = 0.011 * ustar**2 / g + 0.11 * nu_air / ustar
     Cd_10 = (KAPPA / np.log(10 / z0_10)) ** 2
     Ch_10 = 0.00115
     Ct_10 = Ch_10 / np.sqrt(Cd_10)
