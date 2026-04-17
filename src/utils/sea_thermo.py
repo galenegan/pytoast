@@ -1025,7 +1025,7 @@ def heat_capacity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
     sp = sa * (35.0 / SSO)
     pb = p * 0.1
 
-    A = 4127.4 + t * (-3.720283 + t * (0.1412855 + t * (-2.654387e-3 + t * 2.093236e-5)))
+    A = 4217.4 + t * (-3.720283 + t * (0.1412855 + t * (-2.654387e-3 + t * 2.093236e-5)))
 
     B = -7.643575 + t * (0.1072763 + t * (-1.38385e-3))
 
@@ -1122,45 +1122,43 @@ def thermal_conductivity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
         Thermal conductivity [W/(m K)]
     """
     p_mpa = p * 0.01  # dbar -> MPa
-    k_mw_mk = 0.5715 * (1 + 0.003 * t - 1.025e-5 * t**2 + 6.53e-3 * p_mpa - 2.9e-4 * sa)  # mW/m K
-    k_w_mk = k_mw_mk * 1000
-    return k_w_mk
+    return 0.5715 * (1 + 0.003 * t - 1.025e-5 * t**2 + 6.53e-3 * p_mpa - 2.9e-4 * sa)
 
 
 def buoyancy_frequency(
     sa: np.ndarray,
     ct: np.ndarray,
     p: np.ndarray,
-    z: np.ndarray,
+    lat: Optional[Numeric] = None,
 ) -> np.ndarray:
     """
     Squared buoyancy (Brunt-Väisälä) frequency from a vertical profile.
 
-    Computed via finite differences of Conservative Temperature and Absolute
-    Salinity using the thermal expansion and haline contraction coefficients
-    from the 75-term EOS:
+    Implements the TEOS-10 / GSW formula (Roquet et al., 2015):
 
-        N^2 = g × (alpha × dct/dz − beta × dsa/dz)
+        N^2 = g^2 / (specvol_mid · 1e4 · dp) · (beta·dSA − alpha·dCT)
 
-    where z is positive upward. N^2 is evaluated at mid-points between
-    adjacent instrument depths, so the output has length n_heights − 1
-    along axis 0.
+    where dp is in dbar and the 1e4 factor converts to Pa.  N^2 is evaluated
+    at mid-pressure points between adjacent levels, so the output has length
+    n_heights − 1 along axis 0.
 
     Parameters
     ----------
     sa : np.ndarray
-        Absolute Salinity, shape (n_heights, n_samples) [g/kg]
+        Absolute Salinity, shape (n_heights, ...) [g/kg]
     ct : np.ndarray
-        Conservative Temperature, shape (n_heights, n_samples) [deg C]
+        Conservative Temperature, shape (n_heights, ...) [deg C]
     p : np.ndarray
-        Sea pressure, shape (n_heights, n_samples) [dbar]
-    z : np.ndarray
-        Instrument depths (positive upward), shape (n_heights,) [m]
+        Sea pressure, shape (n_heights, ...) [dbar]
+    lat : Numeric, optional
+        Latitude [degrees north].  If provided, gravity is computed via the
+        Somigliana formula; otherwise the GSW default of 9.7963 m/s²
+        (Griffies, 2004) is used.
 
     Returns
     -------
     np.ndarray
-        N² at mid-depth levels, shape (n_heights − 1, n_samples) [1/s²]
+        N² at mid-pressure levels, shape (n_heights − 1, ...) [rad²/s²]
     """
     sa_mid = 0.5 * (sa[:-1] + sa[1:])
     ct_mid = 0.5 * (ct[:-1] + ct[1:])
@@ -1168,12 +1166,18 @@ def buoyancy_frequency(
 
     alpha_mid = alpha(sa_mid, ct_mid, p_mid)
     beta_mid = beta(sa_mid, ct_mid, p_mid)
+    specvol_mid = specific_volume(sa_mid, ct_mid, p_mid)
 
-    dz = np.diff(z)  # shape (n_heights-1,)
+    dp = np.diff(p, axis=0)   # dbar
     dct = np.diff(ct, axis=0)
     dsa = np.diff(sa, axis=0)
 
-    return g * (alpha_mid * dct / dz[:, np.newaxis] - beta_mid * dsa / dz[:, np.newaxis])
+    if lat is not None:
+        grav = gravity_at_lat(lat)
+    else:
+        grav = 9.7963  # Griffies (2004) — GSW default
+
+    return grav**2 / (specvol_mid * 1e4 * dp) * (beta_mid * dsa - alpha_mid * dct)
 
 
 def gravity_at_lat(lat: Numeric) -> Numeric:
