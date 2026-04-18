@@ -649,7 +649,7 @@ class ADCP(BaseInstrument):
         return out
 
     def dissipation(
-        self, burst_data: Dict[str, np.ndarray], method: str = "4beam_spectral", sf_kwargs: dict = None, **kwargs
+        self, burst_data: Dict[str, np.ndarray], method: str = "4beam_spectral", f_min: float = None, f_max: float = None, sf_kwargs: dict = None, **kwargs
     ) -> np.ndarray:
         """
         Estimate the dissipation rate of TKE for a given burst
@@ -661,6 +661,10 @@ class ADCP(BaseInstrument):
         method : str
             One of {`4beam_spectral`, `5th_beam_spectral`, `structure_function`}. The spectral methods follow
             McMillan et al. (2016) and the structure function method follows McMillan and Hay (2017).
+        f_min: : float
+            Lower bound of inertial subrange for the spectral fits
+        f_max : float
+            Upper bound of inertial subrange for the spectral fits.
         sf_kwargs : dict
             Additional keyword arguments to pass to the structure function method. Keys allowed:
                 z_start_idx : int
@@ -710,7 +714,6 @@ class ADCP(BaseInstrument):
         C_w = 0.67
 
         beam_angle_rad = np.deg2rad(self.beam_angle)
-        out = {}
         if method == "4beam_spectral":
             C = (
                 2 * C_u * np.sin(beam_angle_rad) ** 2
@@ -731,7 +734,7 @@ class ADCP(BaseInstrument):
             u2_prime = u2 - u2_bar
             u3_prime = u3 - u3_bar
             u4_prime = u4 - u4_bar
-            out["eps"] = np.empty((self.n_heights,))
+            eps_out = np.empty((self.n_heights,))
             for height_idx in range(self.n_heights):
                 f, P_11 = psd(u1_prime[height_idx, :], fs=self.fs, **kwargs)
                 f, P_22 = psd(u2_prime[height_idx, :], fs=self.fs, **kwargs)
@@ -740,16 +743,20 @@ class ADCP(BaseInstrument):
                 P_T = P_11 + P_22 + P_33 + P_44
                 P_T_k = P_T * u_bar[height_idx] / (2 * np.pi)
                 k = 2 * np.pi * f / u_bar[height_idx]
+                idx_fit = k > 0
+                if f_min:
+                    idx_fit &= (k >= 2 * np.pi * f_min / u_bar[height_idx])
+                if f_max:
+                    idx_fit &= (k <= 2 * np.pi * f_max / u_bar[height_idx])
                 X = C * k ** (-5 / 3)
                 y = P_T_k
-                idx_fit = k > 0
                 slope, *_ = linregress(X[idx_fit], y[idx_fit])
-                out["eps"][height_idx] = slope ** (3 / 2)
+                eps_out[height_idx] = slope ** (3 / 2)
         elif method == "5th_beam_spectral":
             u5 = burst_data["u5"]
             u5_bar = np.mean(u5, axis=1, keepdims=True)
             u5_prime = u5 - u5_bar
-            out["eps"] = np.empty((self.n_heights,))
+            eps_out = np.empty((self.n_heights,))
             for height_idx in range(self.n_heights):
                 f, P_55 = psd(u5_prime[height_idx, :], fs=self.fs, **kwargs)
                 P_55_k = P_55 * u_bar[height_idx] / (2 * np.pi)
@@ -757,8 +764,12 @@ class ADCP(BaseInstrument):
                 X = C_w * k ** (-5 / 3)
                 y = P_55_k
                 idx_fit = k > 0
+                if f_min:
+                    idx_fit &= (k >= 2 * np.pi * f_min / u_bar[height_idx])
+                if f_max:
+                    idx_fit &= (k <= 2 * np.pi * f_max / u_bar[height_idx])
                 slope, *_ = linregress(X[idx_fit], y[idx_fit])
-                out["eps"][height_idx] = slope ** (3 / 2)
+                eps_out[height_idx] = slope ** (3 / 2)
 
         elif method == "structure_function":
             sf_kwargs = sf_kwargs or {}
@@ -773,15 +784,23 @@ class ADCP(BaseInstrument):
             # z x r x beam
             D_ll = np.full((len(heights), len(heights), len(beams)), np.nan)
             eps = np.full((len(heights), len(beams)), np.nan)
+            n_heights_sf = len(heights)
             for jj, vel_beam in enumerate(beams):
                 u = burst_data[vel_beam]
                 u_bar = np.mean(u, axis=1, keepdims=True)
                 u_prime = u - u_bar
-                for ii in range(len(heights) - min_points):
-                    D_ll[ii, ii:z_end, jj] = np.mean((u_prime[ii:z_end, :] - u_prime[ii, :]) ** 2, axis=1)
-                    r = heights[ii:z_end] - heights[ii]
+                # Subset to the requested depth range for SF computation
+                u_prime_sf = u_prime[z_start:z_end, :]
+                for ii in range(n_heights_sf - min_points):
+                    dW = u_prime_sf[ii:, :] - u_prime_sf[ii, :]
+                    dW2 = dW ** 2
+                    # 5-sigma outlier rejection on velocity difference pairs
+                    sigma = np.nanstd(dW2)
+                    dW2[np.abs(dW2) > 5 * sigma] = np.nan
+                    D_ll[ii, ii:, jj] = np.nanmean(dW2, axis=1)
+                    r = heights[ii:] - heights[ii]
                     X = 2.1 * r ** (2 / 3)
-                    y = D_ll[ii, ii:z_end, jj]
+                    y = D_ll[ii, ii:, jj]
 
                     # Restrict fit to inertial subrange; always exclude r=0
                     fit_mask = r > 0
