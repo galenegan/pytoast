@@ -123,3 +123,9 @@ def test_kinematic_viscosity_equals_dynamic_over_density():
 
 def test_thermal_conductivity_value():
     npt.assert_allclose(thermal_conductivity(35.0, 20.0, 0.0), 0.598, rtol=1e-2)
+
+
+def test_depth_pressure_round_trip():
+    p = np.array([1000.0, 2000.0, 3000.0])
+    z = depth_from_pressure(p, np.zeros(3))
+    npt.assert_allclose(pressure_from_depth(z, np.zeros(3)), p, rtol=1e-5)
