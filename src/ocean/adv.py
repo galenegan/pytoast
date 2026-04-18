@@ -27,6 +27,7 @@ class ADV(BaseInstrument):
         self,
         files: Union[str, List],
         name_map: dict,
+        deployment_type: str = "moored",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -58,6 +59,11 @@ class ADV(BaseInstrument):
             `p` and `time` are optional, but an error is raised if `time` is absent and `fs` is also not provided.
             `heading`, `pitch`, and `roll` are also optional but required for ENU coordinate transformations. Lists are
             used when data from multiple instruments are stored in separate variables rather than a 2-D array.
+        deployment_type : str, optional
+            One of {"moored", "cast"} depending on how the instrument is deployed. Default is "moored", in which case
+            self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
+            heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
+            variable within individual measurement bursts.
         fs : int or float, optional
             Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
             `time` variable
@@ -83,7 +89,7 @@ class ADV(BaseInstrument):
         self.orientation = orientation
         files_list = files if isinstance(files, list) else [files]
         ADV.validate_inputs(files_list, name_map, fs, z, data_keys, source_coords, orientation)
-        super().__init__(files, name_map, fs, z, data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(

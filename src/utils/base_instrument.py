@@ -15,6 +15,7 @@ class BaseInstrument(ABC):
         self,
         files: Union[str, List[str]],
         name_map: dict,
+        deployment_type: str = "moored",
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -28,6 +29,11 @@ class BaseInstrument(ABC):
             Path(s) to data file(s)
         name_map : dict
             Mapping of variable names
+        deployment_type : str, optional
+            One of {"moored", "cast"} depending on how the instrument is deployed. Default is "moored", in which case
+            self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
+            heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
+            variable within individual measurement bursts.
         fs : float, optional
             Sampling frequency
         z : float, List[float], or np.ndarray, optional
@@ -37,11 +43,12 @@ class BaseInstrument(ABC):
             variables in `name_map` live at `file["Data"]["variable_name"]`)
         """
         files = files if isinstance(files, list) else [files]
-        self.validate_common_inputs(files, name_map, fs, z)
+        self.validate_common_inputs(files, name_map, deployment_type, fs, z)
         self.files = files
         self.name_map = name_map
+        self.deployment_type = deployment_type
         self.data_keys = [data_keys] if isinstance(data_keys, str) else (list(data_keys) if data_keys else [])
-        self.fs, self.z, self.file_type, self.num_samples_per_burst = self._inspect_first_file(fs, z)
+        self.fs, self.z, self.file_type, self.num_samples_per_burst = self._inspect_first_file(fs, z, deployment_type)
         self._cached_idx = None
         self._cached_data = None
         self._preprocess_enabled = False
@@ -50,6 +57,7 @@ class BaseInstrument(ABC):
     def validate_common_inputs(
         files: List[str],
         name_map: dict,
+        deployment_type: str,
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -63,6 +71,8 @@ class BaseInstrument(ABC):
             Input files
         name_map : dict
             Variable name mapping
+        deployment_type : str
+            "moored" or "cast"
         fs : float, optional
             Sampling frequency
         z : float, List[float], or np.ndarray, optional
@@ -97,6 +107,12 @@ class BaseInstrument(ABC):
 
         if "time" not in name_map and fs is None:
             raise ValueError("You must specify either 'time' in name_map or provide 'fs'")
+
+        if not isinstance(deployment_type, str):
+            raise TypeError("`deployment_type` must be a string")
+
+        if deployment_type not in ["moored", "cast"]:
+            raise ValueError("`deployment_type` must be either 'moored' or 'cast'")
 
         # Validate "z"
         if z is not None:
@@ -137,7 +153,7 @@ class BaseInstrument(ABC):
 
         return data, file_type
 
-    def _inspect_first_file(self, fs, z):
+    def _inspect_first_file(self, fs, z, deployment_type):
         """
         Read the first file to infer fs and z (if not provided) and determine
         file_type and num_samples_per_burst.
@@ -148,13 +164,16 @@ class BaseInstrument(ABC):
             Sampling frequency, or None to infer from time variable
         z : float, list, np.ndarray, or None
             Height coordinates, or None to infer from data dimensions
+        deployment_type : str
+            Either "moored" or "cast". Determines whether z is a constant array of height coordinates or None.
 
         Returns
         -------
         fs : float
             Sampling frequency (provided or inferred)
-        z : np.ndarray
-            Height coordinates as a numpy array (provided or inferred)
+        z : np.ndarray or None
+            If `deployment_type == "moored"`, height coordinates as a numpy array (provided or inferred). If
+            `deployment` == "cast", None.
         file_type : str
             File format identifier (`"mat"`, `"npy"`, `"csv"`, `"nc"`)
         num_samples_per_burst : int
@@ -167,34 +186,38 @@ class BaseInstrument(ABC):
 
         # Normalize z to a numpy array, or infer from data dimensions
         # TODO: Test this to make sure it's generalizable to xarray DA, numpy array, and pandas df
-        self._physical_z = True
-        if z is not None:
-            if isinstance(z, (int, float)):
-                z = np.array([z])
-            elif isinstance(z, list):
-                z = np.array(z)
-        elif "z" in self.name_map:
-            key = self.name_map["z"]
-            if isinstance(data[key], (int, float)):
-                z = np.array([data[key]])
-            elif isinstance(data[key], list):
-                z = np.array(data[key])
-            elif isinstance(data[key], np.ndarray):
-                z = data[key]
+        self._physical_z = False
+        if deployment_type == "cast":
+            z = None
         else:
-            self._physical_z = False
-            non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
-            if isinstance(non_time_key, str):
-                data_var = data[non_time_key]
-                if data_var.ndim > 1:
-                    num_rows, num_cols = data_var.shape
-                    if num_rows > num_cols:
-                        data_var = data_var.T
-                    z = np.arange(data_var.shape[0])
-                else:
-                    z = np.array([0])
+            if z is not None:
+                self._physical_z = True
+                if isinstance(z, (int, float)):
+                    z = np.array([z])
+                elif isinstance(z, list):
+                    z = np.array(z)
+            elif "z" in self.name_map:
+                self._physical_z = True
+                key = self.name_map["z"]
+                if isinstance(data[key], (int, float)):
+                    z = np.array([data[key]])
+                elif isinstance(data[key], list):
+                    z = np.array(data[key])
+                elif isinstance(data[key], np.ndarray):
+                    z = data[key]
             else:
-                z = np.arange(len(non_time_key))
+                non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
+                if isinstance(non_time_key, str):
+                    data_var = data[non_time_key]
+                    if data_var.ndim > 1:
+                        num_rows, num_cols = data_var.shape
+                        if num_rows > num_cols:
+                            data_var = data_var.T
+                        z = np.arange(data_var.shape[0])
+                    else:
+                        z = np.array([0])
+                else:
+                    z = np.arange(len(non_time_key))
 
         # Determine num_samples and infer fs if needed
         if "time" not in self.name_map:
@@ -303,7 +326,7 @@ class BaseInstrument(ABC):
                     if var_data.shape[0] > var_data.shape[1]:
                         var_data = var_data.T
                 else:
-                    var_data = np.expand_dims(var_data, axis=0)  # 2D even if only one height
+                    var_data = np.expand_dims(var_data, axis=0)  # 2D even if only 1D input
 
             # Enforcing byte order in case there is a mismatch
             var_data = var_data.astype(var_data.dtype.newbyteorder("="))

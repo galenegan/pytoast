@@ -30,6 +30,7 @@ class ADCP(BaseInstrument):
         self,
         files: Union[str, List],
         name_map: dict,
+        deployment_type: str = "moored",
         fs: Optional[float] = None,
         z: Optional[Union[List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -67,6 +68,11 @@ class ADCP(BaseInstrument):
             the `z` argument is not specified directly. `heading`, `pitch`, and `roll` are required for any coordinate
             transformation involving ENU coordinates. "u4" and "u5" can be optionally specified for instruments with
             4 or 5 beams.
+        deployment_type : str, optional
+            One of {"moored", "cast"} depending on how the instrument is deployed. Default is "moored", in which case
+            self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
+            heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
+            variable within individual measurement bursts.
         fs : float, optional
             Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
             `time` variable
@@ -101,7 +107,7 @@ class ADCP(BaseInstrument):
         ADCP.validate_inputs(
             files_list, name_map, fs, z, data_keys, source_coords, orientation, beam_angle, manufacturer
         )
-        super().__init__(files, name_map, fs, z, data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
