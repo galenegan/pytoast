@@ -63,9 +63,7 @@ class BaseInstrument(ABC):
                 raise ValueError("`burst_dim` requires `files` to be a single .nc path")
             ds = xr.open_dataset(files[0])
             if burst_dim not in ds.dims:
-                raise ValueError(
-                    f"burst_dim {burst_dim!r} not found in dataset dims {tuple(ds.dims)}"
-                )
+                raise ValueError(f"burst_dim {burst_dim!r} not found in dataset dims {tuple(ds.dims)}")
             self._monolithic_ds = ds
         self.fs, self.z, self.file_type, self.num_samples_per_burst = self._inspect_first_file(fs, z, deployment_type)
         self._cached_idx = None

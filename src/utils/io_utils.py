@@ -63,9 +63,7 @@ def results_to_dataset(
 
     burst_times = np.asarray(burst_times)
     if burst_times.ndim != 1 or len(burst_times) != len(results):
-        raise ValueError(
-            f"`burst_times` must be 1D with length {len(results)}; got shape {burst_times.shape}"
-        )
+        raise ValueError(f"`burst_times` must be 1D with length {len(results)}; got shape {burst_times.shape}")
 
     n_bursts = len(results)
     n_heights = int(len(z)) if z is not None else None
@@ -95,9 +93,7 @@ def results_to_dataset(
         canonical = _first_non_none_value(results, key)
         if canonical is None:
             continue  # all-None column; skip
-        dims_inner, shape_inner = _infer_dims(
-            canonical, key, n_heights=n_heights, n_freq=n_freq
-        )
+        dims_inner, shape_inner = _infer_dims(canonical, key, n_heights=n_heights, n_freq=n_freq)
         full_shape = (n_bursts, *shape_inner)
         arr = np.full(full_shape, np.nan, dtype=float)
         for i, r in enumerate(results):
@@ -107,8 +103,7 @@ def results_to_dataset(
             v_arr = np.asarray(v, dtype=float)
             if v_arr.shape != shape_inner:
                 raise ValueError(
-                    f"Shape mismatch for key {key!r} at burst {i}: "
-                    f"expected {shape_inner}, got {v_arr.shape}"
+                    f"Shape mismatch for key {key!r} at burst {i}: expected {shape_inner}, got {v_arr.shape}"
                 )
             arr[i] = v_arr
         dims = ("burst_time", *dims_inner)

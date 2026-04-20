@@ -18,7 +18,7 @@ def coord_transform_3_beam_nortek(
 ):
     """
     Implementation of Nortek's coordinate transformation for 3-beam instruments.
-    https://support.nortekgroup.com/hc/en-us/articles/360029820971-How-is-a-coordinate-transformation-done
+    https://support.nortekgroup.com/hc/en-us/articles/26828129966876-How-do-I-transform-a-coordinate-system-manually
 
     Parameters
     ----------
@@ -130,7 +130,7 @@ def coord_transform_4_beam_nortek(
     Implementation of Nortek's coordinate transformation for the 4-beam Signature instrument.
     Supports all combinations of beam, xyz, and enu coordinates.
 
-    https://support.nortekgroup.com/hc/en-us/articles/360029820971-How-is-a-coordinate-transformation-done
+    https://support.nortekgroup.com/hc/en-us/articles/25924538648732-How-do-I-transform-a-coordinate-system-manually
 
     Parameters
     ----------

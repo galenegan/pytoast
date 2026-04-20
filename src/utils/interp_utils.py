@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+
 def naninterp_pd(x: np.ndarray) -> np.ndarray:
     return pd.Series(x).interpolate(method="linear").ffill().bfill().values
 

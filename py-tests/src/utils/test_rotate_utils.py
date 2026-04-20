@@ -28,6 +28,14 @@ T_4BEAM_NORTEK = np.array(
     ]
 )
 
+# RDI default transformation matrix
+beam_angle_rad = np.deg2rad(25)
+a = 1 / (2 * np.sin(beam_angle_rad))
+b = 1 / (4 * np.cos(beam_angle_rad))
+c = 1  # convex transducer head
+d = a / np.sqrt(2)
+T_RDI = np.array([[c * a, -c * a, 0, 0], [0, 0, -c * a, c * a], [b, b, b, b], [d, d, -d, -d]])
+
 HEADING = 120.0
 PITCH = 5.0
 ROLL = -2.0
@@ -118,6 +126,8 @@ def test_3beam_nortek_round_trip_up(beams3, coords_in, coords_out):
 @pytest.mark.parametrize(
     "coords_in,coords_out",
     [
+        ("beam", "xyz"),
+        ("xyz", "beam"),
         ("beam", "enu"),
         ("enu", "beam"),
         ("xyz", "enu"),
@@ -179,17 +189,91 @@ def test_3beam_nortek_identity(beams3, coords):
     npt.assert_array_equal(r3, u3)
 
 
-###################################################################
-# 3-beam Nortek - forward transform sanity checks (fill in from reference data)
-###################################################################
+###################################################
+# 3-beam Nortek - forward transform sanity checks
+###################################################
+
+
+def test_3beam_nortek_forward_xyz_to_enu():
+
+    u1 = np.ones((N,))
+    u2 = np.zeros((N,))
+    u3 = np.zeros((N,))
+
+    # Heading = 0 -> North, u1 and u2 will swap
+    heading = 0.0
+    (
+        r1,
+        r2,
+        r3,
+    ) = coord_transform_3_beam_nortek(
+        u1,
+        u2,
+        u3,
+        heading,
+        pitch=0.0,
+        roll=0.0,
+        transformation_matrix=T_3BEAM,
+        orientation="up",
+        coords_in="xyz",
+        coords_out="enu",
+    )
+
+    npt.assert_allclose(r1, u2, atol=1e-10)
+    npt.assert_allclose(r2, u1, atol=1e-10)
+    npt.assert_allclose(r3, u3, atol=1e-10)
+
+    # Heading = 90 -> East, u1 = r1, u2 = r2, u3 = r3
+    heading = 90.0
+    (
+        r1,
+        r2,
+        r3,
+    ) = coord_transform_3_beam_nortek(
+        u1,
+        u2,
+        u3,
+        heading,
+        pitch=0.0,
+        roll=0.0,
+        transformation_matrix=T_3BEAM,
+        orientation="up",
+        coords_in="xyz",
+        coords_out="enu",
+    )
+
+    npt.assert_allclose(r1, u1, atol=1e-10)
+    npt.assert_allclose(r2, u2, atol=1e-10)
+    npt.assert_allclose(r3, u3, atol=1e-10)
 
 
 def test_3beam_nortek_forward_beam_to_xyz():
-    pytest.skip("Fill in expected values from a reference dataset")
+    u1 = np.ones((N,))
+    u2 = np.zeros((N,))
+    u3 = np.zeros((N,))
 
+    # Heading = 90.0, u1 = T_3BEAM[0, 0], u1 and u3 = -T_3BEAM[0, 0] = T_3BEAM[1, 0] = T_3BEAM[2, 0]
+    heading = 90.0
+    (
+        r1,
+        r2,
+        r3,
+    ) = coord_transform_3_beam_nortek(
+        u1,
+        u2,
+        u3,
+        heading,
+        pitch=0.0,
+        roll=0.0,
+        transformation_matrix=T_3BEAM,
+        orientation="up",
+        coords_in="beam",
+        coords_out="xyz",
+    )
 
-def test_3beam_nortek_forward_beam_to_enu():
-    pytest.skip("Fill in expected values from a reference dataset")
+    npt.assert_allclose(r1, u1 * T_3BEAM[0, 0], atol=1e-10)
+    npt.assert_allclose(r2, u1 * T_3BEAM[1, 0], atol=1e-10)
+    npt.assert_allclose(r3, u1 * T_3BEAM[2, 0], atol=1e-10)
 
 
 ############################################
@@ -250,6 +334,8 @@ def test_4beam_nortek_round_trip_up(beams4, coords_in, coords_out):
 @pytest.mark.parametrize(
     "coords_in,coords_out",
     [
+        ("beam", "xyz"),
+        ("xyz", "beam"),
         ("beam", "enu"),
         ("enu", "beam"),
         ("xyz", "enu"),
@@ -316,17 +402,84 @@ def test_4beam_nortek_identity(beams4, coords):
     npt.assert_array_equal(r4, u4)
 
 
-###################################################################
-# 4-beam Nortek - forward transform sanity checks (fill in from reference data)
-###################################################################
+###################################################
+# 4-beam Nortek - forward transform sanity checks
+###################################################
 
 
 def test_4beam_nortek_forward_beam_to_xyz():
-    pytest.skip("Fill in expected values from a Signature reference dataset")
+    u1 = np.ones((N,))
+    u2 = np.zeros((N,))
+    u3 = np.zeros((N,))
+    u4 = np.zeros((N,))
+    r1, r2, r3, r4 = coord_transform_4_beam_nortek(
+        u1,
+        u2,
+        u3,
+        u4,
+        heading=90,
+        pitch=0,
+        roll=0,
+        transformation_matrix=T_4BEAM_NORTEK,
+        orientation="down",
+        coords_in="beam",
+        coords_out="xyz",
+    )
+
+    npt.assert_allclose(u1 * T_4BEAM_NORTEK[0, 0], r1, atol=1e-10)
+    npt.assert_allclose(u1 * T_4BEAM_NORTEK[1, 0], r2, atol=1e-10)
+    npt.assert_allclose(u1 * T_4BEAM_NORTEK[2, 0], r3, atol=1e-10)
+    npt.assert_allclose(u1 * T_4BEAM_NORTEK[3, 0], r4, atol=1e-10)
 
 
-def test_4beam_nortek_forward_beam_to_enu():
-    pytest.skip("Fill in expected values from a Signature reference dataset")
+def test_4beam_nortek_forward_xyz_to_enu():
+    # Heading = 90, orientation = up (no rotation)
+    u1 = np.ones((N,))
+    u2 = np.zeros((N,))
+    u3 = np.ones((N,))
+    u4 = np.ones((N,))
+    r1, r2, r3, r4 = coord_transform_4_beam_nortek(
+        u1,
+        u2,
+        u3,
+        u4,
+        heading=90,
+        pitch=0,
+        roll=0,
+        transformation_matrix=T_4BEAM_NORTEK,
+        orientation="up",
+        coords_in="xyz",
+        coords_out="enu",
+    )
+
+    npt.assert_allclose(u1, r1, atol=1e-10)
+    npt.assert_allclose(u2, r2, atol=1e-10)
+    npt.assert_allclose(u3, r3, atol=1e-10)
+    npt.assert_allclose(u4, r4, atol=1e-10)
+
+    # Heading = 0, orientation = down (rotate 90, flip vertical)
+    u1 = np.ones((N,))
+    u2 = np.zeros((N,))
+    u3 = np.ones((N,))
+    u4 = np.ones((N,))
+    r1, r2, r3, r4 = coord_transform_4_beam_nortek(
+        u1,
+        u2,
+        u3,
+        u4,
+        heading=0,
+        pitch=0,
+        roll=0,
+        transformation_matrix=T_4BEAM_NORTEK,
+        orientation="down",
+        coords_in="xyz",
+        coords_out="enu",
+    )
+
+    npt.assert_allclose(u1, r2, atol=1e-10)
+    npt.assert_allclose(u2, r1, atol=1e-10)
+    npt.assert_allclose(u3, -r3, atol=1e-10)
+    npt.assert_allclose(u4, -r4, atol=1e-10)
 
 
 ####################
@@ -536,14 +689,83 @@ def test_rdi_identity(beams4, coords):
     npt.assert_array_equal(r4, u4)
 
 
-######################################################################
-# RDI - forward transform sanity checks (fill in from reference data)
-######################################################################
+#######################################
+# RDI - forward transform sanity checks
+#######################################
 
 
 def test_rdi_forward_beam_to_xyz():
-    pytest.skip("Fill in expected values from an RDI reference dataset")
+    u1 = np.ones((N,))
+    u2 = np.zeros((N,))
+    u3 = np.zeros((N,))
+    u4 = np.zeros((N,))
+    r1, r2, r3, r4 = coord_transform_4_beam_rdi(
+        u1,
+        u2,
+        u3,
+        u4,
+        heading=0,
+        pitch=0,
+        roll=0,
+        orientation="down",
+        coords_in="beam",
+        coords_out="xyz",
+    )
+
+    npt.assert_allclose(u1 * T_RDI[0, 0], r1, atol=1e-10)
+    npt.assert_allclose(u1 * T_RDI[1, 0], r2, atol=1e-10)
+    npt.assert_allclose(u1 * T_RDI[2, 0], r3, atol=1e-10)
+    npt.assert_allclose(u1 * T_RDI[3, 0], r4, atol=1e-10)
 
 
-def test_rdi_forward_beam_to_enu():
-    pytest.skip("Fill in expected values from an RDI reference dataset")
+def test_rdi_forward_xyz_to_enu():
+    # For RDI, zero heading points along the Y axis, and in the upward orientation the z velocity points away from
+    # up (see Fig 3 of ADCP Coordinate Transformation guide).
+
+    # Heading = 0, orientation = down (no rotation)
+    u1 = np.zeros((N,))
+    u2 = np.ones((N,))
+    u3 = np.ones((N,))
+    u4 = u1 + u2 - u3
+    r1, r2, r3, r4 = coord_transform_4_beam_rdi(
+        u1,
+        u2,
+        u3,
+        u4,
+        heading=0,
+        pitch=0,
+        roll=0,
+        transformation_matrix=T_RDI,
+        orientation="down",
+        coords_in="xyz",
+        coords_out="enu",
+    )
+
+    npt.assert_allclose(u1, r1, atol=1e-10)
+    npt.assert_allclose(u2, r2, atol=1e-10)
+    npt.assert_allclose(u3, r3, atol=1e-10)
+    npt.assert_allclose(u4, r4, atol=1e-10)
+
+    # Heading = 90, orientation = up (rotate 90, flip vertical)
+    u1 = np.zeros((N,))
+    u2 = np.ones((N,))
+    u3 = np.ones((N,))
+    u4 = np.ones((N,))
+    r1, r2, r3, r4 = coord_transform_4_beam_rdi(
+        u1,
+        u2,
+        u3,
+        u4,
+        heading=90,
+        pitch=0,
+        roll=0,
+        transformation_matrix=T_RDI,
+        orientation="up",
+        coords_in="xyz",
+        coords_out="enu",
+    )
+    print("here")
+    npt.assert_allclose(u1, r2, atol=1e-10)
+    npt.assert_allclose(u2, r1, atol=1e-10)
+    npt.assert_allclose(u3, -r3, atol=1e-10)
+    npt.assert_allclose(u4, r4, atol=1e-10)
