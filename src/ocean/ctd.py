@@ -1,8 +1,8 @@
 import numpy as np
 from typing import Optional, Union, List, Dict, Any, TypeAlias
-from src.utils.despike_utils import threshold, goring_nikora, recursive_gaussian
-from src.utils.base_instrument import BaseInstrument
-import src.utils.sea_thermo as sea_thermo
+from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
+from utils.base_instrument import BaseInstrument
+import utils.sea_thermo as sea_thermo
 
 Numeric: TypeAlias = float | int | np.ndarray
 
@@ -505,7 +505,7 @@ class CTD(BaseInstrument):
         np.ndarray
             N^2 at mid-depth levels, shape (n_heights - 1, n_samples) [1/s^2]
         """
-        return sea_thermo.buoyancy_frequency(sa, ct, p, self.z)
+        return sea_thermo.buoyancy_frequency(sa, ct, p)
 
     def depth_from_pressure(self, p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
         """

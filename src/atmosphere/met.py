@@ -1,8 +1,8 @@
 import numpy as np
 from typing import Optional, Union, List, Dict, Any, TypeAlias
-from src.utils.despike_utils import threshold, goring_nikora, recursive_gaussian
-from src.utils.base_instrument import BaseInstrument
-import src.utils.air_thermo as air_thermo
+from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
+from utils.base_instrument import BaseInstrument
+import utils.air_thermo as air_thermo
 
 Numeric: TypeAlias = float | int | np.ndarray
 
@@ -168,7 +168,7 @@ class Met(BaseInstrument):
             despike_fn = {
                 "goring_nikora": goring_nikora,
                 "threshold": threshold,
-                "recursive_guassian": recursive_gaussian,
+                "recursive_gaussian": recursive_gaussian,
             }.get(self._despike_method)
             if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
