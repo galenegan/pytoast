@@ -1168,7 +1168,7 @@ def buoyancy_frequency(
     beta_mid = beta(sa_mid, ct_mid, p_mid)
     specvol_mid = specific_volume(sa_mid, ct_mid, p_mid)
 
-    dp = np.diff(p, axis=0)   # dbar
+    dp = np.diff(p, axis=0)  # dbar
     dct = np.diff(ct, axis=0)
     dsa = np.diff(sa, axis=0)
 

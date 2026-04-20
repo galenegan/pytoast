@@ -655,7 +655,13 @@ class ADCP(BaseInstrument):
         return out
 
     def dissipation(
-        self, burst_data: Dict[str, np.ndarray], method: str = "4beam_spectral", f_min: float = None, f_max: float = None, sf_kwargs: dict = None, **kwargs
+        self,
+        burst_data: Dict[str, np.ndarray],
+        method: str = "4beam_spectral",
+        f_min: float = None,
+        f_max: float = None,
+        sf_kwargs: dict = None,
+        **kwargs,
     ) -> np.ndarray:
         """
         Estimate the dissipation rate of TKE for a given burst
@@ -751,9 +757,9 @@ class ADCP(BaseInstrument):
                 k = 2 * np.pi * f / u_bar[height_idx]
                 idx_fit = k > 0
                 if f_min:
-                    idx_fit &= (k >= 2 * np.pi * f_min / u_bar[height_idx])
+                    idx_fit &= k >= 2 * np.pi * f_min / u_bar[height_idx]
                 if f_max:
-                    idx_fit &= (k <= 2 * np.pi * f_max / u_bar[height_idx])
+                    idx_fit &= k <= 2 * np.pi * f_max / u_bar[height_idx]
                 X = C * k ** (-5 / 3)
                 y = P_T_k
                 slope, *_ = linregress(X[idx_fit], y[idx_fit])
@@ -771,9 +777,9 @@ class ADCP(BaseInstrument):
                 y = P_55_k
                 idx_fit = k > 0
                 if f_min:
-                    idx_fit &= (k >= 2 * np.pi * f_min / u_bar[height_idx])
+                    idx_fit &= k >= 2 * np.pi * f_min / u_bar[height_idx]
                 if f_max:
-                    idx_fit &= (k <= 2 * np.pi * f_max / u_bar[height_idx])
+                    idx_fit &= k <= 2 * np.pi * f_max / u_bar[height_idx]
                 slope, *_ = linregress(X[idx_fit], y[idx_fit])
                 eps_out[height_idx] = slope ** (3 / 2)
 
@@ -799,7 +805,7 @@ class ADCP(BaseInstrument):
                 u_prime_sf = u_prime[z_start:z_end, :]
                 for ii in range(n_heights_sf - min_points):
                     dW = u_prime_sf[ii:, :] - u_prime_sf[ii, :]
-                    dW2 = dW ** 2
+                    dW2 = dW**2
                     # 5-sigma outlier rejection on velocity difference pairs
                     sigma = np.nanstd(dW2)
                     dW2[np.abs(dW2) > 5 * sigma] = np.nan

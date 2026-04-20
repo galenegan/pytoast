@@ -10,6 +10,7 @@ T_AIR = 20.0
 
 # Unit conversions
 
+
 def test_t_kelvin():
     assert t_c2kelvin(0.0) == 273.15
 
@@ -19,6 +20,7 @@ def test_p_pascal():
 
 
 # Standard values
+
 
 def test_kinematic_viscosity_standard():
     # At 20 C, kinematic viscosity ~1.504e-5 m^2/s per the polynomial formula
@@ -35,6 +37,7 @@ def test_dry_air_density_standard():
     # Dry air at 15 C, 1013.25 mbar: ~1.225 kg/m^3
     rho = dry_air_density(15, P_ATM)
     npt.assert_allclose(rho, 1.225, rtol=1e-3)
+
 
 def test_specific_heat_at_0C():
     # Cp at 0 C is the leading coefficient (no temperature-dependent terms)
@@ -56,6 +59,7 @@ def test_kinematic_viscosity_increases_with_temperature():
 
 
 # Round trips and consistency
+
 
 def test_vapor_pressure_and_sat_vapor_pressure():
     w1 = water_vapor_pressure(T_AIR, P_ATM, 100)
@@ -129,6 +133,7 @@ def test_potential_temperature_increases_with_height():
 def test_dry_adiabatic_lapse_rate_equals_g_over_cp():
     dalr = dry_adiabatic_lapse_rate(0.0)
     npt.assert_allclose(dalr, g / specific_heat(0.0), rtol=1e-10)
+
 
 ###########################
 # Saturation vapor pressure
