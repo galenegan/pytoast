@@ -2,10 +2,12 @@ from abc import ABC
 import numpy as np
 import os
 import sys
-from typing import List, Union, Optional, Dict
+from typing import Any, List, Union, Optional, Dict
 import scipy.io as sio
 import pandas as pd
 import xarray as xr
+
+from utils.io_utils import results_to_dataset
 
 
 class BaseInstrument(ABC):
@@ -19,6 +21,7 @@ class BaseInstrument(ABC):
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
+        burst_dim: Optional[str] = None,
     ):
         """
         Base class initialization.
@@ -41,6 +44,11 @@ class BaseInstrument(ABC):
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading a file (e.g. `"Data"` if
             variables in `name_map` live at `file["Data"]["variable_name"]`)
+        burst_dim : str, optional
+            Name of the burst dimension inside a monolithic NetCDF file. When given, `files`
+            must be a single `.nc` path; the file is opened lazily with `xr.open_dataset` and
+            each burst is exposed by slicing along this dimension. When None (default), each
+            entry in `files` is treated as one burst.
         """
         files = files if isinstance(files, list) else [files]
         self.validate_common_inputs(files, name_map, deployment_type, fs, z)
@@ -48,6 +56,17 @@ class BaseInstrument(ABC):
         self.name_map = name_map
         self.deployment_type = deployment_type
         self.data_keys = [data_keys] if isinstance(data_keys, str) else (list(data_keys) if data_keys else [])
+        self.burst_dim = burst_dim
+        self._monolithic_ds = None
+        if burst_dim is not None:
+            if len(files) != 1 or not files[0].lower().endswith(".nc"):
+                raise ValueError("`burst_dim` requires `files` to be a single .nc path")
+            ds = xr.open_dataset(files[0])
+            if burst_dim not in ds.dims:
+                raise ValueError(
+                    f"burst_dim {burst_dim!r} not found in dataset dims {tuple(ds.dims)}"
+                )
+            self._monolithic_ds = ds
         self.fs, self.z, self.file_type, self.num_samples_per_burst = self._inspect_first_file(fs, z, deployment_type)
         self._cached_idx = None
         self._cached_data = None
@@ -143,7 +162,7 @@ class BaseInstrument(ABC):
             data = pd.read_csv(file_path)
             file_type = "csv"
         elif suffix == "nc":
-            data = xr.load_dataarray(file_path)
+            data = xr.open_dataset(file_path)
             file_type = "nc"
         else:
             raise Exception(f"Unrecognized file type .{suffix} for filepath input")
@@ -152,6 +171,22 @@ class BaseInstrument(ABC):
             data = data[key]
 
         return data, file_type
+
+    @staticmethod
+    def _as_array(data: Any, key: str, file_type: str) -> np.ndarray:
+        """
+        Extract variable `key` from `data` as a numpy array.
+
+        Centralizes extraction across dict (mat/npy), pandas DataFrame (csv),
+        and xarray Dataset (nc). For xarray-backed data, accessing `.values`
+        triggers a load of the sliced bytes.
+        """
+        value = data[key]
+        if file_type == "nc":
+            return np.asarray(value.values)
+        if file_type == "csv":
+            return np.asarray(value.values if hasattr(value, "values") else value)
+        return np.asarray(value)
 
     def _inspect_first_file(self, fs, z, deployment_type):
         """
@@ -182,10 +217,13 @@ class BaseInstrument(ABC):
         if not self.files:
             raise ValueError("No files provided")
 
-        data, file_type = self._load_file(self.files[0], self.data_keys)
+        if self._monolithic_ds is not None:
+            data = self._monolithic_ds.isel({self.burst_dim: 0})
+            file_type = "nc"
+        else:
+            data, file_type = self._load_file(self.files[0], self.data_keys)
 
         # Normalize z to a numpy array, or infer from data dimensions
-        # TODO: Test this to make sure it's generalizable to xarray DA, numpy array, and pandas df
         self._physical_z = False
         if deployment_type == "cast":
             z = None
@@ -198,17 +236,15 @@ class BaseInstrument(ABC):
                     z = np.array(z)
             elif "z" in self.name_map:
                 self._physical_z = True
-                key = self.name_map["z"]
-                if isinstance(data[key], (int, float)):
-                    z = np.array([data[key]])
-                elif isinstance(data[key], list):
-                    z = np.array(data[key])
-                elif isinstance(data[key], np.ndarray):
-                    z = data[key]
+                arr = self._as_array(data, self.name_map["z"], file_type)
+                if arr.ndim == 0:
+                    z = np.array([float(arr)])
+                else:
+                    z = np.asarray(arr)
             else:
                 non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
                 if isinstance(non_time_key, str):
-                    data_var = data[non_time_key]
+                    data_var = self._as_array(data, non_time_key, file_type)
                     if data_var.ndim > 1:
                         num_rows, num_cols = data_var.shape
                         if num_rows > num_cols:
@@ -221,16 +257,17 @@ class BaseInstrument(ABC):
 
         # Determine num_samples and infer fs if needed
         if "time" not in self.name_map:
-            data_var = data[list(self.name_map.keys())[0]]
+            first_out_key = list(self.name_map.keys())[0]
+            data_var = self._as_array(data, first_out_key, file_type)
             if data_var.ndim > 1:
                 num_rows, num_cols = data_var.shape
                 num_samples = max(num_rows, num_cols)
             else:
                 num_samples = len(data_var)
         else:
-            num_samples = len(data[self.name_map["time"]])
+            time_array = self._as_array(data, self.name_map["time"], file_type)
+            num_samples = len(time_array)
             if fs is None:
-                time_array = data[self.name_map["time"]]
                 datetime_array = self.process_time(time_array)
                 fs = np.round(1 / ((datetime_array[1] - datetime_array[0]).astype(int) / 10**9), 2)
 
@@ -300,27 +337,31 @@ class BaseInstrument(ABC):
         Dict[str, np.ndarray]
             Dictionary containing burst data
         """
-        if burst_idx >= len(self.files):
+        if burst_idx >= self.n_bursts:
             raise IndexError(f"Burst index {burst_idx} out of range")
 
         if self._cached_idx == burst_idx:
             return self._cached_data
 
-        file_path = self.files[burst_idx]
-        try:
-            data, _ = self._load_file(file_path, self.data_keys)
-        except Exception as e:
-            raise IOError(f"Failed to load {file_path}: {e}")
+        if self._monolithic_ds is not None:
+            data = self._monolithic_ds.isel({self.burst_dim: burst_idx})
+            file_type = "nc"
+        else:
+            file_path = self.files[burst_idx]
+            try:
+                data, file_type = self._load_file(file_path, self.data_keys)
+            except Exception as e:
+                raise IOError(f"Failed to load {file_path}: {e}")
 
         # Extract and organize data
         burst_data = {}
         for out_key, in_key in self.name_map.items():
             if isinstance(in_key, list):
                 # Multiple variables (e.g., from different instruments)
-                var_data = np.array([data[k] for k in in_key])
+                var_data = np.array([self._as_array(data, k, file_type) for k in in_key])
             else:
                 # Single variable
-                var_data = data[in_key]
+                var_data = self._as_array(data, in_key, file_type)
                 if var_data.ndim > 1:
                     # Transpose if needed (time should be last dimension)
                     if var_data.shape[0] > var_data.shape[1]:
@@ -353,11 +394,81 @@ class BaseInstrument(ABC):
 
     @property
     def n_bursts(self):
+        if self._monolithic_ds is not None:
+            return int(self._monolithic_ds.sizes[self.burst_dim])
         return len(self.files)
 
     @property
     def n_heights(self):
         return len(self.z)
+
+    def to_dataset(
+        self,
+        results: List[Dict[str, Any]],
+        burst_times: np.ndarray,
+        freq: Optional[np.ndarray] = None,
+        attrs: Optional[dict] = None,
+    ) -> xr.Dataset:
+        """
+        Concatenate per-burst result dictionaries into an xarray Dataset.
+
+        Dimensions are inferred from result-value shapes against `self.z` and the
+        optional `freq` coordinate; see `utils.io_utils.results_to_dataset` for the
+        shape-to-dim mapping. Global attributes are augmented with the instrument
+        class name and sampling rate.
+
+        Parameters
+        ----------
+        results : list of dict
+            Per-burst result dictionaries. Keys missing from a burst fill with NaN.
+        burst_times : np.ndarray
+            1D array of representative timestamps for each burst, length `len(results)`.
+        freq : np.ndarray, optional
+            Frequency coordinate for spectral outputs.
+        attrs : dict, optional
+            Additional global attributes. Merged over the auto-populated attrs.
+
+        Returns
+        -------
+        xr.Dataset
+        """
+        merged_attrs = {
+            "instrument": self.__class__.__name__,
+            "fs": float(self.fs) if self.fs is not None else None,
+        }
+        if attrs:
+            merged_attrs.update(attrs)
+        return results_to_dataset(
+            results=results,
+            burst_times=burst_times,
+            z=self.z,
+            freq=freq,
+            attrs=merged_attrs,
+        )
+
+    def to_netcdf(
+        self,
+        path: str,
+        results: List[Dict[str, Any]],
+        burst_times: np.ndarray,
+        freq: Optional[np.ndarray] = None,
+        attrs: Optional[dict] = None,
+        **nc_kwargs,
+    ) -> None:
+        """
+        Build a Dataset from per-burst results and write it to a NetCDF file.
+
+        Parameters
+        ----------
+        path : str
+            Output NetCDF path.
+        results, burst_times, freq, attrs
+            Forwarded to `to_dataset`.
+        **nc_kwargs
+            Forwarded to `xr.Dataset.to_netcdf`.
+        """
+        ds = self.to_dataset(results, burst_times, freq=freq, attrs=attrs)
+        ds.to_netcdf(path, **nc_kwargs)
 
 
 # Helper function
