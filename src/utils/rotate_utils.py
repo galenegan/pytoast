@@ -265,7 +265,7 @@ def coord_transform_4_beam_rdi(
     -------
     tuple of four np.ndarray
         For enu output: (E, N, U, error), where error is passed through from
-        the xyz stage. For enu input (enu→xyz, enu→beam), the 4th return value
+        the xyz stage. For enu input (enu->xyz, enu->beam), the 4th return value
         is zero because the error velocity cannot be recovered from ENU.
     """
     if coords_in == coords_out:
@@ -425,7 +425,7 @@ def rotate_velocity_by_theta(u1, u2, u3, theta_h, theta_v):
     data : dict
         Original data dictionary with "u", "v", and "w" velocity arrays rotated
     """
-    # (M,) or scalar → (M, 1) for broadcasting against (M, N)
+    # (M,) or scalar -> (M, 1) for broadcasting against (M, N)
     th = np.deg2rad(np.atleast_1d(theta_h))[:, np.newaxis]
     tv = np.deg2rad(np.atleast_1d(theta_v))[:, np.newaxis]
 

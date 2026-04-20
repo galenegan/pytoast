@@ -298,7 +298,7 @@ def sa_from_sp(sp: Numeric) -> Numeric:
     Absolute Salinity from Practical Salinity using the constant-ratio
     approximation (gsw_sa_from_sp.m, simplified).
 
-    Uses sa = sp × (35.16504 / 35), which skips the geographic Absolute
+    Uses sa = sp * (35.16504 / 35), which skips the geographic Absolute
     Salinity Anomaly (SAAR) correction. Typical error is  ~0.01 g/kg in
     the open ocean. Errors can reach ~0.1 g/kg in marginal seas (Baltic,
     Red Sea, Arctic shelf) where SAAR is significant.
@@ -342,11 +342,11 @@ def ct_from_t(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
     return _ct_from_pt(sa, pt0)
 
 
-# -------------------------------------------------------------------------
+##############################################################################
 # 75-term equation of state (Roquet et al., 2015)
 # Coefficients and polynomial structure match gsw_specvol.m / gsw_rho.m /
 # gsw_alpha.m / gsw_beta.m / gsw_sound_speed.m / gsw_sigma0.m exactly.
-# -------------------------------------------------------------------------
+##############################################################################
 
 
 def specific_volume(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
@@ -365,7 +365,7 @@ def specific_volume(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
     Returns
     -------
     Numeric
-        Specific volume [m³/kg]
+        Specific volume [m^3/kg]
     """
     xs, ys, z = _eos_vars(sa, ct, p)
 
@@ -519,7 +519,7 @@ def density(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
     Returns
     -------
     Numeric
-        In-situ density [kg/m³]
+        In-situ density [kg/m^3]
     """
     return 1.0 / specific_volume(sa, ct, p)
 
@@ -852,7 +852,7 @@ def sound_speed(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
 def sigma0(sa: Numeric, ct: Numeric) -> Numeric:
     """
     Potential density anomaly referenced to 0 dbar from the 75-term EOS
-    (gsw_sigma0.m). Equal to potential density minus 1000 kg/m³.
+    (gsw_sigma0.m). Equal to potential density minus 1000 kg/m^3.
 
     Parameters
     ----------
@@ -864,7 +864,7 @@ def sigma0(sa: Numeric, ct: Numeric) -> Numeric:
     Returns
     -------
     Numeric
-        Potential density anomaly [kg/m³]
+        Potential density anomaly [kg/m^3]
     """
     sfac = 0.0248826675584615
     offset = 5.971840214030754e-1
@@ -1013,7 +1013,7 @@ def heat_capacity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
     Returns
     -------
     Numeric
-        Isobaric heat capacity [J/(kg·K)]
+        Isobaric heat capacity [J/(kg K)]
 
     References
     ----------
@@ -1021,7 +1021,7 @@ def heat_capacity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
         scale and equation of state for seawater. J. Geophys. Res., 90,
         3332-3342.
     """
-    # Unit conversions: sa [g/kg] → sp [PSS-78],  p [dbar] → p [bar]
+    # Unit conversions: sa [g/kg] -> sp [PSS-78],  p [dbar] -> p [bar]
     sp = sa * (35.0 / SSO)
     pb = p * 0.1
 
@@ -1096,7 +1096,7 @@ def kinematic_viscosity(t: Numeric, sa: Numeric) -> Numeric:
     Returns
     -------
     Numeric
-        Kinematic viscosity [m²/s]
+        Kinematic viscosity [m^2/s]
     """
     ct = ct_from_t(sa, t, np.zeros_like(t))
     rho = density(sa, ct, np.zeros_like(t))
@@ -1136,11 +1136,11 @@ def buoyancy_frequency(
 
     Implements the TEOS-10 / GSW formula (Roquet et al., 2015):
 
-        N^2 = g^2 / (specvol_mid · 1e4 · dp) · (beta·dSA − alpha·dCT)
+        N^2 = g^2 / (specvol_mid * 1e4 * dp) * (beta*dSA - alpha*dCT)
 
     where dp is in dbar and the 1e4 factor converts to Pa.  N^2 is evaluated
     at mid-pressure points between adjacent levels, so the output has length
-    n_heights − 1 along axis 0.
+    n_heights - 1 along axis 0.
 
     Parameters
     ----------
@@ -1152,13 +1152,13 @@ def buoyancy_frequency(
         Sea pressure, shape (n_heights, ...) [dbar]
     lat : Numeric, optional
         Latitude [degrees north].  If provided, gravity is computed via the
-        Somigliana formula; otherwise the GSW default of 9.7963 m/s²
+        Somigliana formula; otherwise the GSW default of 9.7963 m/s^2
         (Griffies, 2004) is used.
 
     Returns
     -------
     np.ndarray
-        N² at mid-pressure levels, shape (n_heights − 1, ...) [rad²/s²]
+        N^2 at mid-pressure levels, shape (n_heights - 1, ...) [rad^2/s^2]
     """
     sa_mid = 0.5 * (sa[:-1] + sa[1:])
     ct_mid = 0.5 * (ct[:-1] + ct[1:])
@@ -1175,7 +1175,7 @@ def buoyancy_frequency(
     if lat is not None:
         grav = gravity_at_lat(lat)
     else:
-        grav = 9.7963  # Griffies (2004) — GSW default
+        grav = 9.7963  # Griffies (2004) -- GSW default
 
     return grav**2 / (specvol_mid * 1e4 * dp) * (beta_mid * dsa - alpha_mid * dct)
 
@@ -1199,7 +1199,7 @@ def depth_from_pressure(p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
     p : Numeric
         Sea pressure [dbar]
     lat : Numeric, optional
-        Latitude [degrees north]. If not provided, g = 9.81 m/s² is used.
+        Latitude [degrees north]. If not provided, g = 9.81 m/s^2 is used.
 
     Returns
     -------
@@ -1226,7 +1226,7 @@ def pressure_from_depth(z: Numeric, lat: Optional[Numeric] = None) -> Numeric:
     z : Numeric
         Depth (positive downward) [m]
     lat : Numeric, optional
-        Latitude [degrees north]. If not provided, g = 9.81 m/s² is used.
+        Latitude [degrees north]. If not provided, g = 9.81 m/s^2 is used.
 
     Returns
     -------

@@ -67,9 +67,9 @@ def jones_monismith_correction(
     Parameters
     ----------
     S_etaeta : np.ndarray
-        Sea surface elevation power spectral density (m²/Hz)
+        Sea surface elevation power spectral density (m^2/Hz)
     S_pp : np.ndarray
-        Pressure power spectral density (dbar²/Hz)
+        Pressure power spectral density (dbar^2/Hz)
     f : np.ndarray
         Frequency array (Hz)
     f_cutoff : float, optional

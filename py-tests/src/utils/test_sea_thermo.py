@@ -6,9 +6,9 @@ from pathlib import Path
 
 from utils.sea_thermo import *
 from utils.constants import GRAVITATIONAL_ACCELERATION
-# ---------------------------------------------------------------------------
+####################
 # Reference data
-# ---------------------------------------------------------------------------
+####################
 
 TEST_DATA_PATH = f"{Path(__file__).parent}/testdata/gsw_cv.mat"
 KEYS_TO_CHECK = [
@@ -17,9 +17,9 @@ KEYS_TO_CHECK = [
 ]
 
 
-# ---------------------------------------------------------------------------
+############
 # Fixtures
-# ---------------------------------------------------------------------------
+############
 
 @pytest.fixture(scope="module")
 def ref():
@@ -72,9 +72,9 @@ def results():
     return out
 
 
-# ---------------------------------------------------------------------------
-# Tests — GSW reference data
-# ---------------------------------------------------------------------------
+##########################
+# Tests - GSW reference data
+##########################
 
 @pytest.mark.parametrize("key,rtol", [
     ("SA_from_SP",          2e-2),
@@ -95,17 +95,17 @@ def test_key(results, ref, key, rtol):
     npt.assert_allclose(results[key], ref[key], rtol=rtol)
 
 
-# ---------------------------------------------------------------------------
-# Tests — functions without GSW reference data (Sharqawy et al. 2010)
-# ---------------------------------------------------------------------------
+######################################################
+# Tests - functions without GSW reference data (Sharqawy et al. 2010)
+######################################################
 
 def test_dynamic_viscosity_pure_water():
-    # Pure water at 25°C: ~0.890 mPa·s (Sharqawy et al. 2010)
+    # Pure water at 25 C: ~0.890 mPa s (Sharqawy et al. 2010)
     npt.assert_allclose(dynamic_viscosity(25.0, 0.0), 8.903e-4, rtol=1e-3)
 
 
 def test_dynamic_viscosity_seawater():
-    # Seawater at 20°C, 35 g/kg: ~1.073 mPa·s (Sharqawy et al. 2010)
+    # Seawater at 20 C, 35 g/kg: ~1.073 mPa s (Sharqawy et al. 2010)
     npt.assert_allclose(dynamic_viscosity(20.0, 35.0), 1.073e-3, rtol=1e-2)
 
 

@@ -32,21 +32,21 @@ class CTD(BaseInstrument):
     Input keys
         sp  : practical salinity (PSS-78)                         [unitless]
         t   : in-situ temperature                                    [deg C]
-        p   : sea pressure (absolute pressure − 10.1325 dbar)         [dbar]
+        p   : sea pressure (absolute pressure - 10.1325 dbar)          [dbar]
         lat : latitude (scalar)                         [deg N] -- optional
 
     Output keys added by `CTD.derive`:
         sa          : Absolute Salinity                               [g/kg]
         ct          : Conservative Temperature                       [deg C]
-        rho         : in-situ density                               [kg/m³]
-        sigma0      : potential density anomaly ref 0 dbar           [kg/m³]
+        rho         : in-situ density                               [kg/m^3]
+        sigma0      : potential density anomaly ref 0 dbar           [kg/m^3]
         alpha       : thermal expansion coefficient                    [1/K]
         beta        : haline contraction coefficient                  [kg/g]
         sound_speed : speed of sound                                   [m/s]
         t_freezing  : in-situ freezing temperature                   [deg C]
         cp          : isobaric heat capacity                       [J/(kg K)]
-        nu          : kinematic viscosity                            [m²/s]
-        N2          : buoyancy frequency squared (n_heights > 1)     [1/s²]
+        nu          : kinematic viscosity                            [m^2/s]
+        N2          : buoyancy frequency squared (n_heights > 1)     [1/s^2]
         z           : depth (positive downward)                          [m]
 
     References
@@ -188,7 +188,7 @@ class CTD(BaseInstrument):
         Absolute Salinity from Practical Salinity using the constant-ratio
         approximation (gsw_sa_from_sp.m, simplified).
 
-        Uses sa = sp × (35.16504 / 35), which skips the geographic Absolute
+        Uses sa = sp * (35.16504 / 35), which skips the geographic Absolute
         Salinity Anomaly (SAAR) correction. Typical error is  ~0.01 g/kg in
         the open ocean. Errors can reach ~0.1 g/kg in marginal seas (Baltic,
         Red Sea, Arctic shelf) where SAAR is significant.
@@ -229,11 +229,11 @@ class CTD(BaseInstrument):
         """
         return sea_thermo.ct_from_t(sa, t, p)
 
-    # -------------------------------------------------------------------------
+    ##############################################################################
     # 75-term equation of state (Roquet et al., 2015)
     # Coefficients and polynomial structure match gsw_specvol.m / gsw_rho.m /
     # gsw_alpha.m / gsw_beta.m / gsw_sound_speed.m / gsw_sigma0.m exactly.
-    # -------------------------------------------------------------------------
+    ##############################################################################
 
     def specific_volume(self, sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
         """
@@ -251,7 +251,7 @@ class CTD(BaseInstrument):
         Returns
         -------
         Numeric
-            Specific volume [m³/kg]
+            Specific volume [m^3/kg]
         """
         return sea_thermo.specific_volume(sa, ct, p)
 
@@ -271,7 +271,7 @@ class CTD(BaseInstrument):
         Returns
         -------
         Numeric
-            In-situ density [kg/m³]
+            In-situ density [kg/m^3]
         """
         return sea_thermo.density(sa, ct, p)
 
@@ -340,7 +340,7 @@ class CTD(BaseInstrument):
     def sigma0(self, sa: Numeric, ct: Numeric) -> Numeric:
         """
         Potential density anomaly referenced to 0 dbar from the 75-term EOS
-        (gsw_sigma0.m). Equal to potential density minus 1000 kg/m³.
+        (gsw_sigma0.m). Equal to potential density minus 1000 kg/m^3.
 
         Parameters
         ----------
@@ -352,7 +352,7 @@ class CTD(BaseInstrument):
         Returns
         -------
         Numeric
-            Potential density anomaly [kg/m³]
+            Potential density anomaly [kg/m^3]
         """
         return sea_thermo.sigma0(sa, ct)
 
@@ -402,7 +402,7 @@ class CTD(BaseInstrument):
         Returns
         -------
         Numeric
-            Isobaric heat capacity [J/(kg·K)]
+            Isobaric heat capacity [J/(kg K)]
 
         References
         ----------
@@ -444,7 +444,7 @@ class CTD(BaseInstrument):
         Returns
         -------
         Numeric
-            Kinematic viscosity [m²/s]
+            Kinematic viscosity [m^2/s]
         """
         return sea_thermo.kinematic_viscosity(t, sa)
 
@@ -482,11 +482,11 @@ class CTD(BaseInstrument):
         Salinity using the thermal expansion and haline contraction coefficients
         from the 75-term EOS:
 
-            N^2 = g × (alpha × dct/dz − beta × dsa/dz)
+            N^2 = g * (alpha * dct/dz - beta * dsa/dz)
 
         where z is positive upward (taken from self.z). N^2 is evaluated at
         mid-points between adjacent instrument depths, so the output has length
-        n_heights − 1 along axis 0.
+        n_heights - 1 along axis 0.
 
         Requires n_heights > 1 (i.e., the mooring must have sensors at more than
         one depth).
@@ -503,7 +503,7 @@ class CTD(BaseInstrument):
         Returns
         -------
         np.ndarray
-            N² at mid-depth levels, shape (n_heights − 1, n_samples) [1/s²]
+            N^2 at mid-depth levels, shape (n_heights - 1, n_samples) [1/s^2]
         """
         return sea_thermo.buoyancy_frequency(sa, ct, p, self.z)
 
@@ -520,7 +520,7 @@ class CTD(BaseInstrument):
         p : Numeric
             Sea pressure [dbar]
         lat : Numeric, optional
-            Latitude [degrees north]. If not provided, g = 9.81 m/s² is used.
+            Latitude [degrees north]. If not provided, g = 9.81 m/s^2 is used.
 
         Returns
         -------
@@ -539,7 +539,7 @@ class CTD(BaseInstrument):
         z : Numeric
             Depth (positive downward) [m]
         lat : Numeric, optional
-            Latitude [degrees north]. If not provided, g = 9.81 m/s² is used.
+            Latitude [degrees north]. If not provided, g = 9.81 m/s^2 is used.
 
         Returns
         -------
@@ -556,7 +556,7 @@ class CTD(BaseInstrument):
 
         Each quantity is computed only when all of its required inputs are
         available as keys in ``burst_data``. The method never raises for missing
-        inputs — it simply skips any quantities it cannot compute.
+        inputs -- it simply skips any quantities it cannot compute.
 
         Input keys recognized
         ----------------------
@@ -569,15 +569,15 @@ class CTD(BaseInstrument):
         --------------------------------
         sa          : Absolute Salinity [g/kg]             -- requires sp
         ct          : Conservative Temperature [deg C]     -- requires sa, t, p
-        rho         : in-situ density [kg/m³]              -- requires sa, ct, p
-        sigma0      : potential density anomaly [kg/m³]    -- requires sa, ct
+        rho         : in-situ density [kg/m^3]              -- requires sa, ct, p
+        sigma0      : potential density anomaly [kg/m^3]    -- requires sa, ct
         alpha       : thermal expansion [1/K]              -- requires sa, ct, p
         beta        : haline contraction [kg/g]            -- requires sa, ct, p
         sound_speed : speed of sound [m/s]                 -- requires sa, ct, p
         t_freezing  : freezing temperature [deg C]         -- requires sa, p
         cp          : isobaric heat capacity [J/(kg K)]    -- requires sa, t, p
-        nu          : kinematic viscosity [m²/s]           -- requires t, sa
-        N2          : buoyancy frequency² [1/s²]           -- requires sa, ct, p
+        nu          : kinematic viscosity [m^2/s]           -- requires t, sa
+        N2          : buoyancy frequency^2 [1/s^2]          -- requires sa, ct, p
                       (only computed when n_heights > 1)
         z           : depth (positive downward) [m]        -- requires p
 

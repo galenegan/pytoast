@@ -8,9 +8,9 @@ from utils.rotate_utils import (
     coord_transform_4_beam_rdi,
 )
 
-# ---------------------------------------------------------------------------
+####################
 # Shared constants
-# ---------------------------------------------------------------------------
+####################
 
 # 3-beam T matrix from Nortek reference script
 T_3BEAM = np.array([[2896, 2896, 0], [-2896, 2896, 0], [-2896, -2896, 5792]], dtype=float) / 4096.0
@@ -34,9 +34,9 @@ ROLL = -2.0
 N = 200
 
 
-# ---------------------------------------------------------------------------
+############
 # Fixtures
-# ---------------------------------------------------------------------------
+############
 
 
 @pytest.fixture
@@ -63,9 +63,9 @@ def zero_error_beams():
     return b1, b2, b3, b4
 
 
-# ---------------------------------------------------------------------------
-# 3-beam Nortek — round-trip (up orientation)
-# ---------------------------------------------------------------------------
+############################################
+# 3-beam Nortek - round-trip (up orientation)
+############################################
 
 
 @pytest.mark.parametrize(
@@ -110,9 +110,9 @@ def test_3beam_nortek_round_trip_up(beams3, coords_in, coords_out):
     npt.assert_allclose(v3, u3, atol=1e-10)
 
 
-# ---------------------------------------------------------------------------
-# 3-beam Nortek — round-trip (down orientation)
-# ---------------------------------------------------------------------------
+##############################################
+# 3-beam Nortek - round-trip (down orientation)
+##############################################
 
 
 @pytest.mark.parametrize(
@@ -155,9 +155,9 @@ def test_3beam_nortek_round_trip_down(beams3, coords_in, coords_out):
     npt.assert_allclose(v3, u3, atol=1e-10)
 
 
-# ---------------------------------------------------------------------------
-# 3-beam Nortek — identity
-# ---------------------------------------------------------------------------
+##########################
+# 3-beam Nortek - identity
+##########################
 
 
 @pytest.mark.parametrize("coords", ["beam", "xyz", "enu"])
@@ -179,9 +179,9 @@ def test_3beam_nortek_identity(beams3, coords):
     npt.assert_array_equal(r3, u3)
 
 
-# ---------------------------------------------------------------------------
-# 3-beam Nortek — forward transform sanity checks (fill in from reference data)
-# ---------------------------------------------------------------------------
+###################################################################
+# 3-beam Nortek - forward transform sanity checks (fill in from reference data)
+###################################################################
 
 
 def test_3beam_nortek_forward_beam_to_xyz():
@@ -192,9 +192,9 @@ def test_3beam_nortek_forward_beam_to_enu():
     pytest.skip("Fill in expected values from a reference dataset")
 
 
-# ---------------------------------------------------------------------------
-# 4-beam Nortek — round-trip (up orientation)
-# ---------------------------------------------------------------------------
+############################################
+# 4-beam Nortek - round-trip (up orientation)
+############################################
 
 
 @pytest.mark.parametrize(
@@ -242,9 +242,9 @@ def test_4beam_nortek_round_trip_up(beams4, coords_in, coords_out):
     npt.assert_allclose(v4, u4, atol=1e-10)
 
 
-# ---------------------------------------------------------------------------
-# 4-beam Nortek — round-trip (down orientation)
-# ---------------------------------------------------------------------------
+##############################################
+# 4-beam Nortek - round-trip (down orientation)
+##############################################
 
 
 @pytest.mark.parametrize(
@@ -290,9 +290,9 @@ def test_4beam_nortek_round_trip_down(beams4, coords_in, coords_out):
     npt.assert_allclose(v4, u4, atol=1e-10)
 
 
-# ---------------------------------------------------------------------------
-# 4-beam Nortek — identity
-# ---------------------------------------------------------------------------
+##########################
+# 4-beam Nortek - identity
+##########################
 
 
 @pytest.mark.parametrize("coords", ["beam", "xyz", "enu"])
@@ -316,9 +316,9 @@ def test_4beam_nortek_identity(beams4, coords):
     npt.assert_array_equal(r4, u4)
 
 
-# ---------------------------------------------------------------------------
-# 4-beam Nortek — forward transform sanity checks (fill in from reference data)
-# ---------------------------------------------------------------------------
+###################################################################
+# 4-beam Nortek - forward transform sanity checks (fill in from reference data)
+###################################################################
 
 
 def test_4beam_nortek_forward_beam_to_xyz():
@@ -329,8 +329,8 @@ def test_4beam_nortek_forward_beam_to_enu():
     pytest.skip("Fill in expected values from a Signature reference dataset")
 
 
-# ---------------------------------------------------------------------------
-# RDI — round-trips
+####################
+# RDI - round-trips
 #
 # Note on ENU round-trip limitations:
 #   The RDI error velocity (4th component) is computed in xyz space and cannot
@@ -338,7 +338,7 @@ def test_4beam_nortek_forward_beam_to_enu():
 #   - xyz -> enu -> xyz: first 3 components round-trip; 4th returns as zero.
 #   - beam -> enu -> beam: only exact when the input has zero error velocity
 #     (b1 + b2 == b3 + b4). Use the zero_error_beams fixture for those tests.
-# ---------------------------------------------------------------------------
+####################
 
 
 def test_rdi_beam_xyz_round_trip(beams4):
@@ -471,9 +471,9 @@ def test_rdi_enu_beam_enu_round_trip_zero_error(zero_error_beams):
     npt.assert_allclose(v3, e3, atol=1e-10)
 
 
-# ---------------------------------------------------------------------------
-# RDI — error velocity passthrough
-# ---------------------------------------------------------------------------
+################################
+# RDI - error velocity passthrough
+################################
 
 
 def test_rdi_error_velocity_unchanged_xyz_to_enu(beams4):
@@ -511,9 +511,9 @@ def test_rdi_error_velocity_from_beam_passed_through_to_enu(beams4):
     npt.assert_allclose(r4, expected_error, atol=1e-12)
 
 
-# ---------------------------------------------------------------------------
-# RDI — identity
-# ---------------------------------------------------------------------------
+################
+# RDI - identity
+################
 
 
 @pytest.mark.parametrize("coords", ["beam", "xyz", "enu"])
@@ -536,9 +536,9 @@ def test_rdi_identity(beams4, coords):
     npt.assert_array_equal(r4, u4)
 
 
-# ---------------------------------------------------------------------------
-# RDI — forward transform sanity checks (fill in from reference data)
-# ---------------------------------------------------------------------------
+######################################################################
+# RDI - forward transform sanity checks (fill in from reference data)
+######################################################################
 
 
 def test_rdi_forward_beam_to_xyz():

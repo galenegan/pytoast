@@ -119,7 +119,7 @@ def sea_surface_albedo(
     Parameters
     ----------
     sw_down : Numeric
-        Downwelling shortwave irradiance at the surface [W/m²].
+        Downwelling shortwave irradiance at the surface [W/m^2].
     julian_day : Numeric
         Julian day (astronomical convention: fractional part encodes UTC time,
         where julian_day - floor(julian_day) = 0 corresponds to noon UTC).
@@ -135,7 +135,7 @@ def sea_surface_albedo(
     transmission : Numeric
         Atmospheric transmission [-].
     solarmax : Numeric
-        Clear-sky (top-of-atmosphere) irradiance at the surface [W/m²].
+        Clear-sky (top-of-atmosphere) irradiance at the surface [W/m^2].
     solar_altitude : Numeric
         Solar altitude angle [degrees].
 
@@ -151,7 +151,7 @@ def sea_surface_albedo(
     # UTC hour from fractional Julian day (julian_day=0 at noon)
     utc = (julian_day - np.fix(julian_day)) * 24
 
-    # Solar hour angle (lon_rad positive east → add to hour-angle term)
+    # Solar hour angle (lon_rad positive east -> add to hour-angle term)
     hour_angle = np.pi * utc / 12 + lon_rad
 
     # Solar declination
@@ -173,8 +173,8 @@ def sea_surface_albedo(
         transmission = np.where(solarmax > 0, np.minimum(sw_down / solarmax, 2.0), 0.0)
 
     # Nearest-neighbour lookup into the Payne table
-    # Transmission grid: 0, 0.05, ..., 1.00  → 21 rows
-    # Solar altitude grid: 0, 2, ..., 90     → 46 cols
+    # Transmission grid: 0, 0.05, ..., 1.00  -> 21 rows
+    # Solar altitude grid: 0, 2, ..., 90     -> 46 cols
     i_T = np.clip(np.round(transmission / 0.05).astype(int), 0, 20)
     i_alt = np.clip(np.round(solar_altitude / 2.0).astype(int), 0, 45)
     alb = _PAYNE_TABLE[i_T, i_alt]
@@ -230,7 +230,7 @@ def coare36(
     z_u : Numeric
         Height of wind measurement [m].
     t : Numeric
-        Air temperature [°C] at height z_t.
+        Air temperature [C] at height z_t.
     z_t : Numeric
         Height of air temperature measurement [m].
     rh : Numeric
@@ -240,11 +240,11 @@ def coare36(
     p : Numeric
         Sea-level air pressure [mb].
     ts : Numeric
-        Sea surface (bulk or subsurface) temperature [°C].
+        Sea surface (bulk or subsurface) temperature [C].
     sw_down : Numeric
-        Downwelling shortwave radiation [W/m²].
+        Downwelling shortwave radiation [W/m^2].
     lw_down : Numeric
-        Downwelling longwave radiation [W/m²].
+        Downwelling longwave radiation [W/m^2].
     julian_day : Numeric
         Julian day (fractional part = UTC time; 0 = noon UTC).
     lat : Numeric
@@ -342,10 +342,10 @@ def coare36(
     # Specific heat capacity of air
     CP_AIR = at.specific_heat(t)
 
-    # Dry adiabatic lapse rate [K/m] — positive, temperature decreases with height
+    # Dry adiabatic lapse rate [K/m] -- positive, temperature decreases with height
     lapse_rate = at.dry_adiabatic_lapse_rate(t, g)
 
-    # Latent heat of vaporization [J/kg] — evaluated at sea surface temperature
+    # Latent heat of vaporization [J/kg] -- evaluated at sea surface temperature
     L_e = at.latent_heat_of_vaporization(ts)
 
     # Air density at T/q measurement height [kg/m3]
@@ -618,7 +618,7 @@ def coare36(
     QrfN = q_air_rf_gkg + psi_ref_q * 1000 * qstar / KAPPA
 
     # Relative humidities at reference heights
-    t_freeze_10 = t_freeze  # same salinity → same freeze point
+    t_freeze_10 = t_freeze  # same salinity -> same freeze point
     RH10 = at.relative_humidity_from_specific_humidity(T10, P10, q_air_10_gkg / 1000, t_freeze_10)
     RHrf = at.relative_humidity_from_specific_humidity(Trf, P_ref, q_air_rf_gkg / 1000, t_freeze_10)
 
@@ -786,11 +786,11 @@ def coare36_warm_layer(
         All outputs from ``coare36`` plus:
 
         ``dT_warm``
-            Temperature anomaly across the full warm layer [°C].
+            Temperature anomaly across the full warm layer [C].
         ``dz_warm``
             Warm layer depth [m].
         ``dT_warm_to_skin``
-            Temperature anomaly between sensor depth and skin [°C].
+            Temperature anomaly between sensor depth and skin [C].
             Use ``T_skin = ts + dT_warm_to_skin - dT_skin`` to get skin T.
         ``du_warm``
             Current accumulation in the warm layer [m/s].

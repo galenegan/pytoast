@@ -1221,7 +1221,7 @@ class ADV(BaseInstrument):
         f_cutoff : float, optional
             Upper bound for spectral integration to avoid high frequency noise. Defaults to 1.0 Hz.
         rho : float
-            Water density (kg/m³)
+            Water density (kg/m^3)
         **kwargs
             Additional arguments passed to spectral analysis functions
 

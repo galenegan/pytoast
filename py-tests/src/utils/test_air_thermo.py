@@ -21,7 +21,7 @@ def test_p_pascal():
 # Standard values
 
 def test_kinematic_viscosity_standard():
-    # At 20°C, kinematic viscosity ~1.504e-5 m^2/s per the polynomial formula
+    # At 20 C, kinematic viscosity ~1.504e-5 m^2/s per the polynomial formula
     nu = kinematic_viscosity(T_AIR)
     expected = 1.326e-5 * (1 + 6.542e-3 * 20 + 8.301e-6 * 400 - 4.840e-9 * 8000)
     npt.assert_allclose(nu, expected, rtol=1e-10)
@@ -42,7 +42,7 @@ def test_specific_heat_at_0C():
 
 
 def test_latent_heat_at_0C():
-    # Latent heat of vaporization at 0°C is the standard value 2.501e6 J/kg
+    # Latent heat of vaporization at 0 C is the standard value 2.501e6 J/kg
     assert latent_heat_of_vaporization(0.0) == 2.501e6
 
 
@@ -95,7 +95,7 @@ def test_water_vapor_density_increases_with_rh():
 
 
 def test_virtual_temperature_dry_air():
-    # At 0% RH specific humidity is ~0, so virtual temperature ≈ air temperature
+    # At 0% RH specific humidity is ~0, so virtual temperature ~= air temperature
     t_v = virtual_temperature(T_AIR, P_ATM, 0.0)
     npt.assert_allclose(t_v, T_AIR, rtol=1e-10)
 
