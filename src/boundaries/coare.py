@@ -384,7 +384,7 @@ def coare36(
     # Temperature difference including lapse-rate correction
     delta_T = ts - t - lapse_rate * z_t
     delta_q = q_s - q_air  # air-sea specific humidity difference [kg/kg]
-    t_kelvin = at.t_kelvin(t)  # air temperature [K]
+    t_kelvin = at.t_c2kelvin(t)  # air temperature [K]
 
     dT_skin = 0.3  # first-guess cool-skin temperature depression [C]
     gust = 0.5  # first-guess gustiness [m/s]

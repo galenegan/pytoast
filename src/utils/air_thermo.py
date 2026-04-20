@@ -13,12 +13,12 @@ from utils.constants import (
 Numeric: TypeAlias = float | int | np.ndarray
 
 
-def t_kelvin(t: Numeric) -> Numeric:
+def t_c2kelvin(t: Numeric) -> Numeric:
     """Convert temperature from Celsius to Kelvin."""
     return t + 273.15
 
 
-def p_pascal(p: Numeric) -> Numeric:
+def p_mbar2pa(p: Numeric) -> Numeric:
     """Convert pressure from millibar to Pascal."""
     return p * 100
 
@@ -113,7 +113,7 @@ def water_vapor_density(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeri
         Water vapor density in kg/m^3
     """
     e = water_vapor_pressure(t, p, rh, sp)
-    return 100 * e / (R_v * t_kelvin(t))
+    return 100 * e / (R_v * t_c2kelvin(t))
 
 
 def mixing_ratio(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
@@ -262,7 +262,7 @@ def air_density(t: Numeric, p: Numeric, rh: Numeric) -> Numeric:
     """
     e = water_vapor_pressure(t, p, rh)
     p_dry = p - e
-    rho_air = (p_pascal(p_dry) * m_a + p_pascal(e) * m_v) / (R * t_kelvin(t))
+    rho_air = (p_mbar2pa(p_dry) * m_a + p_mbar2pa(e) * m_v) / (R * t_c2kelvin(t))
     return rho_air
 
 
@@ -282,7 +282,7 @@ def dry_air_density(t: Numeric, p: Numeric) -> Numeric:
     Numeric
         Dry air density in kg/m^3
     """
-    rho_air_dry = p_pascal(p) / (R_a * t_kelvin(t))
+    rho_air_dry = p_mbar2pa(p) / (R_a * t_c2kelvin(t))
     return rho_air_dry
 
 

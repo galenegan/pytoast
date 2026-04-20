@@ -177,13 +177,13 @@ class Met(BaseInstrument):
 
         return burst_data
 
-    def t_kelvin(self, t: Numeric) -> Numeric:
+    def t_c2kelvin(self, t: Numeric) -> Numeric:
         """Convert temperature from Celsius to Kelvin."""
-        return air_thermo.t_kelvin(t)
+        return air_thermo.t_c2kelvin(t)
 
-    def p_pascal(self, p: Numeric) -> Numeric:
+    def p_mbar2pa(self, p: Numeric) -> Numeric:
         """Convert pressure from millibar to Pascal."""
-        return air_thermo.p_pascal(p)
+        return air_thermo.p_mbar2pa(p)
 
     def saturation_vapor_pressure(self, t: Numeric, p: Numeric, sp: Optional[Numeric] = None) -> Numeric:
         """
