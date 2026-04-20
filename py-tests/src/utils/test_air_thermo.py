@@ -1,5 +1,3 @@
-import pytest
-import numpy as np
 import numpy.testing as npt
 
 from utils.air_thermo import *
