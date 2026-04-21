@@ -220,8 +220,16 @@ def coare36(
     COARE 3.6 bulk air-sea flux algorithm (Fairall et al. 2003, Edson et al. 2013).
 
     Computes turbulent and radiative fluxes at the air-sea interface from
-    standard meteorological measurements. Includes the COARE cool-skin
+    mean meteorological measurements. Includes the COARE cool-skin
     parameterization. For warm-layer effects use ``coare36_warm_layer``.
+
+    This is a port of the Python implementation by Ludovic Bariteau which can be found here:
+    https://github.com/NOAA-PSL/COARE-algorithm/blob/master/Python/COARE3.6/coare36vn_zrf_et.py There is no functional
+    difference between the two implementations: they produce near-identical output, as verified in
+    py-tests/src/boundaries/test_coare.py. The main differences are stylistic, with this implementation being written in
+    idiomatic python with dictionary output rather than the MATLAB-port style of the original. This implementation is
+    also integrated with the air_thermo and sea_thermo PyTOAST modules, which produces small differences in the output.
+
 
     Parameters
     ----------
