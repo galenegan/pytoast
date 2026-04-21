@@ -306,12 +306,12 @@ def sa_from_sp(sp: Numeric) -> Numeric:
     Parameters
     ----------
     sp : Numeric
-        Practical Salinity (PSS-78) [unitless]
+        Practical Salinity (PSS-78) (unitless)
 
     Returns
     -------
     Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     """
     return np.maximum(sp, 0) * (SSO / 35.0)
 
@@ -327,16 +327,16 @@ def ct_from_t(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     t : Numeric
-        In-situ temperature (ITS-90) [deg C]
+        In-situ temperature (ITS-90, deg C)
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
 
     Returns
     -------
     Numeric
-        Conservative Temperature (ITS-90) [deg C]
+        Conservative Temperature (ITS-90, deg C)
     """
     pt0 = _pt0_from_t(sa, t, p)
     return _ct_from_pt(sa, pt0)
@@ -345,7 +345,7 @@ def ct_from_t(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
 ##############################################################################
 # 75-term equation of state (Roquet et al., 2015)
 # Coefficients and polynomial structure match gsw_specvol.m / gsw_rho.m /
-# gsw_alpha.m / gsw_beta.m / gsw_sound_speed.m / gsw_sigma0.m exactly.
+# gsw_alpha.m / gsw_beta.m / gsw_sound_speed.m / gsw_sigma0.m
 ##############################################################################
 
 
@@ -356,16 +356,16 @@ def specific_volume(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     ct : Numeric
-        Conservative Temperature [deg C]
+        Conservative Temperature (deg C)
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
 
     Returns
     -------
     Numeric
-        Specific volume [m^3/kg]
+        Specific volume (m^3/kg)
     """
     xs, ys, z = _eos_vars(sa, ct, p)
 
@@ -510,16 +510,16 @@ def density(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     ct : Numeric
-        Conservative Temperature [deg C]
+        Conservative Temperature (deg C)
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
 
     Returns
     -------
     Numeric
-        In-situ density [kg/m^3]
+        In-situ density (kg/m^3)
     """
     return 1.0 / specific_volume(sa, ct, p)
 
@@ -532,16 +532,16 @@ def alpha(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     ct : Numeric
-        Conservative Temperature [deg C]
+        Conservative Temperature (deg C)
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
 
     Returns
     -------
     Numeric
-        Thermal expansion coefficient [1/K]
+        Thermal expansion coefficient (1/K)
     """
     xs, ys, z = _eos_vars(sa, ct, p)
 
@@ -641,16 +641,16 @@ def beta(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     ct : Numeric
-        Conservative Temperature [deg C]
+        Conservative Temperature (deg C)
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
 
     Returns
     -------
     Numeric
-        Haline contraction coefficient [kg/g]
+        Haline contraction coefficient (kg/g)
     """
     xs, ys, z = _eos_vars(sa, ct, p)
     sfac = 0.0248826675584615
@@ -750,16 +750,16 @@ def sound_speed(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     ct : Numeric
-        Conservative Temperature [deg C]
+        Conservative Temperature (deg C)
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
 
     Returns
     -------
     Numeric
-        Speed of sound [m/s]
+        Speed of sound (m/s)
     """
     xs, ys, z = _eos_vars(sa, ct, p)
 
@@ -857,14 +857,14 @@ def sigma0(sa: Numeric, ct: Numeric) -> Numeric:
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     ct : Numeric
-        Conservative Temperature [deg C]
+        Conservative Temperature (deg C)
 
     Returns
     -------
     Numeric
-        Potential density anomaly [kg/m^3]
+        Potential density anomaly (kg/m^3)
     """
     sfac = 0.0248826675584615
     offset = 5.971840214030754e-1
@@ -937,14 +937,14 @@ def freezing_temperature(sa: Numeric, p: Numeric) -> Numeric:
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
 
     Returns
     -------
     Numeric
-        Freezing temperature [deg C]
+        Freezing temperature (deg C)
     """
     sa_r = np.maximum(sa, 0) * 1e-2
     x = np.sqrt(sa_r)
@@ -1004,16 +1004,16 @@ def heat_capacity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     t : Numeric
-        In-situ temperature [deg C]
+        In-situ temperature (deg C)
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
 
     Returns
     -------
     Numeric
-        Isobaric heat capacity [J/(kg K)]
+        Isobaric heat capacity (J/(kg K))
 
     References
     ----------
@@ -1066,14 +1066,14 @@ def dynamic_viscosity(t: Numeric, sa: Numeric) -> Numeric:
     Parameters
     ----------
     t : Numeric
-        In-situ temperature [deg C]
+        In-situ temperature (deg C)
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
 
     Returns
     -------
     Numeric
-        Dynamic viscosity [Pa s]
+        Dynamic viscosity (Pa s)
     """
     mu_w = 4.2844e-5 + 1.0 / (0.157 * (t + 64.993) ** 2 - 91.296)
     S_kg = sa * 1e-3  # g/kg -> kg/kg
@@ -1089,14 +1089,14 @@ def kinematic_viscosity(t: Numeric, sa: Numeric) -> Numeric:
     Parameters
     ----------
     t : Numeric
-        In-situ temperature [deg C]
+        In-situ temperature (deg C)
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
 
     Returns
     -------
     Numeric
-        Kinematic viscosity [m^2/s]
+        Kinematic viscosity (m^2/s)
     """
     ct = ct_from_t(sa, t, np.zeros_like(t))
     rho = density(sa, ct, np.zeros_like(t))
@@ -1105,24 +1105,24 @@ def kinematic_viscosity(t: Numeric, sa: Numeric) -> Numeric:
 
 def thermal_conductivity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
     """
-    Thermal conductivity of seawater (Sharqawy et al., 2010, Eq. 14).
+    Thermal conductivity of seawater (Sharqawy et al., 2010, Eq. 14, with typo 6.53e-3 -> 6.53e-4 corrected).
 
     Parameters
     ----------
     sa : Numeric
-        Absolute Salinity [g/kg]
+        Absolute Salinity (g/kg)
     t : Numeric
-        In-situ temperature [deg C]
+        In-situ temperature (deg C)
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
 
     Returns
     -------
     Numeric
-        Thermal conductivity [W/(m K)]
+        Thermal conductivity (W/(m K))
     """
     p_mpa = p * 0.01  # dbar -> MPa
-    return 0.5715 * (1 + 0.003 * t - 1.025e-5 * t**2 + 6.53e-3 * p_mpa - 2.9e-4 * sa)
+    return 0.5715 * (1 + 0.003 * t - 1.025e-5 * t**2 + 6.53e-4 * p_mpa - 2.9e-4 * sa)
 
 
 def buoyancy_frequency(
@@ -1132,11 +1132,11 @@ def buoyancy_frequency(
     lat: Optional[Numeric] = None,
 ) -> np.ndarray:
     """
-    Squared buoyancy (Brunt-Väisälä) frequency from a vertical profile.
+    Squared buoyancy (Brunt-Vaisala) frequency from a vertical profile.
 
     Implements the TEOS-10 / GSW formula (Roquet et al., 2015):
 
-        N^2 = g^2 / (specvol_mid * 1e4 * dp) * (beta*dSA - alpha*dCT)
+        N^2 = g^2 * (beta*dSA - alpha*dCT) / (specvol_mid * 1e4 * dp)
 
     where dp is in dbar and the 1e4 factor converts to Pa.  N^2 is evaluated
     at mid-pressure points between adjacent levels, so the output has length
@@ -1145,20 +1145,19 @@ def buoyancy_frequency(
     Parameters
     ----------
     sa : np.ndarray
-        Absolute Salinity, shape (n_heights, ...) [g/kg]
+        Absolute Salinity, shape (n_heights, ...) (g/kg)
     ct : np.ndarray
-        Conservative Temperature, shape (n_heights, ...) [deg C]
+        Conservative Temperature, shape (n_heights, ...) (deg C)
     p : np.ndarray
-        Sea pressure, shape (n_heights, ...) [dbar]
+        Sea pressure, shape (n_heights, ...) (dbar)
     lat : Numeric, optional
-        Latitude [degrees north].  If provided, gravity is computed via the
-        Somigliana formula; otherwise the GSW default of 9.7963 m/s^2
-        (Griffies, 2004) is used.
+        Latitude (degrees north).  If provided, gravity is computed via the
+        UNESCO formula.
 
     Returns
     -------
     np.ndarray
-        N^2 at mid-pressure levels, shape (n_heights - 1, ...) [rad^2/s^2]
+        N^2 at mid-pressure levels, shape (n_heights - 1, ...) (rad^2/s^2)
     """
     sa_mid = 0.5 * (sa[:-1] + sa[1:])
     ct_mid = 0.5 * (ct[:-1] + ct[1:])
@@ -1173,14 +1172,28 @@ def buoyancy_frequency(
     dsa = np.diff(sa, axis=0)
 
     if lat is not None:
-        grav = gravity_at_lat(lat)
+        g_lat = gravity_at_lat(lat)
     else:
-        grav = 9.7963  # Griffies (2004) -- GSW default
+        g_lat = g
 
-    return grav**2 / (specvol_mid * 1e4 * dp) * (beta_mid * dsa - alpha_mid * dct)
+    return g_lat**2 / (specvol_mid * 1e4 * dp) * (beta_mid * dsa - alpha_mid * dct)
 
 
 def gravity_at_lat(lat: Numeric) -> Numeric:
+    """
+    UNESCO (1983) gravity at a given latitude.
+
+    Parameters
+    ----------
+    lat : Numeric
+        Latitude (deg N)
+
+    Returns
+    -------
+    g : Numeric
+        Gravitational acceleration (m/s^2)
+
+    """
     sin2 = np.sin(np.deg2rad(lat)) ** 2
     g = 9.780318 * (1.0 + 5.2788e-3 * sin2 + 2.36e-5 * sin2**2)
     return g
@@ -1189,22 +1202,19 @@ def gravity_at_lat(lat: Numeric) -> Numeric:
 def depth_from_pressure(p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
     """
     Depth from sea pressure using the UNESCO (1983) formula with optional
-    latitude-dependent gravity (Saunders & Fofonoff, 1976).
-
-    Note: depth is returned as a positive quantity (distance below surface). If this function is used to
-    populate self.z (positive upward), then the depths returned by this function should be multiplied by -1.
+    latitude-dependent gravity. Depth is returned as a positive quantity (distance below surface).
 
     Parameters
     ----------
     p : Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
     lat : Numeric, optional
-        Latitude [degrees north]. If not provided, g = 9.81 m/s^2 is used.
+        Latitude (degrees N). If not provided, g = 9.81 m/s^2 is used.
 
     Returns
     -------
     Numeric
-        Depth (positive downward) [m]
+        Depth (positive downward) (m)
     """
     if lat is not None:
         g_lat = gravity_at_lat(lat)
@@ -1224,18 +1234,17 @@ def pressure_from_depth(z: Numeric, lat: Optional[Numeric] = None) -> Numeric:
     Parameters
     ----------
     z : Numeric
-        Depth (positive downward) [m]
+        Depth (positive downward) (m)
     lat : Numeric, optional
-        Latitude [degrees north]. If not provided, g = 9.81 m/s^2 is used.
+        Latitude (degrees north). If not provided, g = 9.81 m/s^2 is used.
 
     Returns
     -------
     Numeric
-        Sea pressure [dbar]
+        Sea pressure (dbar)
     """
     if lat is not None:
-        sin2 = np.sin(np.deg2rad(lat)) ** 2
-        g_lat = 9.780318 * (1.0 + 5.2788e-3 * sin2 + 2.36e-5 * sin2**2)
+        g_lat = gravity_at_lat(lat)
     else:
         g_lat = g
 

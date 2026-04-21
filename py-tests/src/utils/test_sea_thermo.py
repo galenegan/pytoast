@@ -5,7 +5,6 @@ import scipy.io as sio
 from pathlib import Path
 
 from utils.sea_thermo import *
-from utils.constants import GRAVITATIONAL_ACCELERATION
 ####################
 # Reference data
 ####################

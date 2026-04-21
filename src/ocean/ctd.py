@@ -30,26 +30,26 @@ class CTD(BaseInstrument):
     Standard burst dict keys recognized by `CTD.derive`:
 
     Input keys
-        sp  : practical salinity (PSS-78)                         [unitless]
-        t   : in-situ temperature                                    [deg C]
-        p   : sea pressure (absolute pressure - 10.1325 dbar)          [dbar]
-        lat : latitude (scalar)                         [deg N] -- optional
+        sp  : practical salinity (PSS-78)                         (unitless)
+        t   : in-situ temperature                                    (deg C)
+        p   : sea pressure (absolute pressure - 10.1325 dbar)          (dbar)
+        lat : latitude (scalar)                         (deg N) -- optional
 
     Output keys added by `CTD.derive`:
-        sa          : Absolute Salinity                               [g/kg]
-        ct          : Conservative Temperature                       [deg C]
-        rho         : in-situ density                               [kg/m^3]
-        sigma0      : potential density anomaly ref 0 dbar           [kg/m^3]
-        alpha       : thermal expansion coefficient                    [1/K]
-        beta        : haline contraction coefficient                  [kg/g]
-        sound_speed : speed of sound                                   [m/s]
-        t_freezing  : in-situ freezing temperature                   [deg C]
-        cp          : isobaric heat capacity                       [J/(kg K)]
-        nu          : kinematic viscosity                            [m^2/s]
-        N2          : buoyancy frequency squared (n_heights > 1)     [1/s^2]
-        z           : depth (positive downward)                          [m]
+        sa          : Absolute Salinity                               (g/kg)
+        ct          : Conservative Temperature                       (deg C)
+        rho         : in-situ density                               (kg/m^3)
+        sigma0      : potential density anomaly ref 0 dbar           (kg/m^3)
+        alpha       : thermal expansion coefficient                    (1/K)
+        beta        : haline contraction coefficient                  (kg/g)
+        sound_speed : speed of sound                                   (m/s)
+        t_freezing  : in-situ freezing temperature                   (deg C)
+        cp          : isobaric heat capacity                       (J/(kg K))
+        nu          : kinematic viscosity                            (m^2/s)
+        N2          : buoyancy frequency squared (n_heights > 1)     (1/s^2)
+        z           : depth (positive downward)                          (m)
 
-    References
+    References  # TODO: Double Check these
     ----------
     IOC, SCOR and IAPSO, 2010: The international thermodynamic equation of
         seawater - 2010. Intergovernmental Oceanographic Commission,
@@ -113,18 +113,19 @@ class CTD(BaseInstrument):
         CTD
         """
         files_list = files if isinstance(files, list) else [files]
-        CTD.validate_inputs(files_list, name_map, fs, z, data_keys)
+        CTD.validate_inputs(files_list, name_map, deployment_type, fs, z, data_keys)
         super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
+        deployment_type: str,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """
@@ -196,12 +197,12 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sp : Numeric
-            Practical Salinity (PSS-78) [unitless]
+            Practical Salinity (PSS-78) (unitless)
 
         Returns
         -------
         Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         """
         return sea_thermo.sa_from_sp(sp)
 
@@ -216,16 +217,16 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         t : Numeric
-            In-situ temperature (ITS-90) [deg C]
+            In-situ temperature (ITS-90, deg C)
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
 
         Returns
         -------
         Numeric
-            Conservative Temperature (ITS-90) [deg C]
+            Conservative Temperature (ITS-90, deg C)
         """
         return sea_thermo.ct_from_t(sa, t, p)
 
@@ -242,16 +243,16 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         ct : Numeric
-            Conservative Temperature [deg C]
+            Conservative Temperature (deg C)
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
 
         Returns
         -------
         Numeric
-            Specific volume [m^3/kg]
+            Specific volume (m^3/kg)
         """
         return sea_thermo.specific_volume(sa, ct, p)
 
@@ -262,16 +263,16 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         ct : Numeric
-            Conservative Temperature [deg C]
+            Conservative Temperature (deg C)
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
 
         Returns
         -------
         Numeric
-            In-situ density [kg/m^3]
+            In-situ density (kg/m^3)
         """
         return sea_thermo.density(sa, ct, p)
 
@@ -283,16 +284,16 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         ct : Numeric
-            Conservative Temperature [deg C]
+            Conservative Temperature (deg C)
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
 
         Returns
         -------
         Numeric
-            Thermal expansion coefficient [1/K]
+            Thermal expansion coefficient (1/K)
         """
         return sea_thermo.alpha(sa, ct, p)
 
@@ -304,16 +305,16 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         ct : Numeric
-            Conservative Temperature [deg C]
+            Conservative Temperature (deg C)
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
 
         Returns
         -------
         Numeric
-            Haline contraction coefficient [kg/g]
+            Haline contraction coefficient (kg/g)
         """
         return sea_thermo.beta(sa, ct, p)
 
@@ -324,16 +325,16 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         ct : Numeric
-            Conservative Temperature [deg C]
+            Conservative Temperature (deg C)
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
 
         Returns
         -------
         Numeric
-            Speed of sound [m/s]
+            Speed of sound (m/s)
         """
         return sea_thermo.sound_speed(sa, ct, p)
 
@@ -345,14 +346,14 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         ct : Numeric
-            Conservative Temperature [deg C]
+            Conservative Temperature (deg C)
 
         Returns
         -------
         Numeric
-            Potential density anomaly [kg/m^3]
+            Potential density anomaly (kg/m^3)
         """
         return sea_thermo.sigma0(sa, ct)
 
@@ -367,14 +368,14 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
 
         Returns
         -------
         Numeric
-            Freezing temperature [deg C]
+            Freezing temperature (deg C)
         """
         return sea_thermo.freezing_temperature(sa, p)
 
@@ -393,16 +394,16 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         t : Numeric
-            In-situ temperature [deg C]
+            In-situ temperature (deg C)
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
 
         Returns
         -------
         Numeric
-            Isobaric heat capacity [J/(kg K)]
+            Isobaric heat capacity (J/(kg K))
 
         References
         ----------
@@ -419,14 +420,14 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         t : Numeric
-            In-situ temperature [deg C]
+            In-situ temperature (deg C)
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
 
         Returns
         -------
         Numeric
-            Dynamic viscosity [Pa s]
+            Dynamic viscosity (Pa s)
         """
         return sea_thermo.dynamic_viscosity(t, sa)
 
@@ -437,14 +438,14 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         t : Numeric
-            In-situ temperature [deg C]
+            In-situ temperature (deg C)
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
 
         Returns
         -------
         Numeric
-            Kinematic viscosity [m^2/s]
+            Kinematic viscosity (m^2/s)
         """
         return sea_thermo.kinematic_viscosity(t, sa)
 
@@ -455,17 +456,17 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         sa : Numeric
-            Absolute Salinity [g/kg]
+            Absolute Salinity (g/kg)
         t : Numeric
-            In-situ temperature [deg C]
+            In-situ temperature (deg C)
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
 
 
         Returns
         -------
         Numeric
-            Thermal conductivity [W/(m K)]
+            Thermal conductivity (W/(m K))
         """
         return sea_thermo.thermal_conductivity(sa, t, p)
 
@@ -478,54 +479,49 @@ class CTD(BaseInstrument):
         """
         Squared buoyancy (Brunt-Väisälä) frequency from a vertical profile.
 
-        Computed via finite differences of Conservative Temperature and Absolute
-        Salinity using the thermal expansion and haline contraction coefficients
-        from the 75-term EOS:
+        Implements the TEOS-10 / GSW formula (Roquet et al., 2015):
 
-            N^2 = g * (alpha * dct/dz - beta * dsa/dz)
+        N^2 = g^2 / (specvol_mid * 1e4 * dp) * (beta*dSA - alpha*dCT)
 
-        where z is positive upward (taken from self.z). N^2 is evaluated at
-        mid-points between adjacent instrument depths, so the output has length
+        where dp is in dbar and the 1e4 factor converts to Pa.  N^2 is evaluated
+        at mid-pressure points between adjacent levels, so the output has length
         n_heights - 1 along axis 0.
 
-        Requires n_heights > 1 (i.e., the mooring must have sensors at more than
+        Requires n_heights > 1 (i.e., the mooring/cast must have measurements at more than
         one depth).
 
         Parameters
         ----------
         sa : np.ndarray
-            Absolute Salinity, shape (n_heights, n_samples) [g/kg]
+            Absolute Salinity, shape (n_heights, n_samples) (g/kg)
         ct : np.ndarray
-            Conservative Temperature, shape (n_heights, n_samples) [deg C]
+            Conservative Temperature, shape (n_heights, n_samples) (deg C)
         p : np.ndarray
-            Sea pressure, shape (n_heights, n_samples) [dbar]
+            Sea pressure, shape (n_heights, n_samples) (dbar)
 
         Returns
         -------
         np.ndarray
-            N^2 at mid-depth levels, shape (n_heights - 1, n_samples) [1/s^2]
+            N^2 at mid-depth levels, shape (n_heights - 1, n_samples) (1/s^2)
         """
         return sea_thermo.buoyancy_frequency(sa, ct, p)
 
     def depth_from_pressure(self, p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
         """
         Depth from sea pressure using the UNESCO (1983) formula with optional
-        latitude-dependent gravity (Saunders & Fofonoff, 1976).
-
-        Note: depth is returned as a positive quantity (distance below surface). If this function is used to
-        populate self.z (positive upward), then the depths returned by this function should be multiplied by -1.
+        latitude-dependent gravity. Depth is returned as a positive quantity (distance below surface).
 
         Parameters
         ----------
         p : Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
         lat : Numeric, optional
-            Latitude [degrees north]. If not provided, g = 9.81 m/s^2 is used.
+            Latitude (degrees north). If not provided, g = 9.81 m/s^2 is used.
 
         Returns
         -------
         Numeric
-            Depth (positive downward) [m]
+            Depth (positive downward, m)
         """
         return sea_thermo.depth_from_pressure(p, lat)
 
@@ -537,14 +533,14 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         z : Numeric
-            Depth (positive downward) [m]
+            Depth (positive downward, m)
         lat : Numeric, optional
-            Latitude [degrees north]. If not provided, g = 9.81 m/s^2 is used.
+            Latitude (degrees north). If not provided, g = 9.81 m/s^2 is used.
 
         Returns
         -------
         Numeric
-            Sea pressure [dbar]
+            Sea pressure (dbar)
         """
         return sea_thermo.pressure_from_depth(z, lat)
 
@@ -560,26 +556,26 @@ class CTD(BaseInstrument):
 
         Input keys recognized
         ----------------------
-        sp  : Practical Salinity (PSS-78)             [unitless]
-        t   : in-situ temperature                       [deg C]
-        p   : sea pressure                               [dbar]
-        lat : latitude (scalar)     [deg N] -- optional, used for depth
+        sp  : Practical Salinity (PSS-78)             (unitless)
+        t   : in-situ temperature                       (deg C)
+        p   : sea pressure                               (dbar)
+        lat : latitude (scalar)     (deg N) -- optional, used for depth
 
         Output keys added to burst_data
         --------------------------------
-        sa          : Absolute Salinity [g/kg]             -- requires sp
-        ct          : Conservative Temperature [deg C]     -- requires sa, t, p
-        rho         : in-situ density [kg/m^3]              -- requires sa, ct, p
-        sigma0      : potential density anomaly [kg/m^3]    -- requires sa, ct
-        alpha       : thermal expansion [1/K]              -- requires sa, ct, p
-        beta        : haline contraction [kg/g]            -- requires sa, ct, p
-        sound_speed : speed of sound [m/s]                 -- requires sa, ct, p
-        t_freezing  : freezing temperature [deg C]         -- requires sa, p
-        cp          : isobaric heat capacity [J/(kg K)]    -- requires sa, t, p
-        nu          : kinematic viscosity [m^2/s]           -- requires t, sa
-        N2          : buoyancy frequency^2 [1/s^2]          -- requires sa, ct, p
+        sa          : Absolute Salinity (g/kg)             -- requires sp
+        ct          : Conservative Temperature (deg C)     -- requires sa, t, p
+        rho         : in-situ density (kg/m^3)              -- requires sa, ct, p
+        sigma0      : potential density anomaly (kg/m^3)    -- requires sa, ct
+        alpha       : thermal expansion (1/K)              -- requires sa, ct, p
+        beta        : haline contraction (kg/g)            -- requires sa, ct, p
+        sound_speed : speed of sound (m/s)                 -- requires sa, ct, p
+        t_freezing  : freezing temperature (deg C)         -- requires sa, p
+        cp          : isobaric heat capacity (J/(kg K))    -- requires sa, t, p
+        nu          : kinematic viscosity (m^2/s)           -- requires t, sa
+        N2          : buoyancy frequency^2 (1/s^2)          -- requires sa, ct, p
                       (only computed when n_heights > 1)
-        z           : depth (positive downward) [m]        -- requires p
+        z           : depth (positive downward) (m)        -- requires p
 
         Parameters
         ----------

@@ -418,7 +418,7 @@ class Met(BaseInstrument):
         t : Numeric
             Air temperature in Celcius
         z : Numeric
-            Height above the surface in meters. When called via :meth:`derive`, this is taken from
+            Height above the surface in meters. When called via `derive`, this is taken from
             self.z and broadcast over the time dimension automatically.
 
         Returns

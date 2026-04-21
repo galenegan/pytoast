@@ -119,25 +119,25 @@ def sea_surface_albedo(
     Parameters
     ----------
     sw_down : Numeric
-        Downwelling shortwave irradiance at the surface [W/m^2].
+        Downwelling shortwave irradiance at the surface (W/m^2).
     julian_day : Numeric
         Julian day (astronomical convention: fractional part encodes UTC time,
         where julian_day - floor(julian_day) = 0 corresponds to noon UTC).
     lat : Numeric
-        Latitude [degrees north].
+        Latitude (degrees north).
     lon : Numeric
-        Longitude [degrees east].
+        Longitude (degrees east).
 
     Returns
     -------
     alb : Numeric
-        Sea-surface albedo [-].
+        Sea-surface albedo (-).
     transmission : Numeric
-        Atmospheric transmission [-].
+        Atmospheric transmission (-).
     solarmax : Numeric
-        Clear-sky (top-of-atmosphere) irradiance at the surface [W/m^2].
+        Clear-sky (top-of-atmosphere) irradiance at the surface (W/m^2).
     solar_altitude : Numeric
-        Solar altitude angle [degrees].
+        Solar altitude angle (degrees).
 
     References
     ----------
@@ -226,50 +226,50 @@ def coare36(
     Parameters
     ----------
     u : Numeric
-        Wind speed relative to the ocean surface [m/s] at height z_u.
+        Wind speed relative to the ocean surface (m/s) at height z_u.
     z_u : Numeric
-        Height of wind measurement [m].
+        Height of wind measurement (m).
     t : Numeric
-        Air temperature [C] at height z_t.
+        Air temperature (C) at height z_t.
     z_t : Numeric
-        Height of air temperature measurement [m].
+        Height of air temperature measurement (m).
     rh : Numeric
-        Relative humidity [%] at height z_rh.
+        Relative humidity (%) at height z_rh.
     z_rh : Numeric
-        Height of relative humidity measurement [m].
+        Height of relative humidity measurement (m).
     p : Numeric
-        Sea-level air pressure [mb].
+        Sea-level air pressure (mb).
     ts : Numeric
-        Sea surface (bulk or subsurface) temperature [C].
+        Sea surface (bulk or subsurface) temperature (C).
     sw_down : Numeric
-        Downwelling shortwave radiation [W/m^2].
+        Downwelling shortwave radiation (W/m^2).
     lw_down : Numeric
-        Downwelling longwave radiation [W/m^2].
+        Downwelling longwave radiation (W/m^2).
     julian_day : Numeric
         Julian day (fractional part = UTC time; 0 = noon UTC).
     lat : Numeric
-        Latitude [degrees north].
+        Latitude (degrees north).
     lon : Numeric, optional
-        Longitude [degrees east]. Default 0.
+        Longitude (degrees east). Default 0.
     pbl_height : Numeric, optional
-        Planetary boundary layer height [m]. Default 600.
+        Planetary boundary layer height (m). Default 600.
     rain : Numeric, optional
-        Rain rate [mm/hr]. Default 0.
+        Rain rate (mm/hr). Default 0.
     surface_salinity : Numeric, optional
-        Sea surface salinity [PSU]. Default SSO.
+        Sea surface salinity (PSU). Default SSO.
     phase_speed : Numeric, optional
-        Phase speed of dominant waves [m/s]. If given, uses wave-age-based
+        Phase speed of dominant waves (m/s). If given, uses wave-age-based
         Charnock parameterization.
     h_sig : Numeric, optional
-        Significant wave height [m]. Required with phase_speed.
+        Significant wave height (m). Required with phase_speed.
     u_surf : Numeric, optional
-        Ocean surface current speed [m/s]. Default 0.
+        Ocean surface current speed (m/s). Default 0.
     zref_u : Numeric, optional
-        Reference height for wind profile output [m]. Default 10.
+        Reference height for wind profile output (m). Default 10.
     zref_t : Numeric, optional
-        Reference height for temperature profile output [m]. Default 10.
+        Reference height for temperature profile output (m). Default 10.
     zref_rh : Numeric, optional
-        Reference height for humidity profile output [m]. Default 10.
+        Reference height for humidity profile output (m). Default 10.
 
     Returns
     -------
@@ -772,9 +772,9 @@ def coare36_warm_layer(
     pbl_height, rain : array_like
         Same as ``coare36``; see that function for units.
     ts_depth : np.ndarray
-        Depth of the sea surface temperature sensor [m], positive downward.
+        Depth of the sea surface temperature sensor (m), positive downward.
     surface_salinity : np.ndarray, optional
-        Sea surface salinity [PSU]. Default SSO.
+        Sea surface salinity (PSU). Default SSO.
     phase_speed, h_sig : np.ndarray, optional
         Wave parameters (see ``coare36``).
     zref_u, zref_t, zref_rh : float, optional
@@ -786,14 +786,14 @@ def coare36_warm_layer(
         All outputs from ``coare36`` plus:
 
         ``dT_warm``
-            Temperature anomaly across the full warm layer [C].
+            Temperature anomaly across the full warm layer (C).
         ``dz_warm``
-            Warm layer depth [m].
+            Warm layer depth (m).
         ``dT_warm_to_skin``
-            Temperature anomaly between sensor depth and skin [C].
+            Temperature anomaly between sensor depth and skin (C).
             Use ``T_skin = ts + dT_warm_to_skin - dT_skin`` to get skin T.
         ``du_warm``
-            Current accumulation in the warm layer [m/s].
+            Current accumulation in the warm layer (m/s).
     """
     julian_day = np.atleast_1d(np.asarray(julian_day, dtype=float)).ravel()
     u = np.atleast_1d(np.asarray(u, dtype=float)).ravel()

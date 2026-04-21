@@ -8,6 +8,7 @@ from utils.constants import (
     GAS_CONSTANT_WATER_VAPOR as R_v,
     MOL_MASS_DRY_AIR as m_a,
     MOL_MASS_WATER_VAPOR as m_v,
+    T0,
 )
 
 Numeric: TypeAlias = float | int | np.ndarray
@@ -15,7 +16,7 @@ Numeric: TypeAlias = float | int | np.ndarray
 
 def t_c2kelvin(t: Numeric) -> Numeric:
     """Convert temperature from Celsius to Kelvin."""
-    return t + 273.15
+    return t + T0
 
 
 def p_mbar2pa(p: Numeric) -> Numeric:
