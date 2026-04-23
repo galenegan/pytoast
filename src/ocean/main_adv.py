@@ -28,7 +28,7 @@ if __name__ == "__main__":
     pre_opts = {
         "despike": {"method": "threshold", "threshold_min": -0.2, "threshold_max": 0.2},
         "rotate": {
-            "flow_rotation": "align_current",
+            "flow_rotation": "align_streamwise",
             # "coords_out": "xyz",
             # "transformation_matrices": [T] * 6,
             # "constant_hpr": [(0.0, 1.0, 1.1)] * 6,

@@ -102,20 +102,21 @@ class Met(BaseInstrument):
         Met
         """
         files_list = files if isinstance(files, list) else [files]
-        Met.validate_inputs(files_list, name_map, fs, z, data_keys)
+        Met.validate_inputs(files_list, name_map, deployment_type, fs, z, data_keys)
         super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
+        deployment_type: str = "moored",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """

@@ -73,13 +73,14 @@ class Sonic(BaseInstrument):
         """
         self.path_length = path_length
         files_list = files if isinstance(files, list) else [files]
-        Sonic.validate_inputs(files_list, name_map, fs, z, data_keys, path_length)
+        Sonic.validate_inputs(files_list, name_map, deployment_type, fs, z, data_keys, path_length)
         super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
+        deployment_type: str = "moored",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -87,7 +88,7 @@ class Sonic(BaseInstrument):
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]

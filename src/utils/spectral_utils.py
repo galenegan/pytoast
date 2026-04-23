@@ -37,7 +37,7 @@ def psd(
     detrend=False,
     onesided=True,
 ) -> (np.ndarray, np.ndarray):
-    N = x.shape[-1]
+    N = max(x.shape)
     if window_len is None:
         window_len = get_window_len(N, num_windows)
     if nfft is None:
@@ -67,7 +67,7 @@ def csd(
     detrend=False,
     onesided=True,
 ) -> (np.ndarray, np.ndarray):
-    N = len(x)
+    N = max(x.shape)
     if window_len is None:
         window_len = get_window_len(N, num_windows)
     if nfft is None:

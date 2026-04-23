@@ -14,6 +14,24 @@ from utils.rotate_utils import (
 )
 
 
+def _find_wave_band(f: np.ndarray, P_uu: np.ndarray, df: float) -> np.ndarray:
+    """
+    Locate the wave peak in the u-component auto-spectrum and return indices spanning
+    0.35 * f_peak below to 0.8 * f_peak above, clipped to the valid range of `f`.
+    """
+    f_offset = 0.07  # Assume wave peak is above this value
+    width_ratio_low = 0.35
+    width_ratio_high = 0.8
+    search = (f > f_offset) & (f < 1)
+    peak_idx = int(np.flatnonzero(search)[np.argmax(P_uu[search])])
+    f_peak = f[peak_idx]
+    n_below = int((f_peak * width_ratio_low) // df)
+    n_above = int((f_peak * width_ratio_high) // df)
+    lo = max(peak_idx - n_below, 0)
+    hi = min(peak_idx + n_above, len(f) - 1)
+    return np.arange(lo, hi)
+
+
 class ADV(BaseInstrument):
     """
     Class for processing data from Acoustic Doppler Velocimeter (ADV) instruments. Contains methods for:
@@ -88,13 +106,14 @@ class ADV(BaseInstrument):
         self.source_coords = source_coords
         self.orientation = orientation
         files_list = files if isinstance(files, list) else [files]
-        ADV.validate_inputs(files_list, name_map, fs, z, data_keys, source_coords, orientation)
+        ADV.validate_inputs(files_list, name_map, deployment_type, fs, z, data_keys, source_coords, orientation)
         super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
+        deployment_type: str = "moored",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -103,7 +122,7 @@ class ADV(BaseInstrument):
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]
@@ -465,12 +484,12 @@ class ADV(BaseInstrument):
         v = sig.detrend(v)
         w = sig.detrend(w)
 
-        # All the velocity components
+        # Auto-spectra
         _, P_uu = psd(u, fs=self.fs, **kwargs)
         _, P_vv = psd(v, fs=self.fs, **kwargs)
         _, P_ww = psd(w, fs=self.fs, **kwargs)
 
-        # Velocity cross spectra
+        # Cross-spectra
         _, P_uw = csd(u, w, fs=self.fs, **kwargs)
         _, P_vw = csd(v, w, fs=self.fs, **kwargs)
         f, P_uv = csd(u, v, fs=self.fs, **kwargs)
@@ -480,101 +499,55 @@ class ADV(BaseInstrument):
         phase_uv = np.arctan2(np.imag(P_uv), np.real(P_uv))
         df = np.nanmax(np.diff(f))
 
-        # Searching for the wave peak within a reasonable range of frequencies --
-        # adjust this for each data set
+        # Wave-band indices (explicit range if given, else locate peak in P_uu)
         if f_wave_low and f_wave_high:
-            waverange = np.where(((f > f_wave_low) & (f < f_wave_high)))[0]
+            waverange = np.flatnonzero((f > f_wave_low) & (f < f_wave_high))
         else:
-            f_offset = 0.07  # Assume wave peak is not below this value
-            width_ratio_low = 0.35  # Wave range below the wave peak (fraction of peak frequency)
-            width_ratio_high = 0.8  # Wave range above the peak
-            offset = np.sum(f <= f_offset)
-            u_idx_max = np.argmax(P_uu[(f > f_offset) & (f < 1)]) + offset
-            f_max = f[u_idx_max]
-            waverange = np.arange(
-                max(u_idx_max - (f_max * width_ratio_low) // df, 0),
-                min(u_idx_max + (f_max * width_ratio_high) // df, len(f) - 1),
-            ).astype(int)
-        interprange = np.arange(1, np.nanargmin(np.abs(f - 1))).astype(int)
+            waverange = _find_wave_band(f, P_uu, df)
 
-        # Separating the turbulent portion from the full spectrum
-        Puu_turb = P_uu[interprange]
-        fuu = f[interprange]
-        Puu_turb = np.delete(Puu_turb, waverange - interprange[0])
-        fuu = np.delete(fuu, waverange - interprange[0])
-        Puu_turb = Puu_turb[fuu > 0]
-        fuu = fuu[fuu > 0]
+        # Turbulent band: 0 < f < 1 Hz, wave band excluded. Used to fit the inertial subrange.
+        interp_end = int(np.nanargmin(np.abs(f - 1)))
+        turb_mask = np.zeros_like(f, dtype=bool)
+        turb_mask[1:interp_end] = True
+        turb_mask[waverange] = False
+        log_f_turb = np.log(f[turb_mask])
+        log_f_all = np.log(f)
 
-        Pvv_turb = P_vv[interprange]
-        fvv = f[interprange]
-        Pvv_turb = np.delete(Pvv_turb, waverange - interprange[0])
-        fvv = np.delete(fvv, waverange - interprange[0])
-        Pvv_turb = Pvv_turb[fvv > 0]
-        fvv = fvv[fvv > 0]
+        # Log-log linear fit of the turbulent spectrum, evaluated over the full frequency range
+        fits = {}
+        for name, P in (("uu", P_uu), ("vv", P_vv), ("ww", P_ww)):
+            coefs = np.polyfit(log_f_turb, np.log(P[turb_mask]), deg=1)
+            fits[name] = np.exp(np.polyval(coefs, log_f_all))
 
-        Pww_turb = P_ww[interprange]
-        fww = f[interprange]
-        Pww_turb = np.delete(Pww_turb, waverange - interprange[0])
-        fww = np.delete(fww, waverange - interprange[0])
-        Pww_turb = Pww_turb[fww > 0]
-        fww = fww[fww > 0]
+        # Wave spectra = excess over the turbulent fit within the wave band (clipped at 0)
+        Puu_wave = np.clip(P_uu[waverange] - fits["uu"][waverange], 0, None)
+        Pvv_wave = np.clip(P_vv[waverange] - fits["vv"][waverange], 0, None)
+        Pww_wave = np.clip(P_ww[waverange] - fits["ww"][waverange], 0, None)
 
-        # Linear interpolation over turbulent spectra
-        F = np.log(fuu)
-        P = np.log(Puu_turb)
-        Puu = np.polyfit(F, P, deg=1)
-        Puuhat = np.exp(np.polyval(Puu, np.log(f)))
-
-        F = np.log(fvv)
-        P = np.log(Pvv_turb)
-        Pvv = np.polyfit(F, P, deg=1)
-        Pvvhat = np.exp(np.polyval(Pvv, np.log(f)))
-
-        F = np.log(fww)
-        P = np.log(Pww_turb)
-        Pww = np.polyfit(F, P, deg=1)
-        Pwwhat = np.exp(np.polyval(Pww, np.log(f)))
-
-        # Wave spectra strictly above the interpolation line
-        Puu_wave = P_uu[waverange] - Puuhat[waverange]
-        Puu_wave[Puu_wave < 0] = 0
-        Pvv_wave = P_vv[waverange] - Pvvhat[waverange]
-        Pvv_wave[Pvv_wave < 0] = 0
-        Pww_wave = P_ww[waverange] - Pwwhat[waverange]
-        Pww_wave[Pww_wave < 0] = 0
-
-        # Wave Fourier components
+        # Wave Fourier amplitudes
         Um_wave = np.sqrt(Puu_wave * df)
         Vm_wave = np.sqrt(Pvv_wave * df)
         Wm_wave = np.sqrt(Pww_wave * df)
 
-        # Wave reynolds stress
+        out["uu_wave"] = np.nansum(Puu_wave * df)
+        out["vv_wave"] = np.nansum(Pvv_wave * df)
+        out["ww_wave"] = np.nansum(Pww_wave * df)
         out["uw_wave"] = np.nansum(Um_wave * Wm_wave * np.cos(phase_uw[waverange]))
         out["uv_wave"] = np.nansum(Um_wave * Vm_wave * np.cos(phase_uv[waverange]))
         out["vw_wave"] = np.nansum(Vm_wave * Wm_wave * np.cos(phase_vw[waverange]))
 
-        out["uu_wave"] = np.nansum(Puu_wave * df)
-        out["vv_wave"] = np.nansum(Pvv_wave * df)
-        out["ww_wave"] = np.nansum(Pww_wave * df)
-
-        # Defining frequency range for full stress summation
+        # Full Reynolds stresses, then subtract wave contribution to get the turbulent part
         start_index, end_index = get_frequency_range(f, f_low, f_high)
-
-        # Full reynolds stresses
-        uu = np.nansum(np.real(P_uu[start_index:end_index]) * df)
-        uv = np.nansum(np.real(P_uv[start_index:end_index]) * df)
-        uw = np.nansum(np.real(P_uw[start_index:end_index]) * df)
-        vv = np.nansum(np.real(P_vv[start_index:end_index]) * df)
-        vw = np.nansum(np.real(P_vw[start_index:end_index]) * df)
-        ww = np.nansum(np.real(P_ww[start_index:end_index]) * df)
-
-        # Turbulent reynolds stresses
-        out["uu_turb"] = uu - out["uu_wave"]
-        out["vv_turb"] = vv - out["vv_wave"]
-        out["ww_turb"] = ww - out["ww_wave"]
-        out["uw_turb"] = uw - out["uw_wave"]
-        out["uv_turb"] = uv - out["uv_wave"]
-        out["vw_turb"] = vw - out["vw_wave"]
+        totals = {
+            "uu": np.nansum(np.real(P_uu[start_index:end_index]) * df),
+            "vv": np.nansum(np.real(P_vv[start_index:end_index]) * df),
+            "ww": np.nansum(np.real(P_ww[start_index:end_index]) * df),
+            "uw": np.nansum(np.real(P_uw[start_index:end_index]) * df),
+            "vw": np.nansum(np.real(P_vw[start_index:end_index]) * df),
+            "uv": np.nansum(np.real(P_uv[start_index:end_index]) * df),
+        }
+        for key, total in totals.items():
+            out[f"{key}_turb"] = total - out[f"{key}_wave"]
 
         return out
 
@@ -1003,6 +976,85 @@ class ADV(BaseInstrument):
 
         return out
 
+    @staticmethod
+    def _calcJii(sig1, sig2, sig3, u1, u2):
+        """
+        Calculates J11, J22, and J33, the diagonal elements of equation A.13 in Gerbi et al. (2009)
+        """
+        # Initializing coordinate arrays
+        r_len = 120
+        r = np.logspace(-2, 4, r_len)
+        R = 1 / r
+        theta = np.linspace(0, np.pi, r_len // 4)
+        phi = np.linspace(0, 2 * np.pi, r_len // 4)
+
+        # Precompute trigonometric functions and associated variables
+        cos_theta = np.cos(theta)  # (Ntheta,)
+        sin_theta = np.sin(theta)  # (Ntheta,)
+        cos_phi = np.cos(phi)  # (Nphi,)
+        sin_phi = np.sin(phi)  # (Nphi,)
+
+        # Want shape (Ntheta, Nphi)
+        G_squared = (sin_theta**2)[:, np.newaxis] * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[np.newaxis, :] + (
+            cos_theta**2
+        )[:, np.newaxis] / sig3**2
+
+        # Also shape (Ntheta, Nphi)
+        P11 = (1 / G_squared) * (
+            (sin_theta**2)[:, np.newaxis] * (sin_phi**2)[np.newaxis, :] / sig2**2
+            + (cos_theta**2)[:, np.newaxis] / sig3**2
+        )
+        P22 = (1 / G_squared) * (
+            (sin_theta**2)[:, np.newaxis] * (cos_phi**2)[np.newaxis, :] / sig1**2
+            + (cos_theta**2)[:, np.newaxis] / sig3**2
+        )
+        P33 = ((sin_theta**2)[:, np.newaxis] / G_squared) * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[np.newaxis, :]
+        P11_3 = P11[..., np.newaxis]
+        P22_3 = P22[..., np.newaxis]
+        P33_3 = P33[..., np.newaxis]
+
+        # Defining k_squared (Ntheta, Nphi, Nr)
+        R_3 = R[np.newaxis, np.newaxis, :]
+        G_squared_3 = G_squared[..., np.newaxis]
+
+        # (Ntheta, Nphi)
+        R0 = (u1 / sig1) * sin_theta[:, np.newaxis] * cos_phi[np.newaxis, :] + (u2 / sig2) * sin_theta[
+            :, np.newaxis
+        ] * sin_phi[np.newaxis, :]
+        R0_3 = R0[..., np.newaxis]  # (Ntheta, Nphi, 1)
+
+        # Innermost integral
+        I3 = R_3 ** (2 / 3) * np.exp(-((R0_3 - R_3) ** 2) / 2)
+
+        # Middle integral
+        # Gets a negative sign so that we go from R = 0 -> infinity rather than R = infinity -> zero
+        I2_11 = -np.trapezoid(
+            G_squared_3 ** (-11 / 6) * sin_theta[:, np.newaxis, np.newaxis] * P11_3 * I3,
+            R,
+            axis=2,
+        )
+        I2_22 = -np.trapezoid(
+            G_squared_3 ** (-11 / 6) * sin_theta[:, np.newaxis, np.newaxis] * P22_3 * I3,
+            R,
+            axis=2,
+        )
+        I2_33 = -np.trapezoid(
+            G_squared_3 ** (-11 / 6) * sin_theta[:, np.newaxis, np.newaxis] * P33_3 * I3,
+            R,
+            axis=2,
+        )
+
+        # Outer integral
+        I1_11 = np.trapezoid(I2_11, phi, axis=-1)
+        I1_22 = np.trapezoid(I2_22, phi, axis=-1)
+        I1_33 = np.trapezoid(I2_33, phi, axis=-1)
+
+        J11 = (1 / (2 * (2 * np.pi) ** (3 / 2))) * (1 / (sig1 * sig2 * sig3)) * np.trapezoid(I1_11, theta, axis=-1)
+        J22 = (1 / (2 * (2 * np.pi) ** (3 / 2))) * (1 / (sig1 * sig2 * sig3)) * np.trapezoid(I1_22, theta, axis=-1)
+        J33 = (1 / (2 * (2 * np.pi) ** (3 / 2))) * (1 / (sig1 * sig2 * sig3)) * np.trapezoid(I1_33, theta, axis=-1)
+
+        return J11, J22, J33
+
     def dissipation(
         self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs
     ) -> Dict[str, np.ndarray]:
@@ -1041,62 +1093,6 @@ class ADV(BaseInstrument):
             39(5), 1077-1096.
         """
 
-        def calcJ33(sig1, sig2, sig3, u1, u2):
-            """
-            Calculates J33, the output of equation A.13
-            """
-            # Initializing coordinate arrays
-            r_len = 120
-            r = np.logspace(-2, 4, r_len)
-            R = 1 / r
-            theta = np.linspace(0, np.pi, r_len // 4)
-            phi = np.linspace(0, 2 * np.pi, r_len // 4)
-
-            # Precompute trigonometric functions and associated variables
-            cos_theta = np.cos(theta)  # (Ntheta,)
-            sin_theta = np.sin(theta)  # (Ntheta,)
-            cos_phi = np.cos(phi)  # (Nphi,)
-            sin_phi = np.sin(phi)  # (Nphi,)
-
-            # Want shape (Ntheta, Nphi)
-            G_squared = (sin_theta**2)[:, np.newaxis] * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[np.newaxis, :] + (
-                cos_theta**2
-            )[:, np.newaxis] / sig3**2
-
-            # Also shape (Ntheta, Nphi)
-            P33 = ((sin_theta**2)[:, np.newaxis] / G_squared) * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[
-                np.newaxis, :
-            ]
-            P33_3 = P33[..., np.newaxis]
-
-            # Defining k_squared (Ntheta, Nphi, Nr)
-            R_3 = R[np.newaxis, np.newaxis, :]
-            G_squared_3 = G_squared[..., np.newaxis]
-
-            # (Ntheta, Nphi)
-            R0 = (u1 / sig1) * sin_theta[:, np.newaxis] * cos_phi[np.newaxis, :] + (u2 / sig2) * sin_theta[
-                :, np.newaxis
-            ] * sin_phi[np.newaxis, :]
-            R0_3 = R0[..., np.newaxis]  # (Ntheta, Nphi, 1)
-
-            # Innermost integral
-            I3 = R_3 ** (2 / 3) * np.exp(-((R0_3 - R_3) ** 2) / 2)
-
-            # Middle integral
-            # Gets a negative sign so that we go from R = 0 -> infinity rather than R = infinity -> zero
-            I2 = -np.trapezoid(
-                G_squared_3 ** (-11 / 6) * sin_theta[:, np.newaxis, np.newaxis] * P33_3 * I3,
-                R,
-                axis=2,
-            )
-
-            # Outer integral
-            I1 = np.trapezoid(I2, phi, axis=-1)
-
-            J33 = (1 / (2 * (2 * np.pi) ** (3 / 2))) * (1 / (sig1 * sig2 * sig3)) * np.trapezoid(I1, theta, axis=-1)
-
-            return J33
-
         def spectral_fit(u, v, w, f_low, f_high, **kwargs):
             """
             Carries out the spectral curve fit
@@ -1122,7 +1118,7 @@ class ADV(BaseInstrument):
             u1 = np.nanmean(u)
             u2 = np.nanmean(v)
 
-            J33 = calcJ33(sig1, sig2, sig3, u1, u2)
+            _, _, J33 = self._calcJii(sig1, sig2, sig3, u1, u2)
 
             # linear regression
             X = J33 * alpha * (omega_inertial ** (-5 / 3))

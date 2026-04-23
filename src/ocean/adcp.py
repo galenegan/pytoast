@@ -105,7 +105,16 @@ class ADCP(BaseInstrument):
         self.manufacturer = manufacturer
         files_list = files if isinstance(files, list) else [files]
         ADCP.validate_inputs(
-            files_list, name_map, fs, z, data_keys, source_coords, orientation, beam_angle, manufacturer
+            files_list,
+            name_map,
+            deployment_type,
+            fs,
+            z,
+            data_keys,
+            source_coords,
+            orientation,
+            beam_angle,
+            manufacturer,
         )
         super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
 
@@ -113,6 +122,7 @@ class ADCP(BaseInstrument):
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
+        deployment_type: str = "moored",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -123,7 +133,7 @@ class ADCP(BaseInstrument):
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]
