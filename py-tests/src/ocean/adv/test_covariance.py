@@ -4,7 +4,7 @@ import numpy.testing as npt
 from pathlib import Path
 
 from ocean.adv import ADV
-from .synth_utils import generate_wave_turb_burst
+from testhelpers.synth_utils import generate_wave_turb_burst
 
 
 # def _generate_synthetic_data():

@@ -2,11 +2,11 @@ import numpy as np
 import scipy.signal as sig
 from scipy.stats import linregress
 from typing import Optional, Union, List, Dict, Any
-from src.utils.despike_utils import threshold, goring_nikora, recursive_gaussian
-from src.utils.spectral_utils import psd, csd, get_frequency_range
-from src.utils.base_instrument import BaseInstrument
-from src.utils.constants import GRAVITATIONAL_ACCELERATION as g
-from src.utils.rotate_utils import apply_flow_rotation
+from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
+from utils.spectral_utils import psd, csd, get_frequency_range
+from utils.base_instrument import BaseInstrument
+from utils.constants import GRAVITATIONAL_ACCELERATION as g
+from utils.rotate_utils import apply_flow_rotation
 
 
 class Sonic(BaseInstrument):
@@ -227,7 +227,7 @@ class Sonic(BaseInstrument):
             c1 = 0.53
             u_prime = sig.detrend(u, type="linear")
             u_bar = np.nanmean(u)
-            f, S = psd(u_prime, fs=self.fs, onesided=False, **kwargs)
+            f, S = psd(u_prime, fs=self.fs, onesided=True, **kwargs)
 
             if henjes_correction:
                 fs = self.fs
@@ -311,12 +311,12 @@ class Sonic(BaseInstrument):
         out = {}
         n_heights = self.n_heights
         if method == "cov":
-            u_bar = np.mean(burst_data["u"], axis=1, keepdims=True)
-            v_bar = np.mean(burst_data["v"], axis=1, keepdims=True)
-            w_bar = np.mean(burst_data["w"], axis=1, keepdims=True)
-            u_prime = burst_data["u"] - u_bar
-            v_prime = burst_data["v"] - v_bar
-            w_prime = burst_data["w"] - w_bar
+            u_bar = np.mean(burst_data["u1"], axis=1, keepdims=True)
+            v_bar = np.mean(burst_data["u2"], axis=1, keepdims=True)
+            w_bar = np.mean(burst_data["u3"], axis=1, keepdims=True)
+            u_prime = burst_data["u1"] - u_bar
+            v_prime = burst_data["u2"] - v_bar
+            w_prime = burst_data["u3"] - w_bar
 
             out["uu"] = np.mean(u_prime**2, axis=1)
             out["vv"] = np.mean(v_prime**2, axis=1)
@@ -334,9 +334,9 @@ class Sonic(BaseInstrument):
             out["uv"] = np.empty((n_heights,))
 
             for height_idx in range(n_heights):
-                u = burst_data["u"][height_idx, :]
-                v = burst_data["v"][height_idx, :]
-                w = burst_data["w"][height_idx, :]
+                u = burst_data["u1"][height_idx, :]
+                v = burst_data["u2"][height_idx, :]
+                w = burst_data["u3"][height_idx, :]
 
                 # Power spectral densities
                 f, S_uu = psd(u, fs=self.fs, **kwargs)

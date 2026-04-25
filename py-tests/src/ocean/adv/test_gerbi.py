@@ -4,7 +4,7 @@ import numpy.testing as npt
 from scipy.special import gamma
 
 from ocean.adv import ADV
-from .synth_utils import generate_wave_turb_burst
+from testhelpers.synth_utils import generate_wave_turb_burst
 
 
 def _make_adv(fs, n_heights=1):

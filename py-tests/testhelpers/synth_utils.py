@@ -82,12 +82,12 @@ def generate_wave_turb_burst(
         sigma_uw_out = sigma_uw
     else:
         if u_d_mean <= 0:
-            raise ValueError("u_d_mean must be > 0 when epsilon is provided (Taylor hypothesis)")
+            raise ValueError("u_d_mean must be > 0 when epsilon is provided (Taylor frozen turbulence)")
         alpha = 1.5
         f_bin = np.fft.fftfreq(N, d=1.0 / fs)
         omega_abs = np.abs(2 * np.pi * f_bin)
-        coef_uu = (9.0 / 55.0) * alpha * epsilon ** (2 / 3) / u_d_mean ** (2 / 3) * 2 * np.pi
-        coef_ww = (12.0 / 55.0) * alpha * epsilon ** (2 / 3) / u_d_mean ** (2 / 3) * 2 * np.pi
+        coef_uu = (9.0 / 55.0) * alpha * epsilon ** (2 / 3) * u_d_mean ** (2 / 3) * 2 * np.pi
+        coef_ww = (12.0 / 55.0) * alpha * epsilon ** (2 / 3) * u_d_mean ** (2 / 3) * 2 * np.pi
         P_uu_f = np.zeros_like(omega_abs)
         P_ww_f = np.zeros_like(omega_abs)
         valid = omega_abs >= 2 * np.pi * f_cut_low
