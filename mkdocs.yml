@@ -1,0 +1,15 @@
+site_name: PyTOAST Docs
+nav:
+  - Home: index.md
+  - About: about.md
+  - Ocean:
+      - ADV: ocean/adv.md
+theme:
+  name: readthedocs
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
