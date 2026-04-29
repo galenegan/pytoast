@@ -3,9 +3,25 @@ nav:
   - Home: index.md
   - About: about.md
   - Ocean:
-      - ADV: ocean/adv.md
+    - ADV: ocean/adv.md
+    - ADCP: ocean/adcp.md
+    - CTD: ocean/ctd.md
+  - Atmosphere:
+      - Sonic: atmosphere/sonic.md
+      - Met: atmosphere/met.md
+  - Boundaries:
+      - COARE: boundaries/coare.md
+      - BBL: boundaries/bbl.md
+  - Utilities:
+      - utils/air_thermo.md
+      - utils/sea_thermo.md
+      - utils/base_instrument.md
+      - utils/despike_utils.md
+      - utils/rotate_utils.md
+      - utils/spectral_utils.md
+      - utils/wave_utils.md
 theme:
-  name: readthedocs
+  name: material
 plugins:
   - search
   - mkdocstrings:
