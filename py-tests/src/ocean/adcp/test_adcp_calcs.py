@@ -95,15 +95,12 @@ def test_5beam_method_recovers_stresses():
     npt.assert_allclose(out["ww"], truth["ww"], rtol=0.05)
     npt.assert_allclose(out["uw"], truth["uw"], rtol=0.1)
 
+
 def test_ogive_method_recovers_stresses():
     z = np.linspace(0.5, 5.0, 8)
     u, v, w, truth = generate_profile_burst(fs=4, duration_s=1800, z=z, u_star=0.05, seed=0)
     adcp = make_adcp(fs=4, z=z, num_beams=5)
-    out = ADCP.covariance(
-        adcp,
-        _xyz_burst(u, v, w),
-        method="ogive_fit"
-    )
+    out = ADCP.covariance(adcp, _xyz_burst(u, v, w), method="ogive_fit")
     npt.assert_allclose(out["uw"], truth["uw"], rtol=0.1)
 
 

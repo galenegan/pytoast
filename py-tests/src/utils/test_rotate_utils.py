@@ -8,11 +8,7 @@ from utils.rotate_utils import (
     coord_transform_4_beam_rdi,
 )
 
-from testhelpers.rotate_utils import(
-    nortek_3beam_T,
-    nortek_4beam_T,
-    rdi_4beam_T
-)
+from testhelpers.rotate_utils import nortek_3beam_T, nortek_4beam_T, rdi_4beam_T
 
 ####################
 # Shared constants

@@ -1089,6 +1089,7 @@ class ADV(BaseInstrument):
             turbulence in the ocean surface boundary layer: Energetics and transport. Journal of Physical Oceanography,
             39(5), 1077-1096.
         """
+
         def spectral_fit(u, v, w, f_low, f_high, **kwargs):
             """Carries out the spectral curve fit."""
             if np.all(np.isnan(u)) or np.all(np.isnan(v)) or np.all(np.isnan(w)):

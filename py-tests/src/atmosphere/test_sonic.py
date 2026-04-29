@@ -50,6 +50,7 @@ class TestCovariance:
         tke_calc = Sonic.tke(sonic, burst_data)
         npt.assert_allclose(tke_truth, tke_calc, rtol=1e-3)
 
+
 class TestDissipation:
     def test_dissipation_close_to_theory(self):
         fs = 32
@@ -68,5 +69,5 @@ class TestDissipation:
         eps_calc = Sonic.dissipation(sonic, burst_data, f_low=2, f_high=10, henjes_correction=False)
 
         # Accounting for different Kolmogorov constants in the synthetic spectra vs Edson method
-        eps_calc *= (0.53 / (1.5 * 18/55))
+        eps_calc *= 0.53 / (1.5 * 18 / 55)
         npt.assert_allclose(eps_truth, eps_calc, rtol=1e-1)

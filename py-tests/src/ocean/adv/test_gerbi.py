@@ -13,7 +13,6 @@ def _make_adv(fs, n_heights=1):
     return types.SimpleNamespace(fs=fs, n_heights=n_heights)
 
 
-
 def test_pure_wave():
     sigma0 = 0.1
     omega = 2 * np.pi / 8
@@ -53,5 +52,3 @@ def test_dissipation_recovers_prescribed_eps():
     out = ADV.dissipation(adv, burst, f_low=0.3, f_high=3.0)
     npt.assert_allclose(out["eps"][0], eps_true, rtol=0.1)
     assert out["quality_flag"][0] == 1
-
-

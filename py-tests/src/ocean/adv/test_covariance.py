@@ -6,6 +6,7 @@ from ocean.adv import ADV
 from testhelpers.synth_utils import generate_wave_turb_burst
 from testhelpers.stub_utils import make_adv
 
+
 def test_spectral_matches_direct():
     """description."""
     fs = 32
@@ -29,6 +30,7 @@ def test_spectral_matches_direct():
     for key in result_direct.keys():
         npt.assert_allclose(result_direct[key], result_spectral[key], rtol=1e-10)
 
+
 def test_spectral_close_to_phase():
     """description."""
     fs = 32
@@ -47,9 +49,10 @@ def test_spectral_close_to_phase():
     burst_data = {"u1": u.reshape(1, -1), "u2": v.reshape(1, -1), "u3": w.reshape(1, -1), "coords": "xyz"}
     result_spectral = ADV.covariance(adv, burst_data, method="spectral_integral")
     result_phase = ADV.phase_decomposition(adv, u, v, w, f_wave_low=0.5, f_wave_high=0.5001)
-    for key in result_spectral.keys():#["uu", "vv", "ww"]:
+    for key in result_spectral.keys():  # ["uu", "vv", "ww"]:
         # Results should be close, though the wave decomposition introduces noise
         npt.assert_allclose(result_spectral[key], result_phase[f"{key}_turb"], atol=5e-4)
+
 
 def test_benilov_recovers_prescribed_stresses():
     """Validate benilov_decomposition against an analytically known burst: a
@@ -61,6 +64,7 @@ def test_benilov_recovers_prescribed_stresses():
     result = ADV.benilov_decomposition(adv, u, v, w, p, mab=1.0, rho=1020.0, num_windows=32)
     for key, expected in truth.items():
         npt.assert_allclose(result[key], expected, rtol=0.1, atol=5e-4, err_msg=key)
+
 
 def test_phase_recovers_prescribed_stresses():
     """Validate phase_decomposition against an analytically known burst (see
