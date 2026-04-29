@@ -1103,13 +1103,14 @@ class ADV(BaseInstrument):
             alpha = 1.5
 
             w_prime = sig.detrend(w, type="linear")
-            fw, Pw = psd(w_prime, self.fs, onesided=False, **kwargs)
+            fw, Pw_f = psd(w_prime, self.fs, onesided=False, **kwargs)
 
             omega = 2 * np.pi * fw
+            Pw_omega = Pw_f / (2 * np.pi)
 
             inertial_indices = (omega >= omega_range[0]) & (omega <= omega_range[1])
             omega_inertial = omega[inertial_indices]
-            Pw_inertial = (Pw[inertial_indices]) / (2 * np.pi)
+            Pw_inertial = Pw_omega[inertial_indices]
 
             sig1 = np.nanstd(u)
             sig2 = np.nanstd(v)
