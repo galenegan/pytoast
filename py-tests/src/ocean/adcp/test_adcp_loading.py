@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from ocean.adcp import ADCP
+from testhelpers.rotate_utils import nortek_4beam_T
 
 
 NAME_MAP = {
@@ -21,14 +22,7 @@ NAME_MAP = {
     "roll": "Burst_Roll",
 }
 
-T_NORTEK = np.array(
-    [
-        [1.1831, 0.0, 0.5518, 0.0],
-        [0.0, -1.1831, 0.0, 0.5518],
-        [-1.1831, 0.0, 0.5518, 0.0],
-        [0.0, 1.1831, 0.0, 0.5518],
-    ]
-)
+T_NORTEK = nortek_4beam_T()
 
 N_SAMPLES = 4096
 N_HEIGHTS = 32
@@ -37,7 +31,7 @@ N_HEIGHTS = 32
 def _testdata_glob():
     test_dir = os.path.dirname(__file__)
     files = sorted(glob.glob(os.path.join(test_dir, "testdata", "BBASIT_0078_burst*.mat")))
-    assert files, f"No truncated BBASIT_0078_burst*.mat fixtures in {test_dir}/testdata/ — run _truncate_source.py"
+    assert files
     return files
 
 
@@ -93,7 +87,7 @@ def test_load_burst_with_despike():
 
     assert burst["u1"].shape == (1, 1024)
     assert np.all(np.isfinite(burst["u1"]))
-    # Pre-despike the synthetic fixture has spikes of magnitude 5.0 at known indices;
+    # Pre-despike the synthetic data has spikes of magnitude 5.0 at known indices;
     # after despiking the max magnitude should be well below the spike level.
     assert np.max(np.abs(burst["u1"])) < 1.0
 
@@ -107,7 +101,7 @@ def test_beam_to_xyz_transform():
     for key in ["u1", "u2", "u3", "u4"]:
         assert burst[key].shape == (N_HEIGHTS, N_SAMPLES)
     # The xyz vertical channel (u3) carries less variance than the streamwise
-    # horizontal (u1) for this upward-looking deployment.
+    # horizontal (u1) for this deployment.
     u3_var = np.var(burst["u3"], axis=1).mean()
     u1_var = np.var(burst["u1"], axis=1).mean()
     assert u3_var < u1_var

@@ -4,9 +4,7 @@ and turbulence ground truth, used by the ADV, Sonic, and ADCP test modules."""
 import numpy as np
 
 from utils.wave_utils import get_wavenumber
-from utils.constants import GRAVITATIONAL_ACCELERATION as g
-
-KAPPA = 0.4
+from utils.constants import GRAVITATIONAL_ACCELERATION as g, VON_KARMAN as KAPPA
 
 
 def generate_wave_turb_burst(
@@ -144,7 +142,7 @@ def generate_profile_burst(
     u_star=0.02,
     z0=1.0e-4,
     epsilon=1.0e-5,
-    U_const=0.5,
+    U=0.5,
     sigma_u_over_u_star=2.4,
     sigma_v_over_u_star=1.9,
     sigma_w_over_u_star=1.25,
@@ -153,20 +151,20 @@ def generate_profile_burst(
     seed=0,
 ):
     """
-    Synthesize a profile burst in xyz coordinates with analytically known per-height truth.
+    Synthesize a profile burst in xyz coordinates with known analytical statistics per-height.
 
     profile_type="wall_bounded":
         White-noise turbulence with a depth-independent prescribed Reynolds stress
-        tensor (in wall units) and a log-layer mean U(z) = (u_star/kappa) log(z/z0).
+        tensor and a log-layer mean U(z) = (u_star/kappa) log(z/z0).
         The truth `epsilon(z)` follows the log-layer balance u_star^3 / (kappa * z), but
         the synthesized turbulence is *spectrally white* (no Kolmogorov shape) and is
         intended for covariance/shear tests, not spectral dissipation fits.
 
     profile_type="isotropic":
-        Kolmogorov-cascading isotropic turbulence with constant epsilon at every height,
+        Kolmogorov isotropic turbulence with constant epsilon at every height,
         synthesized in frequency space under Taylor's frozen-turbulence hypothesis with
-        mean U_const along +x. Mirrors the inner block of generate_wave_turb_burst.
-        Use this for spectral dissipation tests. The truth Reynolds stress tensor is
+        mean U along +x. Mirrors the inner block of generate_wave_turb_burst.
+        Use this for spectral dissipation tests. The true Reynolds stress tensor is
         diagonal (uw=0).
 
     Parameters
@@ -182,14 +180,14 @@ def generate_profile_burst(
         Friction velocity and roughness length for the wall_bounded mean profile.
     epsilon : float
         Dissipation rate for the isotropic case (m^2/s^3).
-    U_const : float
-        Mean flow used for the isotropic Taylor hypothesis (m/s).
+    U : float
+        Mean flow used for Taylor frozen turbulence (m/s).
     sigma_*_over_u_star : float
-        Townsend constants used to scale the diagonal Reynolds stress components by u_star^2.
+        Normalized diagonal Reynolds stress components
     uw_over_u_star_sq : float
         Reynolds stress <u'w'> in units of u_star^2 (typically -1).
     f_cut_low : float
-        Low-frequency cutoff for the isotropic synthesis (Hz).
+        Low-frequency cutoff for the spectral integration (Hz).
     seed : int
         RNG seed.
 
@@ -243,13 +241,13 @@ def generate_profile_burst(
         return u1, u2, u3, truth
 
     if profile_type == "isotropic":
-        if U_const <= 0:
-            raise ValueError("U_const must be > 0 for isotropic Taylor synthesis")
+        if U <= 0:
+            raise ValueError("U must be > 0 for isotropic Taylor synthesis")
         alpha = 1.5
         f_bin = np.fft.fftfreq(N, d=1.0 / fs)
         omega_abs = np.abs(2 * np.pi * f_bin)
-        coef_uu = (9.0 / 55.0) * alpha * epsilon ** (2 / 3) * U_const ** (2 / 3) * 2 * np.pi
-        coef_ww = (12.0 / 55.0) * alpha * epsilon ** (2 / 3) * U_const ** (2 / 3) * 2 * np.pi
+        coef_uu = (9.0 / 55.0) * alpha * epsilon ** (2 / 3) * U ** (2 / 3) * 2 * np.pi
+        coef_ww = (12.0 / 55.0) * alpha * epsilon ** (2 / 3) * U ** (2 / 3) * 2 * np.pi
         P_uu_f = np.zeros_like(omega_abs)
         P_ww_f = np.zeros_like(omega_abs)
         valid = omega_abs >= 2 * np.pi * f_cut_low
@@ -271,7 +269,7 @@ def generate_profile_burst(
         u2 = np.empty((nz, N))
         u3 = np.empty((nz, N))
         for ii in range(nz):
-            u1[ii, :] = U_const + _synth(P_uu_f)
+            u1[ii, :] = U + _synth(P_uu_f)
             u2[ii, :] = _synth(P_ww_f)
             u3[ii, :] = _synth(P_ww_f)
 
@@ -279,7 +277,7 @@ def generate_profile_burst(
         sigma_uu_out = float(np.sum(P_uu_f) * df)
         sigma_ww_out = float(np.sum(P_ww_f) * df)
         truth = {
-            "U": np.full(nz, U_const),
+            "U": np.full(nz, U),
             "uu": np.full(nz, sigma_uu_out),
             "vv": np.full(nz, sigma_ww_out),
             "ww": np.full(nz, sigma_ww_out),
@@ -289,55 +287,3 @@ def generate_profile_burst(
         return u1, u2, u3, truth
 
     raise ValueError(f"Unknown profile_type {profile_type!r}")
-
-
-def xyz_to_beam_direct(u_xyz, v_xyz, w_xyz, beam_angle=25.0, manufacturer="nortek"):
-    """
-    Project per-height xyz velocity profiles onto ADCP beam radials using the standard
-    geometric projection that underlies the Stacey / Guerra-Thomson / McMillan formulas
-    in src/ocean/adcp.py:
-
-        nortek pairing (uw <- u1, u3) and (vw <- u2, u4):
-            b1 = +sin(theta) u + cos(theta) w
-            b3 = -sin(theta) u + cos(theta) w
-            b2 = +sin(theta) v + cos(theta) w
-            b4 = -sin(theta) v + cos(theta) w
-
-        rdi pairing (uw <- u1, u2) and (vw <- u3, u4):
-            b1 = +sin(theta) u + cos(theta) w
-            b2 = -sin(theta) u + cos(theta) w
-            b3 = +sin(theta) v + cos(theta) w
-            b4 = -sin(theta) v + cos(theta) w
-
-    The 5th vertical beam directly measures the vertical component: b5 = w (sign does
-    not affect any variance- or PSD-based recovery).
-
-    Parameters
-    ----------
-    u_xyz, v_xyz, w_xyz : np.ndarray, shape (n_heights, n_samples)
-        Velocity components in xyz coords (u along streamwise mean, v transverse, w vertical).
-    beam_angle : float
-        Beam angle from vertical, in degrees.
-    manufacturer : {"nortek", "rdi"}
-        Determines the beam-pair convention.
-
-    Returns
-    -------
-    dict with keys "u1", "u2", "u3", "u4", "u5", each of shape (n_heights, n_samples).
-    """
-    theta = np.deg2rad(beam_angle)
-    s, c = np.sin(theta), np.cos(theta)
-    if manufacturer == "nortek":
-        b1 = s * u_xyz + c * w_xyz
-        b3 = -s * u_xyz + c * w_xyz
-        b2 = s * v_xyz + c * w_xyz
-        b4 = -s * v_xyz + c * w_xyz
-    elif manufacturer == "rdi":
-        b1 = s * u_xyz + c * w_xyz
-        b2 = -s * u_xyz + c * w_xyz
-        b3 = s * v_xyz + c * w_xyz
-        b4 = -s * v_xyz + c * w_xyz
-    else:
-        raise ValueError(f"Unknown manufacturer {manufacturer!r}")
-
-    return {"u1": b1, "u2": b2, "u3": b3, "u4": b4, "u5": w_xyz.copy()}

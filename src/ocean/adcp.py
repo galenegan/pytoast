@@ -632,7 +632,7 @@ class ADCP(BaseInstrument):
 
             # Assuming u_1^3 in the paper is a typo
             out["vv"] = (-1 / denom) * (
-                -2 * sin_theta**4 * cos_theta**2 * (u4_var + u1_var - 2 * cos_theta**2 * u5_var)
+                -2 * sin_theta**4 * cos_theta**2 * (u4_var + u3_var - 2 * cos_theta**2 * u5_var)
                 - 2 * sin_theta**4 * cos_theta**2 * phi_3 * (u2_var - u1_var)
                 + 2 * sin_theta**3 * cos_theta**3 * phi_3 * (u2_var - u1_var)
                 - 2 * sin_theta**5 * cos_theta * phi_2 * (u4_var - u3_var)

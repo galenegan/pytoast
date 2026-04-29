@@ -11,7 +11,7 @@ def _xyz_burst(u, v, w):
     """
     Build a burst dict in xyz coords with 4 channels [u, v, z1, z2] (z1 = z2 = w),
     plus u5 = w. ADCP.covariance/dissipation deepcopy this when coords != "beam"
-    before applying inv(T) to get beam radials, so the method's standard-projection
+    before applying inv(T) to get beam coordinates, so the method's standard-projection
     geometry is preserved.
     """
     return {"u1": u, "u2": v, "u3": w, "u4": w.copy(), "u5": w.copy(), "coords": "xyz"}
@@ -23,8 +23,6 @@ def _xyz_burst(u, v, w):
 
 
 def test_shear_recovers_log_profile():
-    # Geometric spacing keeps dz/z roughly constant so np.gradient's truncation error
-    # (~dz^2 * d^3u/dz^3) stays bounded across the profile.
     z = np.geomspace(0.5, 5.0, 16)
     u_star = 0.05
     u, v, w, truth = generate_profile_burst(fs=4, duration_s=1800, z=z, u_star=u_star, seed=0)
@@ -36,7 +34,7 @@ def test_shear_recovers_log_profile():
     # Tolerance is set by two effects: (1) np.gradient(edge_order=2) truncation error,
     # which scales as dz^2 * |d^3u/dz^3|, and (2) sample-mean noise on u_bar(z) from
     # the finite-duration turbulence realization. Boundary bins are skipped for (1).
-    npt.assert_allclose(out["du1_dz"][2:-2], expected[2:-2], rtol=0.25)
+    npt.assert_allclose(out["du1_dz"][2:-2], expected[2:-2], rtol=0.15)
 
 
 def test_shear_in_beam_raises():
@@ -51,24 +49,24 @@ def test_shear_in_beam_raises():
 #############
 
 
-def test_covariance_variance_recovers_uw():
+def test_variance_method_recovers_uw():
     z = np.linspace(0.5, 5.0, 8)
     u, v, w, truth = generate_profile_burst(fs=4, duration_s=1800, z=z, u_star=0.05, seed=0)
     adcp = make_adcp(fs=4, z=z, num_beams=4)
     out = ADCP.covariance(adcp, _xyz_burst(u, v, w), method="variance")
 
-    npt.assert_allclose(out["uw"], truth["uw"], rtol=0.15)
+    npt.assert_allclose(out["uw"], truth["uw"], rtol=0.1)
     npt.assert_allclose(out["vw"], np.zeros_like(truth["uw"]), atol=2e-4)
 
 
-def test_covariance_variance_zero_for_isotropic():
+def test_variance_method_zero_for_isotropic():
     z = np.linspace(0.5, 2.5, 4)
     u, v, w, _ = generate_profile_burst(
         fs=8,
         duration_s=1200,
         z=z,
         profile_type="isotropic",
-        U_const=0.5,
+        U=0.5,
         epsilon=1e-5,
         seed=0,
     )
@@ -80,7 +78,7 @@ def test_covariance_variance_zero_for_isotropic():
     npt.assert_allclose(out["vw"], 0.0, atol=5e-3)
 
 
-def test_covariance_5beam_recovers_stresses():
+def test_5beam_method_recovers_stresses():
     z = np.linspace(0.5, 5.0, 8)
     u, v, w, truth = generate_profile_burst(fs=4, duration_s=1800, z=z, u_star=0.05, seed=0)
     adcp = make_adcp(fs=4, z=z, num_beams=5)
@@ -92,12 +90,21 @@ def test_covariance_5beam_recovers_stresses():
         roll=np.array([0.0]),
     )
 
-    npt.assert_allclose(out["uu"], truth["uu"], rtol=0.10)
-    npt.assert_allclose(out["ww"], truth["ww"], rtol=0.10)
-    npt.assert_allclose(out["uw"], truth["uw"], rtol=0.15)
-    # NOTE: out["vv"] is not asserted here because src/ocean/adcp.py:638 uses
-    # (u4_var + u1_var) instead of (u4_var + u3_var) in the Guerra-Thomson vv
-    # formula, which mixes the x-z and y-z beam pairs and does not reduce to <v'v'>.
+    npt.assert_allclose(out["uu"], truth["uu"], rtol=0.05)
+    npt.assert_allclose(out["vv"], truth["vv"], rtol=0.05)
+    npt.assert_allclose(out["ww"], truth["ww"], rtol=0.05)
+    npt.assert_allclose(out["uw"], truth["uw"], rtol=0.1)
+
+def test_ogive_method_recovers_stresses():
+    z = np.linspace(0.5, 5.0, 8)
+    u, v, w, truth = generate_profile_burst(fs=4, duration_s=1800, z=z, u_star=0.05, seed=0)
+    adcp = make_adcp(fs=4, z=z, num_beams=5)
+    out = ADCP.covariance(
+        adcp,
+        _xyz_burst(u, v, w),
+        method="ogive_fit"
+    )
+    npt.assert_allclose(out["uw"], truth["uw"], rtol=0.1)
 
 
 def test_covariance_invalid_method_raises():
@@ -128,13 +135,13 @@ def test_4beam_spectral_recovers_eps():
         duration_s=1800,
         z=z,
         profile_type="isotropic",
-        U_const=0.5,
+        U=0.5,
         epsilon=eps_truth,
         seed=0,
     )
     adcp = make_adcp(fs=16, z=z, num_beams=4)
     eps_out = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
-    npt.assert_allclose(eps_out, truth["epsilon"], rtol=0.15)
+    npt.assert_allclose(eps_out, truth["epsilon"], rtol=0.1)
 
 
 def test_5th_beam_spectral_recovers_eps():
@@ -145,13 +152,13 @@ def test_5th_beam_spectral_recovers_eps():
         duration_s=1800,
         z=z,
         profile_type="isotropic",
-        U_const=0.5,
+        U=0.5,
         epsilon=eps_truth,
         seed=0,
     )
     adcp = make_adcp(fs=16, z=z, num_beams=5)
     eps_out = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="5th_beam_spectral", f_min=1.0, f_max=4.0)
-    npt.assert_allclose(eps_out, truth["epsilon"], rtol=0.15)
+    npt.assert_allclose(eps_out, truth["epsilon"], rtol=0.1)
 
 
 def test_dissipation_invalid_method_raises():

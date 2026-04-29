@@ -8,38 +8,22 @@ from utils.rotate_utils import (
     coord_transform_4_beam_rdi,
 )
 
+from testhelpers.rotate_utils import(
+    nortek_3beam_T,
+    nortek_4beam_T,
+    rdi_4beam_T
+)
+
 ####################
 # Shared constants
 ####################
-
-# 3-beam T matrix from Nortek reference script
-T_3BEAM = np.array([[2896, 2896, 0], [-2896, 2896, 0], [-2896, -2896, 5792]], dtype=float) / 4096.0
-
-# Synthetic 4-beam Nortek T: x/y from opposing beam pairs, z1/z2 from each pair's vertical component
-_theta = np.deg2rad(25.0)
-_a = 1 / (2 * np.sin(_theta))
-_b = 1 / (4 * np.cos(_theta))
-T_4BEAM_NORTEK = np.array(
-    [
-        [_a, -_a, 0.0, 0.0],
-        [0.0, 0.0, -_a, _a],
-        [_b, _b, 0.0, 0.0],
-        [0.0, 0.0, _b, _b],
-    ]
-)
-
-# RDI default transformation matrix
-beam_angle_rad = np.deg2rad(25)
-a = 1 / (2 * np.sin(beam_angle_rad))
-b = 1 / (4 * np.cos(beam_angle_rad))
-c = 1  # convex transducer head
-d = a / np.sqrt(2)
-T_RDI = np.array([[c * a, -c * a, 0, 0], [0, 0, -c * a, c * a], [b, b, b, b], [d, d, -d, -d]])
-
 HEADING = 120.0
 PITCH = 5.0
 ROLL = -2.0
 N = 200
+T_3BEAM = nortek_3beam_T()
+T_4BEAM_NORTEK = nortek_4beam_T()
+T_4BEAM_RDI = rdi_4beam_T()
 
 
 ############
@@ -712,10 +696,10 @@ def test_rdi_forward_beam_to_xyz():
         coords_out="xyz",
     )
 
-    npt.assert_allclose(u1 * T_RDI[0, 0], r1, atol=1e-10)
-    npt.assert_allclose(u1 * T_RDI[1, 0], r2, atol=1e-10)
-    npt.assert_allclose(u1 * T_RDI[2, 0], r3, atol=1e-10)
-    npt.assert_allclose(u1 * T_RDI[3, 0], r4, atol=1e-10)
+    npt.assert_allclose(u1 * T_4BEAM_RDI[0, 0], r1, atol=1e-10)
+    npt.assert_allclose(u1 * T_4BEAM_RDI[1, 0], r2, atol=1e-10)
+    npt.assert_allclose(u1 * T_4BEAM_RDI[2, 0], r3, atol=1e-10)
+    npt.assert_allclose(u1 * T_4BEAM_RDI[3, 0], r4, atol=1e-10)
 
 
 def test_rdi_forward_xyz_to_enu():
@@ -735,7 +719,7 @@ def test_rdi_forward_xyz_to_enu():
         heading=0,
         pitch=0,
         roll=0,
-        transformation_matrix=T_RDI,
+        transformation_matrix=T_4BEAM_RDI,
         orientation="down",
         coords_in="xyz",
         coords_out="enu",
@@ -759,12 +743,11 @@ def test_rdi_forward_xyz_to_enu():
         heading=90,
         pitch=0,
         roll=0,
-        transformation_matrix=T_RDI,
+        transformation_matrix=T_4BEAM_RDI,
         orientation="up",
         coords_in="xyz",
         coords_out="enu",
     )
-    print("here")
     npt.assert_allclose(u1, r2, atol=1e-10)
     npt.assert_allclose(u2, r1, atol=1e-10)
     npt.assert_allclose(u3, -r3, atol=1e-10)
