@@ -8,8 +8,7 @@ def threshold(
     threshold_min: float = -3.0,
     threshold_max: float = 3.0,
 ) -> np.ndarray:
-    """
-    Threshold-based despiking
+    """Threshold-based despiking.
 
     Parameters
     ----------
@@ -24,7 +23,6 @@ def threshold(
     -------
     u_out : np.ndarray
         Velocity array with spikes removed and interpolated over
-
     """
     u_out = u.copy()
     bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
@@ -39,9 +37,8 @@ def goring_nikora(
     max_iter: int = 10,
     robust_statistics: bool = False,
 ) -> np.ndarray:
-    """
-    Implements the Goring & Nikora (2002) phase-space de-spiking algorithm,
-    returning modified velocity array
+    """Implements the Goring & Nikora (2002) phase-space de-spiking algorithm,
+    returning modified velocity array.
 
     Parameters
     ----------
@@ -70,11 +67,11 @@ def goring_nikora(
         engineering, 128(1), 117-126.
     Wahl, T. L. (2003). Discussion of "Despiking acoustic doppler velocimeter data" by
         Derek G. Goring and Vladimir I. Nikora. Journal of Hydraulic Engineering, 129(6), 484-487.
-
     """
 
     def flag_bad_indices(u: np.ndarray) -> np.ndarray:
-        """Flag spikes in a 2D array (n_heights, n_samples) using phase-space method."""
+        """Flag spikes in a 2D array (n_heights, n_samples) using phase-space
+        method."""
         # Gradients along time axis
         du = np.gradient(u, axis=1) / 2
         du2 = np.gradient(du, axis=1) / 2

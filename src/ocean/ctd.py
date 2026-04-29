@@ -8,9 +8,9 @@ Numeric: TypeAlias = float | int | np.ndarray
 
 
 class CTD(BaseInstrument):
-    """
-    Class for processing CTD (conductivity/temperature/depth) data. Contains
-    methods for loading data from source files, preprocessing, and calculating
+    """Class for processing CTD (conductivity/temperature/depth) data.
+
+    Contains methods for loading data from source files, preprocessing, and calculating
     thermodynamic quantities from CTD observations.
 
     The core functionality is a *very limited* port of the Gibbs SeaWater (GSW)
@@ -70,8 +70,7 @@ class CTD(BaseInstrument):
         z: Optional[Union[float, List[float]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
-        """
-        Initialize a CTD object.
+        """Initialize a CTD object.
 
         Parameters
         ----------
@@ -128,8 +127,7 @@ class CTD(BaseInstrument):
         BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
-        """
-        Enable preprocessing for all subsequent burst loads.
+        """Enable preprocessing for all subsequent burst loads.
 
         Parameters
         ----------
@@ -237,8 +235,7 @@ class CTD(BaseInstrument):
     ##############################################################################
 
     def specific_volume(self, sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-        """
-        Specific volume from the 75-term polynomial EOS (gsw_specvol.m).
+        """Specific volume from the 75-term polynomial EOS (gsw_specvol.m).
 
         Parameters
         ----------
@@ -257,8 +254,7 @@ class CTD(BaseInstrument):
         return sea_thermo.specific_volume(sa, ct, p)
 
     def density(self, sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-        """
-        In-situ density from the 75-term polynomial EOS (gsw_rho.m).
+        """In-situ density from the 75-term polynomial EOS (gsw_rho.m).
 
         Parameters
         ----------
@@ -277,9 +273,8 @@ class CTD(BaseInstrument):
         return sea_thermo.density(sa, ct, p)
 
     def alpha(self, sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-        """
-        Thermal expansion coefficient with respect to Conservative Temperature
-        from the 75-term polynomial EOS (gsw_alpha.m).
+        """Thermal expansion coefficient with respect to Conservative
+        Temperature from the 75-term polynomial EOS (gsw_alpha.m).
 
         Parameters
         ----------
@@ -298,8 +293,7 @@ class CTD(BaseInstrument):
         return sea_thermo.alpha(sa, ct, p)
 
     def beta(self, sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-        """
-        Haline contraction coefficient at constant Conservative Temperature
+        """Haline contraction coefficient at constant Conservative Temperature
         from the 75-term polynomial EOS (gsw_beta.m).
 
         Parameters
@@ -319,8 +313,8 @@ class CTD(BaseInstrument):
         return sea_thermo.beta(sa, ct, p)
 
     def sound_speed(self, sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-        """
-        Speed of sound in seawater from the 75-term polynomial EOS (gsw_sound_speed.m).
+        """Speed of sound in seawater from the 75-term polynomial EOS
+        (gsw_sound_speed.m).
 
         Parameters
         ----------
@@ -339,8 +333,7 @@ class CTD(BaseInstrument):
         return sea_thermo.sound_speed(sa, ct, p)
 
     def sigma0(self, sa: Numeric, ct: Numeric) -> Numeric:
-        """
-        Potential density anomaly referenced to 0 dbar from the 75-term EOS
+        """Potential density anomaly referenced to 0 dbar from the 75-term EOS
         (gsw_sigma0.m). Equal to potential density minus 1000 kg/m^3.
 
         Parameters
@@ -358,8 +351,8 @@ class CTD(BaseInstrument):
         return sea_thermo.sigma0(sa, ct)
 
     def freezing_temperature(self, sa: Numeric, p: Numeric) -> Numeric:
-        """
-        In-situ freezing temperature from a direct polynomial fit (gsw_t_freezing_poly.m).
+        """In-situ freezing temperature from a direct polynomial fit
+        (gsw_t_freezing_poly.m).
 
         Uses the 23-coefficient polynomial given in the comments of gsw_t_freezing_poly.m,
         which avoids calling CT_freezing and t_from_CT. Error is between -8e-4 K and
@@ -414,8 +407,7 @@ class CTD(BaseInstrument):
         return sea_thermo.heat_capacity(sa, t, p)
 
     def dynamic_viscosity(self, t: Numeric, sa: Numeric) -> Numeric:
-        """
-        Dynamic viscosity of seawater (Sharqawy et al., 2010).
+        """Dynamic viscosity of seawater (Sharqawy et al., 2010).
 
         Parameters
         ----------
@@ -432,8 +424,7 @@ class CTD(BaseInstrument):
         return sea_thermo.dynamic_viscosity(t, sa)
 
     def kinematic_viscosity(self, t: Numeric, sa: Numeric) -> Numeric:
-        """
-        Kinematic viscosity of seawater.
+        """Kinematic viscosity of seawater.
 
         Parameters
         ----------
@@ -450,23 +441,23 @@ class CTD(BaseInstrument):
         return sea_thermo.kinematic_viscosity(t, sa)
 
     def thermal_conductivity(self, sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
-        """
-        Thermal conductivity of seawater (Sharqawy et al., 2010, Eq. 14).
+        """Thermal conductivity of seawater (Sharqawy et al., 2010, Eq.
 
-        Parameters
-        ----------
-        sa : Numeric
-            Absolute Salinity (g/kg)
-        t : Numeric
-            In-situ temperature (deg C)
-        p : Numeric
-            Sea pressure (dbar)
+        14).
+                Parameters
+                ----------
+                sa : Numeric
+                    Absolute Salinity (g/kg)
+                t : Numeric
+                    In-situ temperature (deg C)
+                p : Numeric
+                    Sea pressure (dbar)
 
 
-        Returns
-        -------
-        Numeric
-            Thermal conductivity (W/(m K))
+                Returns
+                -------
+                Numeric
+                    Thermal conductivity (W/(m K))
         """
         return sea_thermo.thermal_conductivity(sa, t, p)
 
@@ -545,10 +536,9 @@ class CTD(BaseInstrument):
         return sea_thermo.pressure_from_depth(z, lat)
 
     def derive(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        """
-        Compute all thermodynamic quantities derivable from the variables present
-        in a burst dictionary, and return the burst dictionary augmented with
-        those results.
+        """Compute all thermodynamic quantities derivable from the variables
+        present in a burst dictionary, and return the burst dictionary
+        augmented with those results.
 
         Each quantity is computed only when all of its required inputs are
         available as keys in ``burst_data``. The method never raises for missing

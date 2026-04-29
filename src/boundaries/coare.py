@@ -31,9 +31,10 @@ SCHMIDT = 1.0
 
 # Private stability/profile functions
 def _psit_26(zeta: np.ndarray) -> np.ndarray:
-    """
-    Monin-Obukhov temperature/humidity profile correction function.
-    Matches ``psit_26`` in the COARE 3.6 reference code (Fairall et al. 2003).
+    """Monin-Obukhov temperature/humidity profile correction function.
+
+    Matches ``psit_26`` in the COARE 3.6 reference code (Fairall et al.
+    2003).
     """
     dzeta = np.minimum(50.0, 0.35 * zeta)
     # Stable branch (computed for all points; unstable points overwritten below)
@@ -55,10 +56,10 @@ def _psit_26(zeta: np.ndarray) -> np.ndarray:
 
 
 def _psiu_26(zeta: np.ndarray) -> np.ndarray:
-    """
-    Monin-Obukhov momentum profile correction function for COARE 3.6.
-    Stable branch coefficient a=0.7 (Edson et al. 2013).
-    Matches ``psiu_26`` in the reference code.
+    """Monin-Obukhov momentum profile correction function for COARE 3.6.
+
+    Stable branch coefficient a=0.7 (Edson et al. 2013). Matches
+    ``psiu_26`` in the reference code.
     """
     dzeta = np.minimum(50.0, 0.35 * zeta)
     with np.errstate(invalid="ignore"):
@@ -78,11 +79,11 @@ def _psiu_26(zeta: np.ndarray) -> np.ndarray:
 
 
 def _psiu_40(zeta: np.ndarray) -> np.ndarray:
-    """
-    Monin-Obukhov momentum profile correction for first-guess iteration.
+    """Monin-Obukhov momentum profile correction for first-guess iteration.
+
     Stable branch coefficient a=1.0 (COARE 4.0 style); unstable uses
-    different coefficients than _psiu_26.
-    Matches ``psiu_40`` in the reference code.
+    different coefficients than _psiu_26. Matches ``psiu_40`` in the
+    reference code.
     """
     dzeta = np.minimum(50.0, 0.35 * zeta)
     with np.errstate(invalid="ignore"):

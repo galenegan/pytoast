@@ -11,7 +11,8 @@ from utils.io_utils import results_to_dataset
 
 
 class BaseInstrument(ABC):
-    """Abstract base class containing data loading and parsing methods that are used across instruments"""
+    """Abstract base class containing data loading and parsing methods that are
+    used across instruments."""
 
     def __init__(
         self,
@@ -23,8 +24,7 @@ class BaseInstrument(ABC):
         data_keys: Optional[Union[str, List[str]]] = None,
         burst_dim: Optional[str] = None,
     ):
-        """
-        Base class initialization.
+        """Base class initialization.
 
         Parameters
         ----------
@@ -79,8 +79,7 @@ class BaseInstrument(ABC):
         z: Optional[Union[float, List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
-        """
-        Validate common input parameters shared across all instruments.
+        """Validate common input parameters shared across all instruments.
 
         Parameters
         ----------
@@ -172,12 +171,11 @@ class BaseInstrument(ABC):
 
     @staticmethod
     def _as_array(data: Any, key: str, file_type: str) -> np.ndarray:
-        """
-        Extract variable `key` from `data` as a numpy array.
+        """Extract variable `key` from `data` as a numpy array.
 
-        Centralizes extraction across dict (mat/npy), pandas DataFrame (csv),
-        and xarray Dataset (nc). For xarray-backed data, accessing `.values`
-        triggers a load of the sliced bytes.
+        Centralizes extraction across dict (mat/npy), pandas DataFrame
+        (csv), and xarray Dataset (nc). For xarray-backed data,
+        accessing `.values` triggers a load of the sliced bytes.
         """
         value = data[key]
         if file_type == "nc":
@@ -187,9 +185,8 @@ class BaseInstrument(ABC):
         return np.asarray(value)
 
     def _inspect_first_file(self, fs, z, deployment_type):
-        """
-        Read the first file to infer fs and z (if not provided) and determine
-        file_type and num_samples_per_burst.
+        """Read the first file to infer fs and z (if not provided) and
+        determine file_type and num_samples_per_burst.
 
         Parameters
         ----------
@@ -272,8 +269,7 @@ class BaseInstrument(ABC):
         return fs, z, file_type, num_samples
 
     def process_time(self, time_array: np.ndarray) -> np.ndarray:
-        """
-        Convert a time array to numpy datetime64 format.
+        """Convert a time array to numpy datetime64 format.
 
         Parameters
         ----------
@@ -298,8 +294,8 @@ class BaseInstrument(ABC):
 
     @staticmethod
     def detect_time_format(time_input: Union[float, int, str]) -> str:
-        """
-        Detect if a time input represents Unix epoch time, MATLAB datenum, or a datestring
+        """Detect if a time input represents Unix epoch time, MATLAB datenum,
+        or a datestring.
 
         Args:
             time_input (float): The input float to test.
@@ -307,7 +303,6 @@ class BaseInstrument(ABC):
         Returns:
             str: `"datestring"`, `"epoch"`, `"matlab"`. Raises an exception if there is no match
         """
-
         # Rough numeric ranges as of 2020s:
         # Epoch: ~1.5e9 (1970-2020s)
         # MATLAB: ~7.3e5 (year ~2000), currently ~7.4e5 to ~7.5e5 in the 2020s
@@ -322,8 +317,7 @@ class BaseInstrument(ABC):
             raise IOError(f"Unrecognized time input {time_input} with type {type(time_input)}")
 
     def load_burst(self, burst_idx: int) -> Dict[str, np.ndarray]:
-        """
-        Load data for a single burst.
+        """Load data for a single burst.
 
         Parameters
         ----------
@@ -384,9 +378,10 @@ class BaseInstrument(ABC):
         return burst_data
 
     def subsample(self, start_idx: int, end_idx: int):
-        """
-        Subsample the instrument file list from start_idx:end_idx. Must be implemented in derived classes
-        to account for unique initialization calls.
+        """Subsample the instrument file list from start_idx:end_idx.
+
+        Must be implemented in derived classes to account for unique
+        initialization calls.
         """
         raise NotImplementedError("Subclasses must implement subsample()")
 
@@ -407,8 +402,7 @@ class BaseInstrument(ABC):
         freq: Optional[np.ndarray] = None,
         attrs: Optional[dict] = None,
     ) -> xr.Dataset:
-        """
-        Concatenate per-burst result dictionaries into an xarray Dataset.
+        """Concatenate per-burst result dictionaries into an xarray Dataset.
 
         Dimensions are inferred from result-value shapes against `self.z` and the
         optional `freq` coordinate; see `utils.io_utils.results_to_dataset` for the
@@ -453,8 +447,8 @@ class BaseInstrument(ABC):
         attrs: Optional[dict] = None,
         **nc_kwargs,
     ) -> None:
-        """
-        Build a Dataset from per-burst results and write it to a NetCDF file.
+        """Build a Dataset from per-burst results and write it to a NetCDF
+        file.
 
         Parameters
         ----------

@@ -8,7 +8,8 @@ from testhelpers.synth_utils import generate_wave_turb_burst
 
 
 def _make_adv(fs, n_heights=1):
-    """Return a minimal namespace that satisfies ADV.dissipation attribute requirements."""
+    """Return a minimal namespace that satisfies ADV.dissipation attribute
+    requirements."""
     return types.SimpleNamespace(fs=fs, n_heights=n_heights)
 
 
@@ -23,12 +24,13 @@ def test_pure_wave():
 
 
 def test_dissipation_recovers_prescribed_eps():
-    """
-    Validate ADV.dissipation against an analytically known isotropic Kolmogorov
-    turbulence field in the Taylor (frozen-turbulence) limit. The synthetic burst
-    has mean flow U_d along +x and -5/3 spectra matching Gerbi et al. (2009)
-    Eqs. 13-14 with prescribed dissipation `eps_true`. The fitted dissipation
-    should recover `eps_true` to within sample-estimation noise.
+    """Validate ADV.dissipation against an analytically known isotropic
+    Kolmogorov turbulence field in the Taylor (frozen-turbulence) limit.
+
+    The synthetic burst has mean flow U_d along +x and -5/3 spectra
+    matching Gerbi et al. (2009) Eqs. 13-14 with prescribed dissipation
+    `eps_true`. The fitted dissipation should recover `eps_true` to
+    within sample-estimation noise.
     """
     eps_true = 1.0e-5
     U_d = 1.0

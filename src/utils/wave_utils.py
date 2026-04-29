@@ -4,8 +4,8 @@ from utils.constants import GRAVITATIONAL_ACCELERATION as g
 
 
 def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
-    """
-    Calculate wavenumber from the surface gravity wave dispersion relation using Newton's method.
+    """Calculate wavenumber from the surface gravity wave dispersion relation
+    using Newton's method.
 
     Parameters
     ----------
@@ -38,8 +38,9 @@ def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray])
 
 
 def get_cg(k, h):
-    """
-    Returns the group velocity from the linear wave theory dispersion relation
+    """Returns the group velocity from the linear wave theory dispersion
+    relation.
+
     Parameters
     ----------
     k
@@ -47,7 +48,6 @@ def get_cg(k, h):
 
     Returns
     -------
-
     """
     cp = np.sqrt((g / k) * np.tanh(k * h))
     cg = 0.5 * cp * (1 + (k * h) * (1 - (np.tanh(k * h)) ** 2) / np.tanh(k * h))
@@ -61,8 +61,8 @@ def jones_monismith_correction(
     f: np.ndarray,
     f_cutoff: Optional[float] = 0.5,
 ):
-    """
-    Apply Jones & Monismith (2008) correction for high frequency noise introduced by the pressure attenuation
+    """Apply Jones & Monismith (2008) correction for high frequency noise
+    introduced by the pressure attenuation.
 
     Parameters
     ----------

@@ -33,9 +33,10 @@ def _find_wave_band(f: np.ndarray, P_uu: np.ndarray, df: float) -> np.ndarray:
 
 
 class ADV(BaseInstrument):
-    """
-    Class for processing data from Acoustic Doppler Velocimeter (ADV) instruments. Contains methods for:
-    - Loading data from source files
+    """Class for processing data from Acoustic Doppler Velocimeter (ADV)
+    instruments.
+
+    Contains methods for: - Loading data from source files
     - Preprocessing (despiking, coordinate transformations, flow-dependent rotations)
     - Calculating turbulence statistics: TKE, TKE dissipation, Reynolds stress (including wave-turbulence decomposed)
     - Calculating directional wave statistics
@@ -52,8 +53,7 @@ class ADV(BaseInstrument):
         source_coords: str = "xyz",
         orientation: str = "up",
     ):
-        """
-        Initialize an ADV object.
+        """Initialize an ADV object.
 
         Parameters
         ----------
@@ -140,8 +140,8 @@ class ADV(BaseInstrument):
             raise ValueError(f"Invalid value for `orientation`: {orientation}. Must be one of ['down', 'up']")
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
-        """
-        Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
+        """Enable preprocessing for all subsequent burst loads using the
+        options defined in the input dictionary.
 
         Parameters
         ----------
@@ -208,9 +208,7 @@ class ADV(BaseInstrument):
         self._cached_data = None
 
     def _apply_preprocessing(self, burst_data):
-        """
-        Applies preprocessing to a burst data dictionary during loading.
-        """
+        """Applies preprocessing to a burst data dictionary during loading."""
         burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
             return burst_data
@@ -243,8 +241,7 @@ class ADV(BaseInstrument):
         return burst_data
 
     def _apply_coord_transform(self, burst_data, coords_out):
-        """
-        Transform velocity components between coordinate systems.
+        """Transform velocity components between coordinate systems.
 
         Uses configuration stored in self._rotate. Can be called from _apply_preprocessing during standard burst
         loading, or directly from analysis methods when transformation is needed.
@@ -324,9 +321,9 @@ class ADV(BaseInstrument):
         f_high: Optional[float] = None,
         **kwargs,
     ) -> dict[str, float]:
-        """
-        Benilov wave-turbulence decomposition to estimate wave and turbulence
-        components of the Reynolds stress. (Benilov & Filyushkin, 1970)
+        """Benilov wave-turbulence decomposition to estimate wave and
+        turbulence components of the Reynolds stress. (Benilov & Filyushkin,
+        1970)
 
         Parameters
         ----------
@@ -358,7 +355,6 @@ class ADV(BaseInstrument):
         Benilov, A. Y., & Filyushkin, B. N. (1970). Application of methods of linear filtration to an analysis of
             fluctuations in the surface layer of the sea. Izv., Acad. Sci., USSR, Atmos. Oceanic Phys, 68, 810-819.
         """
-
         if not self._physical_z:
             raise ValueError("`z` values must be specified during initialization for Benilov decomposition.")
 
@@ -442,9 +438,10 @@ class ADV(BaseInstrument):
         f_wave_high: Optional[float] = None,
         **kwargs,
     ):
-        """
-        Bricker & Monismith (2007) phase method for wave-turbulence decomposition. Unlike the Benilov method, no
-        pressure data are required.
+        """Bricker & Monismith (2007) phase method for wave-turbulence
+        decomposition.
+
+        Unlike the Benilov method, no pressure data are required.
 
         Parameters
         ----------
@@ -475,9 +472,7 @@ class ADV(BaseInstrument):
         ----------
         Bricker, J. D., & Monismith, S. G. (2007). Spectral wave–turbulence decomposition. Journal of Atmospheric and
             Oceanic Technology, 24(8), 1479-1487.
-
         """
-
         out = {}
 
         u = sig.detrend(u)
@@ -562,9 +557,10 @@ class ADV(BaseInstrument):
         time_delay_size: Optional[int] = None,
         return_time_series: bool = False,
     ) -> dict:
-        """
-        Estimate Reynolds stresses with the DMD-based wave-turbulence decomposition of Chavez-Dorado et al. (2025).
-        This function is a Python port (with various simplifications) of the MATLAB implementation found here:
+        """Estimate Reynolds stresses with the DMD-based wave-turbulence
+        decomposition of Chavez-Dorado et al.
+
+        (2025). This function is a Python port (with various simplifications) of the MATLAB implementation found here:
         https://github.com/DiBenedettoLab/Wave-Turbulence_DMD
 
         Parameters
@@ -605,15 +601,15 @@ class ADV(BaseInstrument):
         """
 
         def _decompose(signal: np.ndarray, n: int) -> tuple:
-            """
-            Run DMD on a 1-D signal of length N. Returns (u_wave, u_turb), each length N-1.
+            """Run DMD on a 1-D signal of length N.
 
-            Parameters
-            ----------
-            signal : np.ndarray
-                1-D signal (usually velocity) of length N.
-            n : int
-                Number of time-lag rows for Hankel embedding.
+            Returns (u_wave, u_turb), each length N-1.
+                        Parameters
+                        ----------
+                        signal : np.ndarray
+                            1-D signal (usually velocity) of length N.
+                        n : int
+                            Number of time-lag rows for Hankel embedding.
             """
             raw = signal - np.mean(signal)
             N = len(raw)
@@ -715,8 +711,8 @@ class ADV(BaseInstrument):
         dmd_kwargs: Optional[dict] = None,
         **kwargs,
     ) -> dict:
-        """
-        Calculate components of the covariance matrix (i.e., the Reynolds stress)
+        """Calculate components of the covariance matrix (i.e., the Reynolds
+        stress)
 
         Parameters
         ----------
@@ -752,7 +748,6 @@ class ADV(BaseInstrument):
             (e.g. 'uu','uv','uw'). For wave decomposition methods, keys include
             turbulence and wave components (e.g. 'uu_turb', 'uu_wave').
         """
-
         if burst_data["coords"] == "beam":
             raise ValueError(
                 "Reynolds stress is not implemented for beam coordinates."
@@ -978,8 +973,10 @@ class ADV(BaseInstrument):
 
     @staticmethod
     def _calcJii(sig1, sig2, sig3, u1, u2):
-        """
-        Calculates J11, J22, and J33, the diagonal elements of equation A.13 in Gerbi et al. (2009)
+        """Calculates J11, J22, and J33, the diagonal elements of equation A.13
+        in Gerbi et al.
+
+        (2009)
         """
         # Initializing coordinate arrays
         r_len = 120
@@ -1058,9 +1055,9 @@ class ADV(BaseInstrument):
     def dissipation(
         self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs
     ) -> Dict[str, np.ndarray]:
-        """
-        Estimate the dissipation rate of TKE using the Gerbi et al. (2009) spectral curve fitting method. This is nearly
-        equivalent to the Feddersen et al. (2007) method, but it uses a more efficient numerical integration and
+        """Estimate the dissipation rate of TKE using the Gerbi et al.
+
+        (2009) spectral curve fitting method. This is nearly equivalent to the Feddersen et al. (2007) method, but it uses a more efficient numerical integration and
         estimates dissipation with a least squares fit rather than a mean over the inertial range.
 
         Parameters
@@ -1092,11 +1089,8 @@ class ADV(BaseInstrument):
             turbulence in the ocean surface boundary layer: Energetics and transport. Journal of Physical Oceanography,
             39(5), 1077-1096.
         """
-
         def spectral_fit(u, v, w, f_low, f_high, **kwargs):
-            """
-            Carries out the spectral curve fit
-            """
+            """Carries out the spectral curve fit."""
             if np.all(np.isnan(u)) or np.all(np.isnan(v)) or np.all(np.isnan(w)):
                 return np.nan, np.nan, 0
             omega_range = [2 * np.pi * f_low, 2 * np.pi * f_high]
@@ -1158,8 +1152,7 @@ class ADV(BaseInstrument):
         return out
 
     def tke(self, burst_data: Dict[str, np.ndarray]) -> np.ndarray:
-        """
-        Calculates turbulent kinetic energy
+        """Calculates turbulent kinetic energy.
 
         Parameters
         ----------
@@ -1170,7 +1163,6 @@ class ADV(BaseInstrument):
         -------
         tke_out : np.ndarray
             TKE at each measurement height
-
         """
         if burst_data["coords"] == "beam":
             raise ValueError(
@@ -1198,8 +1190,8 @@ class ADV(BaseInstrument):
         rho: Optional[float] = 1020,
         **kwargs,
     ) -> dict:
-        """
-        Calculate directional wave statistics from velocity and pressure measurements.
+        """Calculate directional wave statistics from velocity and pressure
+        measurements.
 
         Parameters
         ----------
@@ -1284,10 +1276,7 @@ class ADV(BaseInstrument):
         f_cutoff: Optional[float] = 1.0,
         **kwargs,
     ) -> dict:
-        """
-        Helper function for directional wave statistics.
-        """
-
+        """Helper function for directional wave statistics."""
         # Calculate water depth (m) prior to detrending
         h = 1e4 * np.nanmean(p) / (rho * g) + mab
 
@@ -1483,8 +1472,8 @@ class ADV(BaseInstrument):
         return out
 
     def subsample(self, start_idx: int, end_idx: int):
-        """
-        Subsample the ADV object between files[start_idx] and files[end_idx].
+        """Subsample the ADV object between files[start_idx] and
+        files[end_idx].
 
         Parameters
         ----------

@@ -22,13 +22,15 @@ def _load_reference_data():
 
 
 def _make_adv(fs, n_heights=1):
-    """Return a minimal namespace that satisfies ADV.dmd's attribute requirements."""
+    """Return a minimal namespace that satisfies ADV.dmd's attribute
+    requirements."""
     return types.SimpleNamespace(fs=fs, n_heights=n_heights)
 
 
 class TestDMD:
     def test_wave_matches_matlab_reference(self):
-        """Wave reconstruction should match MATLAB output to machine precision."""
+        """Wave reconstruction should match MATLAB output to machine
+        precision."""
         u_tot, fs, u_wave_ref, _ = _load_reference_data()
         adv = _make_adv(fs)
 
@@ -47,7 +49,8 @@ class TestDMD:
         npt.assert_allclose(result["u_wave"], u_wave_ref, atol=1e-10)
 
     def test_turb_matches_matlab_reference(self):
-        """Turbulence reconstruction should match MATLAB output to machine precision."""
+        """Turbulence reconstruction should match MATLAB output to machine
+        precision."""
         u_tot, fs, _, u_turb_ref = _load_reference_data()
         adv = _make_adv(fs)
 
@@ -133,7 +136,8 @@ class TestDMD:
         assert set(result.keys()) == expected_keys
 
     def test_float_rank_truncation(self):
-        """Float rank_truncation should select modes by relative singular value magnitude."""
+        """Float rank_truncation should select modes by relative singular value
+        magnitude."""
         u_tot, fs, _, _ = _load_reference_data()
         adv = _make_adv(fs)
 

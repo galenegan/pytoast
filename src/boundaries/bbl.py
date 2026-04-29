@@ -29,7 +29,8 @@ def _fwc_m94(relative_roughness, c_mu):
 
 
 def _shields_critical(star):
-    """Critical Shields parameter for initiation of sediment motion (shldc.m)."""
+    """Critical Shields parameter for initiation of sediment motion
+    (shldc.m)."""
     if star < 1.5:
         return 0.0932 * star ** (-0.707)
     elif star < 4.0:
@@ -237,9 +238,9 @@ def styles(
     max_iter=50,
     tol=1e-4,
 ):
-    """
-    Styles et al. (2017) combined wave-current bottom boundary layer model. This is a python port of the Matlab source
-    code (https://cirp.usace.army.mil/products/bblm.php). It has been edited to remove unnecessary input parameters and
+    """Styles et al.
+
+    (2017) combined wave-current bottom boundary layer model. This is a python port of the Matlab source code (https://cirp.usace.army.mil/products/bblm.php). It has been edited to remove unnecessary input parameters and
     some variable names have been changed for clarity. The custom bisection and secant solvers have also been
     replaced with scipy.optimize.brentq and scipy.optimize.newton, respectively. The output on the provided test data is
     within an acceptable tolerance despite these changes (see py-tests/). Finally, all inputs and outputs use SI units
@@ -295,7 +296,6 @@ def styles(
         ustar_c   - time-averaged current shear velocity (m/s)
         ustar_wc  - combined wave-current shear velocity (m/s)
     """
-
     # Skin friction Shields parameter (Madsen formula)
     arg_ole = ab / d_median
     fwc_skn = np.exp(5.61 * arg_ole ** (-0.109) - 7.30)

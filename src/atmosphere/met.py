@@ -8,9 +8,9 @@ Numeric: TypeAlias = float | int | np.ndarray
 
 
 class Met(BaseInstrument):
-    """
-    Class for processing bulk meteorological data. Contains methods for:
-    - Loading data from source files
+    """Class for processing bulk meteorological data.
+
+    Contains methods for: - Loading data from source files
     - Preprocessing
     - Calculating and converting from/to various useful thermodynamic quantities
 
@@ -62,8 +62,7 @@ class Met(BaseInstrument):
         z: Optional[Union[float, List[float]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
-        """
-        Initialize a Met object.
+        """Initialize a Met object.
 
         Parameters
         ----------
@@ -119,8 +118,8 @@ class Met(BaseInstrument):
         BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
-        """
-        Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
+        """Enable preprocessing for all subsequent burst loads using the
+        options defined in the input dictionary.
 
         Parameters
         ----------
@@ -148,7 +147,6 @@ class Met(BaseInstrument):
                     alpha : float
                     max_iter : int
         """
-
         self._preprocess_opts = opts
         self._preprocess_enabled = True
 
@@ -187,8 +185,8 @@ class Met(BaseInstrument):
         return air_thermo.p_mbar2pa(p)
 
     def saturation_vapor_pressure(self, t: Numeric, p: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-        """
-        Saturation vapor pressure given pressure, temperature, and (optionally) seawater salinity
+        """Saturation vapor pressure given pressure, temperature, and
+        (optionally) seawater salinity.
 
         Parameters
         ----------
@@ -204,13 +202,12 @@ class Met(BaseInstrument):
         -------
         Numeric
             Saturation vapor pressure in millibar
-
         """
         return air_thermo.saturation_vapor_pressure(t, p, sp)
 
     def water_vapor_pressure(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-        """
-        Water vapor pressure given temperature, pressure, relative humidity, and (optionally) seawater salinity
+        """Water vapor pressure given temperature, pressure, relative humidity,
+        and (optionally) seawater salinity.
 
         Parameters
         ----------
@@ -232,8 +229,8 @@ class Met(BaseInstrument):
         return air_thermo.water_vapor_pressure(t, p, rh, sp)
 
     def water_vapor_density(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-        """
-        Water vapor density given temperature, pressure, relative humidity, and (optionally) seawater salinity
+        """Water vapor density given temperature, pressure, relative humidity,
+        and (optionally) seawater salinity.
 
         Parameters
         ----------
@@ -255,8 +252,8 @@ class Met(BaseInstrument):
         return air_thermo.water_vapor_density(t, p, rh, sp)
 
     def mixing_ratio(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-        """
-        Water vapor mixing ratio given temperature, pressure, relative humidity, and (optionally) seawater salinity
+        """Water vapor mixing ratio given temperature, pressure, relative
+        humidity, and (optionally) seawater salinity.
 
         Parameters
         ----------
@@ -278,8 +275,8 @@ class Met(BaseInstrument):
         return air_thermo.mixing_ratio(t, p, rh, sp)
 
     def specific_humidity(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-        """
-        Specific humidity given temperature, pressure, relative humidity, and (optionally) seawater salinity
+        """Specific humidity given temperature, pressure, relative humidity,
+        and (optionally) seawater salinity.
 
         Parameters
         ----------
@@ -301,8 +298,8 @@ class Met(BaseInstrument):
         return air_thermo.specific_humidity(t, p, rh, sp)
 
     def virtual_temperature(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-        """
-        Virtual temperature given temperature, pressure, relative humidity, and (optionally) seawater salinity
+        """Virtual temperature given temperature, pressure, relative humidity,
+        and (optionally) seawater salinity.
 
         Parameters
         ----------
@@ -324,8 +321,8 @@ class Met(BaseInstrument):
         return air_thermo.virtual_temperature(t, p, rh, sp)
 
     def air_density(self, t: Numeric, p: Numeric, rh: Numeric) -> Numeric:
-        """
-        Moist air density given temperature, pressure, and relative humidity
+        """Moist air density given temperature, pressure, and relative
+        humidity.
 
         Parameters
         ----------
@@ -344,8 +341,7 @@ class Met(BaseInstrument):
         return air_thermo.air_density(t, p, rh)
 
     def dry_air_density(self, t: Numeric, p: Numeric) -> Numeric:
-        """
-        Dry air density given temperature and pressure
+        """Dry air density given temperature and pressure.
 
         Parameters
         ----------
@@ -362,8 +358,7 @@ class Met(BaseInstrument):
         return air_thermo.dry_air_density(t, p)
 
     def specific_heat(self, t: Numeric) -> Numeric:
-        """
-        Specific heat capacity of air at constant pressure
+        """Specific heat capacity of air at constant pressure.
 
         Parameters
         ----------
@@ -378,8 +373,7 @@ class Met(BaseInstrument):
         return air_thermo.specific_heat(t)
 
     def latent_heat_of_vaporization(self, t: Numeric) -> Numeric:
-        """
-        Latent heat of vaporization
+        """Latent heat of vaporization.
 
         Parameters
         ----------
@@ -394,8 +388,7 @@ class Met(BaseInstrument):
         return air_thermo.latent_heat_of_vaporization(t)
 
     def kinematic_viscosity(self, t: Numeric) -> Numeric:
-        """
-        Kinematic viscosity of air
+        """Kinematic viscosity of air.
 
         Parameters
         ----------
@@ -410,9 +403,8 @@ class Met(BaseInstrument):
         return air_thermo.kinematic_viscosity(t)
 
     def potential_temperature(self, t: Numeric, z: Numeric) -> Numeric:
-        """
-        Potential temperature, i.e. the temperature an air parcel would have if brought adiabatically
-        to a reference level at the surface
+        """Potential temperature, i.e. the temperature an air parcel would have
+        if brought adiabatically to a reference level at the surface.
 
         Parameters
         ----------
@@ -430,9 +422,9 @@ class Met(BaseInstrument):
         return air_thermo.potential_temperature(t, z)
 
     def derive(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        """
-        Compute all thermodynamic quantities derivable from the variables present in a burst
-        dictionary, and return the burst dictionary augmented with those results.
+        """Compute all thermodynamic quantities derivable from the variables
+        present in a burst dictionary, and return the burst dictionary
+        augmented with those results.
 
         Each quantity is computed only when all of its required inputs are available as keys in
         ``burst_data``. The method never raises for missing inputs -- it simply skips any
@@ -476,7 +468,6 @@ class Met(BaseInstrument):
         -------
         dict
             The input ``burst_data`` dictionary with derived quantities added as new keys.
-
         """
         t = burst_data.get("t")
         p = burst_data.get("p")

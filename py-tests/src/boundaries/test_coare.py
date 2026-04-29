@@ -1,9 +1,8 @@
-"""
-Tests for coare36 and coare36_warm_layer in src/boundaries/coare.py.
+"""Tests for coare36 and coare36_warm_layer in src/boundaries/coare.py.
 
-Reference comparison uses coare36_reRference.npz generated from the patched
-reference implementation (coare36vn_zrf_et.py) on all 2165 rows of
-test_36_data.txt.
+Reference comparison uses coare36_reRference.npz generated from the
+patched reference implementation (coare36vn_zrf_et.py) on all 2165 rows
+of test_36_data.txt.
 """
 
 import numpy as np
@@ -181,7 +180,8 @@ class TestSeaSurfaceAlbedo:
         assert trans.item() == 0.0
 
     def test_solar_noon_equator_equinox(self):
-        """Solar noon at equator during equinox -> altitude ~= 90 degrees, positive albedo."""
+        """Solar noon at equator during equinox -> altitude ~= 90 degrees,
+        positive albedo."""
         # julian_day = 80.5: frac=0.5 -> utc=12, solar noon at lon=0
         # Vernal equinox around day 80: declination ~= 0 degrees
         _, _, _, alt = sea_surface_albedo(sw_down=800.0, julian_day=80.5, lat=0.0, lon=0.0)
@@ -189,11 +189,13 @@ class TestSeaSurfaceAlbedo:
         assert alt.item() > 80.0
 
     def test_sign_convention_east_west_symmetry(self):
-        """lon=+90 at utc=6 and lon=-90 at utc=18 give same-sign solar altitude.
+        """Lon=+90 at utc=6 and lon=-90 at utc=18 give same-sign solar
+        altitude.
 
-        Both produce hour_angle ~= pi (solar noon) at lat=0, equinox.  The two
-        Julian days differ by 0.5 days so the declination changes by ~0.2 degrees,
-        hence altitudes agree within 0.5 degrees (atol).
+        Both produce hour_angle ~= pi (solar noon) at lat=0, equinox.
+        The two Julian days differ by 0.5 days so the declination
+        changes by ~0.2 degrees, hence altitudes agree within 0.5
+        degrees (atol).
         """
         _, _, _, alt_east = sea_surface_albedo(sw_down=800.0, julian_day=80.25, lat=0.0, lon=90.0)
         _, _, _, alt_west = sea_surface_albedo(sw_down=800.0, julian_day=80.75, lat=0.0, lon=-90.0)
@@ -251,7 +253,8 @@ class TestWarmLayerPhysical:
         assert np.all(dz <= 19.0), "Warm layer depth must not exceed max_warm_depth=19 m"
 
     def test_dT_warm_to_skin_le_dT_warm(self, warm_layer_results):
-        """Partial warm layer contribution cannot exceed total warm-layer anomaly."""
+        """Partial warm layer contribution cannot exceed total warm-layer
+        anomaly."""
         npt.assert_array_less(
             warm_layer_results["dT_warm_to_skin"] - 1e-10,
             warm_layer_results["dT_warm"] + 1e-10,
@@ -259,7 +262,8 @@ class TestWarmLayerPhysical:
         )
 
     def test_warming_occurs(self, warm_layer_results, test_data):
-        """Warm layer must produce positive heating at some point during daytime."""
+        """Warm layer must produce positive heating at some point during
+        daytime."""
         sw_down = test_data[:, 9]
         daytime = sw_down > 0
         assert np.any(warm_layer_results["dT_warm"][daytime] > 0), (

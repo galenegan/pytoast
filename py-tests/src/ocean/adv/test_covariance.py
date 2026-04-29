@@ -52,11 +52,9 @@ def test_spectral_close_to_phase():
         npt.assert_allclose(result_spectral[key], result_phase[f"{key}_turb"], atol=5e-4)
 
 def test_benilov_recovers_prescribed_stresses():
-    """
-    Validate benilov_decomposition against an analytically known burst: a linear
-    monochromatic wave along superposed on wave-uncorrelated Gaussian turbulence
-    with a prescribed Reynolds stress tensor.
-    """
+    """Validate benilov_decomposition against an analytically known burst: a
+    linear monochromatic wave along superposed on wave-uncorrelated Gaussian
+    turbulence with a prescribed Reynolds stress tensor."""
     u, v, w, p, truth = generate_wave_turb_burst(fs=8, duration_s=1800, seed=0)
     adv = make_adv(fs=8)
     adv._physical_z = True
@@ -65,10 +63,10 @@ def test_benilov_recovers_prescribed_stresses():
         npt.assert_allclose(result[key], expected, rtol=0.1, atol=5e-4, err_msg=key)
 
 def test_phase_recovers_prescribed_stresses():
-    """
-    Validate phase_decomposition against an analytically known burst (see
-    test_benilov_recovers_prescribed_stresses for construction). Pressure data
-    are not used by this method.
+    """Validate phase_decomposition against an analytically known burst (see
+    test_benilov_recovers_prescribed_stresses for construction).
+
+    Pressure data are not used by this method.
     """
     u, v, w, _, truth = generate_wave_turb_burst(fs=8, duration_s=1800, seed=0)
     adv = make_adv(fs=8)

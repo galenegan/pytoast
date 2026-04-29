@@ -126,9 +126,9 @@ def coord_transform_4_beam_nortek(
     coords_in: str = "beam",
     coords_out: str = "xyz",
 ):
-    """
-    Implementation of Nortek's coordinate transformation for the 4-beam Signature instrument.
-    Supports all combinations of beam, xyz, and enu coordinates.
+    """Implementation of Nortek's coordinate transformation for the 4-beam
+    Signature instrument. Supports all combinations of beam, xyz, and enu
+    coordinates.
 
     https://support.nortekgroup.com/hc/en-us/articles/25924538648732-How-do-I-transform-a-coordinate-system-manually
 
@@ -237,9 +237,9 @@ def coord_transform_4_beam_rdi(
     coords_in: str = "beam",
     coords_out: str = "xyz",
 ):
-    """
-    Coordinate transformation for Teledyne RDI 4-beam ADCPs. Supports all
-    combinations of beam, xyz, and enu coordinates.
+    """Coordinate transformation for Teledyne RDI 4-beam ADCPs.
+
+    Supports all combinations of beam, xyz, and enu coordinates.
 
     https://www.teledynemarine.com/en-us/support/SiteAssets/RDI/Manuals%20and%20Guides/General%20Interest/Coordinate_Transformation.pdf
 
@@ -378,8 +378,7 @@ def align_with_principal_axis(u1, u2, u3) -> Tuple:
 
 
 def align_with_flow(u1, u2, u3) -> Tuple:
-    """
-    Rotates u, v, w velocities to minimize the burst-averaged v and w.
+    """Rotates u, v, w velocities to minimize the burst-averaged v and w.
 
     Parameters
     ----------
@@ -396,7 +395,6 @@ def align_with_flow(u1, u2, u3) -> Tuple:
     w_rot: DataArray
         Zero-mean vertical velocity
     """
-
     u_bar = np.mean(u1, axis=1)
     v_bar = np.mean(u2, axis=1)
     w_bar = np.mean(u3, axis=1)
@@ -408,8 +406,7 @@ def align_with_flow(u1, u2, u3) -> Tuple:
 
 
 def rotate_velocity_by_theta(u1, u2, u3, theta_h, theta_v):
-    """
-    Rotates u, v, w velocities by directions defined by theta_h and theta_v.
+    """Rotates u, v, w velocities by directions defined by theta_h and theta_v.
 
     Parameters
     ----------
@@ -443,8 +440,7 @@ def min_angle(alpha):
 
 
 def apply_flow_rotation(burst_data, flow_rotation):
-    """
-    Rotate u1/u2/u3 to align with a particular flow direction.
+    """Rotate u1/u2/u3 to align with a particular flow direction.
 
     Parameters
     ----------

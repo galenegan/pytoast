@@ -27,8 +27,8 @@ def p_mbar2pa(p: Numeric) -> Numeric:
 def saturation_vapor_pressure(
     t: Numeric, p: Numeric, sp: Optional[Numeric] = None, t_freeze: Optional[Numeric] = None
 ) -> Numeric:
-    """
-    Saturation vapor pressure given pressure, temperature, and (optionally) seawater salinity
+    """Saturation vapor pressure given pressure, temperature, and (optionally)
+    seawater salinity.
 
     Parameters
     ----------
@@ -46,7 +46,6 @@ def saturation_vapor_pressure(
     -------
     Numeric
         Saturation vapor pressure in millibar
-
     """
     e_s = 6.1121 * (1.0007 + 3.46e-6 * p) * np.exp(17.502 * t / (240.97 + t))
 
@@ -68,8 +67,8 @@ def saturation_vapor_pressure(
 
 
 def water_vapor_pressure(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-    """
-    Water vapor pressure given temperature, pressure, relative humidity, and (optionally) seawater salinity
+    """Water vapor pressure given temperature, pressure, relative humidity, and
+    (optionally) seawater salinity.
 
     Parameters
     ----------
@@ -93,8 +92,8 @@ def water_vapor_pressure(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numer
 
 
 def water_vapor_density(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-    """
-    Water vapor density given temperature, pressure, relative humidity, and (optionally) seawater salinity
+    """Water vapor density given temperature, pressure, relative humidity, and
+    (optionally) seawater salinity.
 
     Parameters
     ----------
@@ -118,8 +117,8 @@ def water_vapor_density(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeri
 
 
 def mixing_ratio(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-    """
-    Water vapor mixing ratio given temperature, pressure, relative humidity, and (optionally) seawater salinity
+    """Water vapor mixing ratio given temperature, pressure, relative humidity,
+    and (optionally) seawater salinity.
 
     Parameters
     ----------
@@ -143,8 +142,8 @@ def mixing_ratio(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = No
 
 
 def specific_humidity(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-    """
-    Specific humidity given temperature, pressure, relative humidity, and (optionally) seawater salinity
+    """Specific humidity given temperature, pressure, relative humidity, and
+    (optionally) seawater salinity.
 
     Parameters
     ----------
@@ -171,8 +170,8 @@ def specific_humidity(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric]
 def saturation_specific_humidity(
     t: Numeric, p: Numeric, sp: Optional[Numeric] = None, t_freeze: Optional[Numeric] = None
 ) -> Numeric:
-    """
-    Specific humidity given temperature, pressure, relative humidity, and (optionally) seawater salinity
+    """Specific humidity given temperature, pressure, relative humidity, and
+    (optionally) seawater salinity.
 
     Parameters
     ----------
@@ -218,8 +217,8 @@ def relative_humidity_from_specific_humidity(
 
 
 def virtual_temperature(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
-    """
-    Virtual temperature given temperature, pressure, relative humidity, and (optionally) seawater salinity
+    """Virtual temperature given temperature, pressure, relative humidity, and
+    (optionally) seawater salinity.
 
     Parameters
     ----------
@@ -244,8 +243,7 @@ def virtual_temperature(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeri
 
 
 def air_density(t: Numeric, p: Numeric, rh: Numeric) -> Numeric:
-    """
-    Moist air density given temperature, pressure, and relative humidity
+    """Moist air density given temperature, pressure, and relative humidity.
 
     Parameters
     ----------
@@ -268,8 +266,7 @@ def air_density(t: Numeric, p: Numeric, rh: Numeric) -> Numeric:
 
 
 def dry_air_density(t: Numeric, p: Numeric) -> Numeric:
-    """
-    Dry air density given temperature and pressure
+    """Dry air density given temperature and pressure.
 
     Parameters
     ----------
@@ -288,8 +285,7 @@ def dry_air_density(t: Numeric, p: Numeric) -> Numeric:
 
 
 def specific_heat(t: Numeric) -> Numeric:
-    """
-    Specific heat capacity of air at constant pressure
+    """Specific heat capacity of air at constant pressure.
 
     Parameters
     ----------
@@ -320,8 +316,7 @@ def dry_adiabatic_lapse_rate(t: Numeric, g_lat: Numeric = g) -> Numeric:
 
 
 def latent_heat_of_vaporization(t: Numeric) -> Numeric:
-    """
-    Latent heat of vaporization
+    """Latent heat of vaporization.
 
     Parameters
     ----------
@@ -337,8 +332,7 @@ def latent_heat_of_vaporization(t: Numeric) -> Numeric:
 
 
 def kinematic_viscosity(t: Numeric) -> Numeric:
-    """
-    Kinematic viscosity of air
+    """Kinematic viscosity of air.
 
     Parameters
     ----------
@@ -354,9 +348,8 @@ def kinematic_viscosity(t: Numeric) -> Numeric:
 
 
 def potential_temperature(t: Numeric, z: Numeric) -> Numeric:
-    """
-    Potential temperature, i.e. the temperature an air parcel would have if brought adiabatically
-    to a reference level at the surface
+    """Potential temperature, i.e. the temperature an air parcel would have if
+    brought adiabatically to a reference level at the surface.
 
     Parameters
     ----------

@@ -6,7 +6,7 @@ from ocean.adv import ADV
 
 
 def test_mat_list():
-    """Test loading a list of .mat files"""
+    """Test loading a list of .mat files."""
     name_map = {"u1": "E", "u2": "N", "u3": "w", "p": "P2", "time": "dn"}
 
     # Get test data files
@@ -48,7 +48,7 @@ def test_mat_list():
 
 
 def test_npy_list():
-    """Test loading a list of .npy files"""
+    """Test loading a list of .npy files."""
     name_map = {"u1": "E", "u2": "N", "u3": "w", "p": "P2", "time": "dn"}
 
     # Get test data files

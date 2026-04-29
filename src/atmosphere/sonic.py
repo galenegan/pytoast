@@ -10,9 +10,9 @@ from utils.rotate_utils import apply_flow_rotation
 
 
 class Sonic(BaseInstrument):
-    """
-    Class for processing data from Sonic anemometers. Contains methods for:
-    - Loading data from source files
+    """Class for processing data from Sonic anemometers.
+
+    Contains methods for: - Loading data from source files
     - Preprocessing (despiking, flow-dependent rotations)
     - Calculating turbulence statistics: TKE dissipation, Reynolds stress, TKE, buoyancy flux
     """
@@ -27,8 +27,7 @@ class Sonic(BaseInstrument):
         data_keys: Optional[Union[str, List[str]]] = None,
         path_length: float = 0.15,
     ):
-        """
-        Initialize a Sonic object.
+        """Initialize a Sonic object.
 
         Parameters
         ----------
@@ -101,8 +100,8 @@ class Sonic(BaseInstrument):
             raise TypeError("`path length` must be a float")
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
-        """
-        Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
+        """Enable preprocessing for all subsequent burst loads using the
+        options defined in the input dictionary.
 
         Parameters
         ----------
@@ -140,7 +139,6 @@ class Sonic(BaseInstrument):
                         will be minimized. If float angles are specified in a tuple, the flow will be rotated by those
                         angles in the horizontal and vertical planes.
         """
-
         self._preprocess_opts = opts
         self._preprocess_enabled = True
 
@@ -184,9 +182,10 @@ class Sonic(BaseInstrument):
         henjes_correction: bool,
         **kwargs,
     ) -> np.ndarray:
-        """
-        Estimate the dissipation rate of TKE via spectral curve fit to the streamwise wavenumber spectrum. Choice of
-        constant is consistent with Edson and Fairall (1998), and the path length correction of Henjes et al (1999) can
+        """Estimate the dissipation rate of TKE via spectral curve fit to the
+        streamwise wavenumber spectrum.
+
+        Choice of constant is consistent with Edson and Fairall (1998), and the path length correction of Henjes et al (1999) can
         be optionally applied as well.
 
         Parameters
@@ -214,7 +213,6 @@ class Sonic(BaseInstrument):
             terms in the TKE and scalar variance budgets. Journal of the atmospheric sciences, 55(13), 2311-2328.
         Henjes, K., Taylor, P. K., & Yelland, M. J. (1999). Effect of pulse averaging on sonic anemometer spectra.
             Journal of Atmospheric and Oceanic Technology, 16(1), 181-184.
-
         """
 
         def spectral_fit(
@@ -285,8 +283,8 @@ class Sonic(BaseInstrument):
         f_high: Optional[float] = None,
         **kwargs,
     ):
-        """
-        Calculate components of the covariance matrix (i.e., the Reynolds stress)
+        """Calculate components of the covariance matrix (i.e., the Reynolds
+        stress)
 
         Parameters
         ----------
@@ -361,8 +359,7 @@ class Sonic(BaseInstrument):
         return out
 
     def tke(self, burst_data: Dict[str, np.ndarray]) -> np.ndarray:
-        """
-        Calculates turbulent kinetic energy
+        """Calculates turbulent kinetic energy.
 
         Parameters
         ----------
@@ -373,7 +370,6 @@ class Sonic(BaseInstrument):
         -------
         tke_out : np.ndarray
             TKE at each measurement height
-
         """
         u_bar = np.mean(burst_data["u1"], axis=1, keepdims=True)
         v_bar = np.mean(burst_data["u2"], axis=1, keepdims=True)
@@ -389,8 +385,8 @@ class Sonic(BaseInstrument):
         return tke_out
 
     def buoyancy_flux(self, burst_data: Dict[str, np.ndarray]):
-        """
-        Buoyancy flux from the sonic temperature/vertical velocity covariance (e.g., Liu et al., (2001)).
+        """Buoyancy flux from the sonic temperature/vertical velocity
+        covariance (e.g., Liu et al., (2001)).
 
         Parameters
         ----------
@@ -418,8 +414,8 @@ class Sonic(BaseInstrument):
         return B
 
     def subsample(self, start_idx, end_idx):
-        """
-        Subsample the Sonic object between files[start_idx] and files[end_idx].
+        """Subsample the Sonic object between files[start_idx] and
+        files[end_idx].
 
         Parameters
         ----------
@@ -432,7 +428,6 @@ class Sonic(BaseInstrument):
         -------
         new_sonic : Sonic
             Subsampled Sonic object
-
         """
         new_sonic = self.__class__(
             self.files[start_idx:end_idx],

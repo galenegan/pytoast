@@ -14,8 +14,8 @@ def results_to_dataset(
     freq: Optional[np.ndarray] = None,
     attrs: Optional[dict] = None,
 ) -> xr.Dataset:
-    """
-    Concatenate a list of per-burst result dictionaries into an xarray Dataset.
+    """Concatenate a list of per-burst result dictionaries into an xarray
+    Dataset.
 
     Dimensions are inferred from the shapes of the values. The first axis of
     each output variable is always ``burst_time`` (length ``len(results)``).

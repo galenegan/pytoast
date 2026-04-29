@@ -20,9 +20,8 @@ Numeric: TypeAlias = float | int | np.ndarray
 
 
 def _entropy_part(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
-    """
-    Entropy minus the terms that are a function of only sa (gsw_entropy_part.m).
-    """
+    """Entropy minus the terms that are a function of only sa
+    (gsw_entropy_part.m)."""
     sa = np.maximum(sa, 0)
     sfac = 0.0248826675584615
     x2 = sfac * sa
@@ -114,7 +113,8 @@ def _entropy_part(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
 
 
 def _entropy_part_zerop(sa: Numeric, pt0: Numeric) -> Numeric:
-    """Entropy minus the terms that are a function of only sa, evaluated at p=0 dbar (gsw_entropy_part_zerop.m)."""
+    """Entropy minus the terms that are a function of only sa, evaluated at p=0
+    dbar (gsw_entropy_part_zerop.m)."""
     sa = np.maximum(sa, 0)
     sfac = 0.0248826675584615
     x2 = sfac * sa
@@ -147,7 +147,10 @@ def _entropy_part_zerop(sa: Numeric, pt0: Numeric) -> Numeric:
 
 
 def _gibbs_pt0_pt0(sa: Numeric, pt0: Numeric) -> Numeric:
-    """Second derivative of specific Gibbs function w.r.t. temperature at p=0 (gsw_gibbs_pt0_pt0.m)."""
+    """Second derivative of specific Gibbs function w.r.t.
+
+    temperature at p=0 (gsw_gibbs_pt0_pt0.m).
+    """
     sa = np.maximum(sa, 0)
     sfac = 0.0248826675584615
     x2 = sfac * sa
@@ -174,8 +177,8 @@ def _gibbs_pt0_pt0(sa: Numeric, pt0: Numeric) -> Numeric:
 
 
 def _pt0_from_t(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
-    """
-    Potential temperature with p_ref=0 dbar via 2-iteration Newton's method (gsw_pt0_from_t.m).
+    """Potential temperature with p_ref=0 dbar via 2-iteration Newton's method
+    (gsw_pt0_from_t.m).
 
     Maximum error: 1.8e-14 dec C over the full oceanographic funnel.
     """
@@ -204,10 +207,8 @@ def _pt0_from_t(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
 
 
 def _ct_from_pt(sa: Numeric, pt: Numeric) -> Numeric:
-    """
-    Conservative Temperature from potential temperature via potential enthalpy
-    polynomial (gsw_ct_from_pt.m).
-    """
+    """Conservative Temperature from potential temperature via potential
+    enthalpy polynomial (gsw_ct_from_pt.m)."""
     sa = np.maximum(sa, 0)
     sfac = 0.0248826675584615
     x2 = sfac * sa
@@ -350,8 +351,7 @@ def ct_from_t(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
 
 
 def specific_volume(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-    """
-    Specific volume from the 75-term polynomial EOS (gsw_specvol.m).
+    """Specific volume from the 75-term polynomial EOS (gsw_specvol.m).
 
     Parameters
     ----------
@@ -504,8 +504,7 @@ def specific_volume(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
 
 
 def density(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-    """
-    In-situ density from the 75-term polynomial EOS (gsw_rho.m).
+    """In-situ density from the 75-term polynomial EOS (gsw_rho.m).
 
     Parameters
     ----------
@@ -525,8 +524,7 @@ def density(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
 
 
 def alpha(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-    """
-    Thermal expansion coefficient with respect to Conservative Temperature
+    """Thermal expansion coefficient with respect to Conservative Temperature
     from the 75-term polynomial EOS (gsw_alpha.m).
 
     Parameters
@@ -634,9 +632,8 @@ def alpha(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
 
 
 def beta(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-    """
-    Haline contraction coefficient at constant Conservative Temperature
-    from the 75-term polynomial EOS (gsw_beta.m).
+    """Haline contraction coefficient at constant Conservative Temperature from
+    the 75-term polynomial EOS (gsw_beta.m).
 
     Parameters
     ----------
@@ -744,8 +741,8 @@ def beta(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
 
 
 def sound_speed(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-    """
-    Speed of sound in seawater from the 75-term polynomial EOS (gsw_sound_speed.m).
+    """Speed of sound in seawater from the 75-term polynomial EOS
+    (gsw_sound_speed.m).
 
     Parameters
     ----------
@@ -850,8 +847,7 @@ def sound_speed(sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
 
 
 def sigma0(sa: Numeric, ct: Numeric) -> Numeric:
-    """
-    Potential density anomaly referenced to 0 dbar from the 75-term EOS
+    """Potential density anomaly referenced to 0 dbar from the 75-term EOS
     (gsw_sigma0.m). Equal to potential density minus 1000 kg/m^3.
 
     Parameters
@@ -927,8 +923,8 @@ def sigma0(sa: Numeric, ct: Numeric) -> Numeric:
 
 
 def freezing_temperature(sa: Numeric, p: Numeric) -> Numeric:
-    """
-    In-situ freezing temperature from a direct polynomial fit (gsw_t_freezing_poly.m).
+    """In-situ freezing temperature from a direct polynomial fit
+    (gsw_t_freezing_poly.m).
 
     Uses the 23-coefficient polynomial given in the comments of gsw_t_freezing_poly.m,
     which avoids calling CT_freezing and t_from_CT. Error is between -8e-4 K and
@@ -1060,8 +1056,7 @@ def heat_capacity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
 
 
 def dynamic_viscosity(t: Numeric, sa: Numeric) -> Numeric:
-    """
-    Dynamic viscosity of seawater (Sharqawy et al., 2010).
+    """Dynamic viscosity of seawater (Sharqawy et al., 2010).
 
     Parameters
     ----------
@@ -1083,8 +1078,7 @@ def dynamic_viscosity(t: Numeric, sa: Numeric) -> Numeric:
 
 
 def kinematic_viscosity(t: Numeric, sa: Numeric) -> Numeric:
-    """
-    Kinematic viscosity of seawater.
+    """Kinematic viscosity of seawater.
 
     Parameters
     ----------
@@ -1104,22 +1098,22 @@ def kinematic_viscosity(t: Numeric, sa: Numeric) -> Numeric:
 
 
 def thermal_conductivity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
-    """
-    Thermal conductivity of seawater (Sharqawy et al., 2010, Eq. 14, with typo 6.53e-3 -> 6.53e-4 corrected).
+    """Thermal conductivity of seawater (Sharqawy et al., 2010, Eq.
 
-    Parameters
-    ----------
-    sa : Numeric
-        Absolute Salinity (g/kg)
-    t : Numeric
-        In-situ temperature (deg C)
-    p : Numeric
-        Sea pressure (dbar)
+    14, with typo 6.53e-3 -> 6.53e-4 corrected).
+        Parameters
+        ----------
+        sa : Numeric
+            Absolute Salinity (g/kg)
+        t : Numeric
+            In-situ temperature (deg C)
+        p : Numeric
+            Sea pressure (dbar)
 
-    Returns
-    -------
-    Numeric
-        Thermal conductivity (W/(m K))
+        Returns
+        -------
+        Numeric
+            Thermal conductivity (W/(m K))
     """
     p_mpa = p * 0.01  # dbar -> MPa
     return 0.5715 * (1 + 0.003 * t - 1.025e-5 * t**2 + 6.53e-4 * p_mpa - 2.9e-4 * sa)
@@ -1180,8 +1174,7 @@ def buoyancy_frequency(
 
 
 def gravity_at_lat(lat: Numeric) -> Numeric:
-    """
-    UNESCO (1983) gravity at a given latitude.
+    """UNESCO (1983) gravity at a given latitude.
 
     Parameters
     ----------
@@ -1192,7 +1185,6 @@ def gravity_at_lat(lat: Numeric) -> Numeric:
     -------
     g : Numeric
         Gravitational acceleration (m/s^2)
-
     """
     sin2 = np.sin(np.deg2rad(lat)) ** 2
     g = 9.780318 * (1.0 + 5.2788e-3 * sin2 + 2.36e-5 * sin2**2)

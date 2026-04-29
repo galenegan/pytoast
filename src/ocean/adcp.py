@@ -18,9 +18,10 @@ from utils.rotate_utils import (
 
 
 class ADCP(BaseInstrument):
-    """
-    Class for processing data from Acoustic Doppler Current Profiler (ADCP) instruments. Contains methods for:
-    - Loading data from source files
+    """Class for processing data from Acoustic Doppler Current Profiler (ADCP)
+    instruments.
+
+    Contains methods for: - Loading data from source files
     - Preprocessing (despiking, coordinate transformations, flow-dependent rotations)
     - Calculating mean shear
     - Calculating turbulence statistics: TKE dissipation, Reynolds stress
@@ -39,8 +40,7 @@ class ADCP(BaseInstrument):
         beam_angle: float = 25.0,
         manufacturer: str = "nortek",
     ):
-        """
-        Initialize an ADCP object.
+        """Initialize an ADCP object.
 
         Parameters
         ----------
@@ -257,8 +257,7 @@ class ADCP(BaseInstrument):
         return burst_data
 
     def _apply_coord_transform(self, burst_data, coords_out):
-        """
-        Transform velocity components between coordinate systems.
+        """Transform velocity components between coordinate systems.
 
         Uses configuration stored in self._rotate. Can be called from _apply_preprocessing during standard burst
         loading, or directly from analysis methods (e.g., covariance).
@@ -371,9 +370,10 @@ class ADCP(BaseInstrument):
         return burst_data
 
     def shear(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        """
-        Calculates the mean vertical shear of the 3 cartesian velocity components. Uses numpy's gradient function with
-        second-order accuracy at the boundaries.
+        """Calculates the mean vertical shear of the 3 cartesian velocity
+        components.
+
+        Uses numpy's gradient function with second-order accuracy at the boundaries.
 
         Parameters
         ----------
@@ -384,7 +384,6 @@ class ADCP(BaseInstrument):
         -------
         out : dict
             Dictionary containing vertical shear profiles for each velocity component.
-
         """
         if burst_data["coords"] == "beam":
             raise ValueError(
@@ -412,8 +411,7 @@ class ADCP(BaseInstrument):
         roll: np.ndarray = np.array([0.0]),
         **kwargs,
     ):
-        """
-        Calculate Reynolds stress components for a given burst.
+        """Calculate Reynolds stress components for a given burst.
 
         Parameters
         ----------
@@ -456,9 +454,7 @@ class ADCP(BaseInstrument):
             Technology, 27(5), 889-907.
         Guerra, M., & Thomson, J. (2017). Turbulence measurements from five-beam acoustic Doppler current profilers.
             Journal of Atmospheric and Oceanic Technology, 34(6), 1267-1284.
-
         """
-
         if method not in ["variance", "ogive_fit", "5beam"]:
             raise ValueError(f"Invalid covariance method '{method}'. Must be 'variance', 'ogive_fit', or '5beam'.")
 
@@ -673,8 +669,7 @@ class ADCP(BaseInstrument):
         sf_kwargs: dict = None,
         **kwargs,
     ) -> np.ndarray:
-        """
-        Estimate the dissipation rate of TKE for a given burst
+        """Estimate the dissipation rate of TKE for a given burst.
 
         Parameters
         ----------
@@ -717,7 +712,6 @@ class ADCP(BaseInstrument):
         McMillan, J. M., & Hay, A. E. (2017). Spectral and structure function estimates of turbulence dissipation rates
             in a high-flow tidal channel using broadband ADCPs. Journal of Atmospheric and Oceanic Technology, 34(1), 5-20.
         """
-
         if burst_data["coords"] != "beam":
             u_bar = np.mean(np.sqrt(burst_data["u1"] ** 2 + burst_data["u2"] ** 2), axis=1)
             burst_data = copy.deepcopy(burst_data)
