@@ -463,7 +463,8 @@ class ADCP(BaseInstrument):
             burst_data = copy.deepcopy(burst_data)
             burst_data = self._apply_coord_transform(burst_data, "beam")
         else:
-            burst_data_xyz = self._apply_coord_transform(burst_data, "xyz")
+            burst_data_temp = copy.deepcopy(burst_data)
+            burst_data_xyz = self._apply_coord_transform(burst_data_temp, "xyz")
             u_bar = np.mean(np.sqrt(burst_data_xyz["u1"] ** 2 + burst_data_xyz["u2"] ** 2), axis=1)
 
         beam_angle_rad = np.deg2rad(self.beam_angle)
@@ -717,7 +718,8 @@ class ADCP(BaseInstrument):
             burst_data = copy.deepcopy(burst_data)
             burst_data = self._apply_coord_transform(burst_data, "beam")
         else:
-            burst_data_xyz = self._apply_coord_transform(burst_data, "xyz")
+            burst_data_temp = copy.deepcopy(burst_data)
+            burst_data_xyz = self._apply_coord_transform(burst_data_temp, "xyz")
             u_bar = np.mean(np.sqrt(burst_data_xyz["u1"] ** 2 + burst_data_xyz["u2"] ** 2), axis=1)
 
         if method not in ["4beam_spectral", "5th_beam_spectral", "structure_function"]:
