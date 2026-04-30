@@ -1,4 +1,5 @@
 import numpy as np
+import warnings
 from scipy.special import jv, hankel1
 from scipy.optimize import brentq, newton
 from utils.constants import VON_KARMAN as kappa
@@ -17,14 +18,14 @@ _KBR_DEF = 0.03  # default ripple roughness (m)
 def _fwc_m94(relative_roughness, c_mu):
     # Wave-current friction factor (Eqs 32 - 33, Madsen 1994)
     if relative_roughness <= 0.2:
-        print(f"Warning: Relative roughness {relative_roughness} is out of range [0.2, 10000]")
+        warnings.warn(f"Relative roughness {relative_roughness} is out of range [0.2, 10000]")
         return c_mu * np.exp(7.02 * 0.2 ** (-0.078) - 8.82)
     elif (relative_roughness > 0.2) & (relative_roughness <= 100):
         return c_mu * np.exp(7.02 * relative_roughness ** (-0.078) - 8.82)
     elif (relative_roughness > 100) & (relative_roughness <= 10000):
         return c_mu * np.exp(5.61 * relative_roughness ** (-0.109) - 7.30)
     else:
-        print(f"Warning: Relative roughness {relative_roughness} is out of range [0.2, 10000]")
+        warnings.warn(f"Relative roughness {relative_roughness} is out of range [0.2, 10000]")
         return c_mu * np.exp(5.61 * 10000 ** (-0.109) - 7.30)
 
 
@@ -183,10 +184,10 @@ def madsen(ub_r, omega_r, uc_r, phi_c, phi_wr, z_r, kN, max_iter=10, tol=1e-4):
     phi_wc = np.deg2rad(min_angle(phi_c - phi_wr))
     z0 = kN / 30
 
-    iter = 0
+    num_iter = 0
     delta_fwc = np.inf
     c_mu = 1.0  # c_mu when mu = tau_c / tau_wr = 0
-    while (iter < max_iter) and (delta_fwc > tol):
+    while (num_iter < max_iter) and (delta_fwc > tol):
         relative_roughness = (c_mu * ub_r) / (kN * omega_r)
 
         # Wave-current friction factor
@@ -211,6 +212,7 @@ def madsen(ub_r, omega_r, uc_r, phi_c, phi_wr, z_r, kN, max_iter=10, tol=1e-4):
         c_mu = np.sqrt(1 + 2 * mu * np.abs(np.cos(phi_wc)) + mu**2)
         f_wc_new = _fwc_m94(relative_roughness, c_mu)
         delta_fwc = np.abs(f_wc - f_wc_new) / f_wc
+        num_iter += 1
 
     out = {
         "ustar_c": ustar_c,

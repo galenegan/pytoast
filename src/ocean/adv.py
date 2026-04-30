@@ -36,7 +36,9 @@ class ADV(BaseInstrument):
     """Class for processing data from Acoustic Doppler Velocimeter (ADV)
     instruments.
 
-    Contains methods for: - Loading data from source files
+    Contains methods for:
+
+    - Loading data from source files
     - Preprocessing (despiking, coordinate transformations, flow-dependent rotations)
     - Calculating turbulence statistics: TKE, TKE dissipation, Reynolds stress (including wave-turbulence decomposed)
     - Calculating directional wave statistics
@@ -87,7 +89,9 @@ class ADV(BaseInstrument):
             `time` variable
         z : float, List[float, int], or np.ndarray, optional
             Mean height above the bed (m) for each instrument. If not provided, it will default to integer indices, in
-            which case certain functionality (e.g., wave statistics) will not be available.
+            which case certain functionality (e.g., wave statistics) will not be available. Unlike the ADCP class,
+            interpretation of `z` will not vary depending on `orientation`: input must be in meters above bed for
+            depth-dependent calculations to work correctly.
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables in name_map are
             stored at `burst["Data"]["variable_name"]`).
@@ -1120,13 +1124,17 @@ class ADV(BaseInstrument):
             X = J33 * alpha * (omega_inertial ** (-5 / 3))
             y = Pw_inertial
             slope, intercept, *_ = linregress(X, y)
-            eps = slope ** (3 / 2)
+            eps23 = slope
             noise = intercept
 
-            if noise < J33 * alpha * (eps ** (2 / 3)) * (omega_range[0] ** (-5 / 3)):
-                quality_flag = 1
+            if eps23 < 0:
+                return np.nan, np.nan, 0
             else:
-                quality_flag = 0
+                eps = eps23 ** (3 / 2)
+                if noise < J33 * alpha * (eps ** (2 / 3)) * (omega_range[0] ** (-5 / 3)):
+                    quality_flag = 1
+                else:
+                    quality_flag = 0
 
             return eps, noise, quality_flag
 
@@ -1296,23 +1304,16 @@ class ADV(BaseInstrument):
 
         # Frequency band definitions
         if band_definitions is None:
-            fbands = {
-                "infragravity": ((f > 1 / 250) & (f <= 1 / 25) & (f <= f_cutoff)),
-                "swell": ((f > 1 / 25) & (f <= 0.2) & (f <= f_cutoff)),
-                "sea": ((f > 0.2) & (f <= 0.5) & (f <= f_cutoff)),
-                "all": ((f > 0) & (f <= f_cutoff)),
+            band_definitions = {
+                "infragravity": (1 / 250, 1 / 25),
+                "swell": (1 / 25, 1 / 5),
+                "sea": (1 / 5, 1 / 2),
             }
-        else:
-            fbands = {
-                "infragravity": (
-                    (f > band_definitions["infragravity"][0])
-                    & (f <= band_definitions["infragravity"][1])
-                    & (f <= f_cutoff)
-                ),
-                "swell": ((f > band_definitions["swell"][0]) & (f <= band_definitions["swell"][1]) & (f <= f_cutoff)),
-                "sea": ((f > band_definitions["sea"][0]) & (f <= band_definitions["sea"][1]) & (f <= f_cutoff)),
-                "all": ((f > 0) & (f <= f_cutoff)),
-            }
+
+        f_bands = {}
+        for band_name, (f_low, f_high) in band_definitions.items():
+            f_bands[band_name] = ((f >= f_low) & (f < f_high) & (f < f_cutoff))
+        f_bands["all"] = ((f > 0) & (f < f_cutoff))
 
         # Getting sea surface elevation spectrum
         omega = 2 * np.pi * f

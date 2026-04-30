@@ -465,6 +465,8 @@ def apply_flow_rotation(burst_data, flow_rotation):
             )
     elif isinstance(flow_rotation, tuple):
         theta_h, theta_v = flow_rotation
+        assert len(theta_h) == burst_data["u1"].shape[0]
+        assert len(theta_v) == burst_data["u1"].shape[0]
     else:
         raise TypeError(f"flow_rotation must be a str or tuple, got {type(flow_rotation)}")
 

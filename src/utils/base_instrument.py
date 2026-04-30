@@ -1,13 +1,15 @@
 from abc import ABC
+import datetime
 import numpy as np
 import os
-import sys
 from typing import Any, List, Union, Optional, Dict
 import scipy.io as sio
 import pandas as pd
 import xarray as xr
 
 from utils.io_utils import results_to_dataset
+
+DatetimeLike = datetime.datetime | np.datetime64 | pd.Timestamp
 
 
 class BaseInstrument(ABC):
@@ -150,6 +152,7 @@ class BaseInstrument(ABC):
     def _load_file(file_path, data_keys=None):
         suffix = file_path.split(".")[-1].lower()
         if suffix == "mat":
+            # TODO: add error handling to fall back on mat73
             data = strip_mat_nulls(sio.loadmat(file_path, simplify_cells=True))
             file_type = "mat"
         elif suffix == "npy":
@@ -162,7 +165,7 @@ class BaseInstrument(ABC):
             data = xr.open_dataset(file_path)
             file_type = "nc"
         else:
-            raise Exception(f"Unrecognized file type .{suffix} for filepath input")
+            raise ValueError(f"Unrecognized file type .{suffix} for filepath input")
 
         for key in data_keys or []:
             data = data[key]
@@ -264,7 +267,8 @@ class BaseInstrument(ABC):
             num_samples = len(time_array)
             if fs is None:
                 datetime_array = self.process_time(time_array)
-                fs = np.round(1 / ((datetime_array[1] - datetime_array[0]).astype(int) / 10**9), 2)
+                dt_median = np.nanmedian(np.diff(datetime_array))
+                fs = np.round(1 / (dt_median.astype(int) / 10**9), 2)
 
         return fs, z, file_type, num_samples
 
@@ -283,7 +287,9 @@ class BaseInstrument(ABC):
         """
         flattened_time = time_array.flatten()
         time_format = self.detect_time_format(flattened_time[0])
-        if time_format == "datestring":
+        if time_format == "datetime":
+            datetime_array = np.asarray(flattened_time)
+        elif time_format == "datestring":
             datetime_array = pd.to_datetime(flattened_time).values
         elif time_format == "matlab":
             datetime_array = pd.to_datetime(flattened_time - 719529, unit="D").values
@@ -293,7 +299,7 @@ class BaseInstrument(ABC):
         return datetime_array.reshape(time_array.shape)
 
     @staticmethod
-    def detect_time_format(time_input: Union[float, int, str]) -> str:
+    def detect_time_format(time_input: Union[float, int, str, DatetimeLike]) -> str:
         """Detect if a time input represents Unix epoch time, MATLAB datenum,
         or a datestring.
 
@@ -301,13 +307,15 @@ class BaseInstrument(ABC):
             time_input (float): The input float to test.
 
         Returns:
-            str: `"datestring"`, `"epoch"`, `"matlab"`. Raises an exception if there is no match
+            str: `"datetime"`, `"datestring"`, `"epoch"`, `"matlab"`. Raises an exception if there is no match
         """
         # Rough numeric ranges as of 2020s:
         # Epoch: ~1.5e9 (1970-2020s)
         # MATLAB: ~7.3e5 (year ~2000), currently ~7.4e5 to ~7.5e5 in the 2020s
 
-        if isinstance(time_input, str):
+        if isinstance(time_input, datetime.datetime | np.datetime64 | pd.Timestamp):
+            return "datetime"
+        elif isinstance(time_input, str):
             return "datestring"
         elif 1e9 < time_input < 2e9:
             return "epoch"
@@ -356,7 +364,7 @@ class BaseInstrument(ABC):
                 var_data = self._as_array(data, in_key, file_type)
                 if var_data.ndim > 1:
                     # Transpose if needed (time should be last dimension)
-                    if var_data.shape[0] > var_data.shape[1]:
+                    if var_data.shape[1] == self.n_heights:
                         var_data = var_data.T
                 else:
                     var_data = np.expand_dims(var_data, axis=0)  # 2D even if only 1D input

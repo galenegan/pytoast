@@ -36,6 +36,7 @@ def _psit_26(zeta: np.ndarray) -> np.ndarray:
     Matches ``psit_26`` in the COARE 3.6 reference code (Fairall et al.
     2003).
     """
+    zeta = np.asarray(zeta, dtype=float)
     dzeta = np.minimum(50.0, 0.35 * zeta)
     # Stable branch (computed for all points; unstable points overwritten below)
     with np.errstate(invalid="ignore"):
@@ -61,6 +62,7 @@ def _psiu_26(zeta: np.ndarray) -> np.ndarray:
     Stable branch coefficient a=0.7 (Edson et al. 2013). Matches
     ``psiu_26`` in the reference code.
     """
+    zeta = np.asarray(zeta, dtype=float)
     dzeta = np.minimum(50.0, 0.35 * zeta)
     with np.errstate(invalid="ignore"):
         psi = -(0.7 * zeta + 0.75 * (zeta - 5 / 0.35) * np.exp(-dzeta) + 0.75 * 5 / 0.35)
@@ -85,6 +87,7 @@ def _psiu_40(zeta: np.ndarray) -> np.ndarray:
     different coefficients than _psiu_26. Matches ``psiu_40`` in the
     reference code.
     """
+    zeta = np.asarray(zeta, dtype=float)
     dzeta = np.minimum(50.0, 0.35 * zeta)
     with np.errstate(invalid="ignore"):
         psi = -(1.0 * zeta + 0.75 * (zeta - 5 / 0.35) * np.exp(-dzeta) + 0.75 * 5 / 0.35)

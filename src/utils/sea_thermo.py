@@ -1245,7 +1245,7 @@ def pressure_from_depth(z: Numeric, lat: Optional[Numeric] = None) -> Numeric:
     # One Newton step
     z_est = depth_from_pressure(p, lat)
     numer = 9.72659 * p - 2.2512e-5 * p**2 + 2.279e-10 * p**3 - 1.82e-15 * p**4
-    numer_prime = 9.72659 - 2 * 2.2512e-5 * p + 3 * 2.279e-10 * p**2 - 4 * 11.82e-15 * p**3
+    numer_prime = 9.72659 - 2 * 2.2512e-5 * p + 3 * 2.279e-10 * p**2 - 4 * 1.82e-15 * p**3
     denom = g_lat + 1.092e-6 * p
     denom_prime = 1.092e-6
     dzdp = (numer_prime * denom - numer * denom_prime) / denom**2

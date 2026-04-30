@@ -581,6 +581,7 @@ class ADCP(BaseInstrument):
             theta = beam_angle_rad
             u5 = burst_data["u5"]
             if self.manufacturer == "nortek":
+                # Note the reassignment based on beam ordering (consistent with the paper)
                 phi_2 = roll
                 phi_3 = -pitch
                 u1 = burst_data["u1"]

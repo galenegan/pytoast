@@ -129,7 +129,7 @@ def jones_monismith_correction(
     df = np.max(np.diff(f))
     noise_floor = np.mean(S_pp[f < 3 * df])
 
-    global_cutoff = np.argmin(np.abs(f - f_cutoff))
+    global_cutoff = np.argmin(np.abs(f - f_cutoff)) if f_cutoff is not None else len(f)
     index_peak = np.argmax(S_pp[:global_cutoff])
     index_cutoff = np.argmin(np.abs(S_pp[index_peak:] - noise_floor * 12)) + index_peak
 
