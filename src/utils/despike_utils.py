@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import median_abs_deviation, norm
-from utils.interp_utils import interp_rows
+from utils.interp_utils import interp_rows, naninterp
 
 
 def threshold(
@@ -186,10 +186,10 @@ def recursive_gaussian(
         num_bad = np.inf
         while (k < max_iter) and (num_bad > 0):
             mean, std = norm.fit(u_row)
-            bad_cols = (u_out < mean - alpha * std) | (u_out > mean + alpha * std)
+            bad_cols = (u_row < mean - alpha * std) | (u_row > mean + alpha * std)
             u_row[bad_cols] = np.nan
             num_bad = np.sum(bad_cols)
-            u_row = interp_rows(u_row)
+            u_row = naninterp(u_row)
 
         u_out[ii, :] = u_row
 
