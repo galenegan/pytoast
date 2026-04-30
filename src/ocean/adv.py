@@ -1060,9 +1060,9 @@ class ADV(BaseInstrument):
     def dissipation(
         self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs
     ) -> Dict[str, np.ndarray]:
-        """Estimate the dissipation rate of TKE using the Gerbi et al.
-
-        (2009) spectral curve fitting method. This is nearly equivalent to the Feddersen et al. (2007) method, but it uses a more efficient numerical integration and
+        """
+        Estimate the dissipation rate of TKE using the Gerbi et al. (2009) spectral curve fitting method. This is nearly
+        equivalent to the Feddersen et al. (2007) method, but it uses a more efficient numerical integration and
         estimates dissipation with a least squares fit rather than a mean over the inertial range.
 
         Parameters
@@ -1235,15 +1235,20 @@ class ADV(BaseInstrument):
         ----------
         Herbers, T. H. C., Elgar, S., & Guza, R. T. (1999). Directional spreading of waves in the nearshore. Journal of
             Geophysical Research: Oceans, 104(C4), 7683-7693.
+
         Jones, N. L., & Monismith, S. G. (2007). Measuring short‐period wind waves in a tidally forced environment with
             a subsurface pressure gauge. Limnology and Oceanography: Methods, 5(10), 317-327.
+
         Kumar, N., Cahl, D. L., Crosby, S. C., & Voulgaris, G. (2017). Bulk versus spectral wave parameters:
             Implications on stokes drift estimates, regional wave modeling, and HF radars applications. Journal of
             Physical Oceanography, 47(6), 1413-1431.
+
         Madsen, O. S. (1994). Spectral wave-current bottom boundary layer flows. In Coastal engineering 1994 (pp.
             384-398).
+
         Mei, C. C., Stiassnie, M. A., & Yue, D. K. P. (2005). Theory and applications of ocean surface waves: Part 1:
             linear aspects.
+
         Wiberg, P. L., & Sherwood, C. R. (2008). Calculating wave-generated bottom orbital velocities from surface-wave
             parameters. Computers & Geosciences, 34(10), 1243-1262.
         """
@@ -1260,7 +1265,7 @@ class ADV(BaseInstrument):
             v = burst_data["u2"][height_idx, :]
             p = burst_data["p"][height_idx, :]
             results.append(
-                self.wave_worker(
+                self._wave_worker(
                     u=u,
                     v=v,
                     p=p,
@@ -1275,7 +1280,7 @@ class ADV(BaseInstrument):
 
         return {key: np.array([r[key] for r in results]) for key in results[0]}
 
-    def wave_worker(
+    def _wave_worker(
         self,
         u: np.ndarray,
         v: np.ndarray,
@@ -1389,7 +1394,7 @@ class ADV(BaseInstrument):
         out["u_orb_spec"] = u_orb_spec
 
         # Looping over the frequency bands and adding bulk (integrated) parameters
-        for band_name, band_indices in fbands.items():
+        for band_name, band_indices in f_bands.items():
             # Significant and rms wave height
             out[f"Hsig_{band_name}"] = 4 * np.sqrt(np.sum(P_etaeta[band_indices] * df))
             out[f"Hrms_{band_name}"] = np.sqrt(8 * np.sum(P_etaeta[band_indices] * df))
