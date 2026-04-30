@@ -217,7 +217,7 @@ class ADV(BaseInstrument):
             despike_fn = {
                 "goring_nikora": goring_nikora,
                 "threshold": threshold,
-                "recursive_guassian": recursive_gaussian,
+                "recursive_gaussian": recursive_gaussian,
             }.get(self._despike_method)
             if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
