@@ -1,9 +1,10 @@
+import copy
 import numpy as np
 from typing import Optional, Union
 from utils.constants import GRAVITATIONAL_ACCELERATION as g
 
 
-def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray], max_iter=10) -> Union[float, np.ndarray]:
     """Calculate wavenumber from the surface gravity wave dispersion relation
     using Newton's method.
 
@@ -19,22 +20,45 @@ def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray])
     k : float or np.ndarray
         Wavenumber (rad/m)
     """
-    k = omega / np.sqrt(g * h)
 
-    f = g * k * np.tanh(k * h) - omega**2
-
-    while np.max(np.abs(f)) > 1e-10:
-        dfdk = g * k * h * ((1 / np.cosh(k * h)) ** 2) + g * np.tanh(k * h)
-        k = k - f / dfdk
-        f = g * k * np.tanh(k * h) - omega**2
+    # Initial guess
+    k_out = omega / np.sqrt(g * h)
 
     # Handling the zero case
-    if np.isscalar(k):
-        k = 0 if omega == 0 else k
+    if np.isscalar(k_out):
+        vector_input = False
+        if k_out == 0:
+            return k_out
+        else:
+            omega_iter = omega
+            k_iter = copy.deepcopy(k_out)
+            h_iter = h
     else:
-        k[omega == 0] = 0
+        vector_input = True
+        idx_zero = (omega == 0)
+        idx_iter = (omega != 0)
+        k_iter = copy.deepcopy(k_out[idx_iter])
+        omega_iter = omega[idx_iter]
+        h_iter = h[idx_iter]
 
-    return k
+
+    f = g * k_iter * np.tanh(k_iter * h_iter) - omega_iter**2
+
+    num_iter = 0
+    while (np.max(np.abs(f)) > 1e-10) and (num_iter < max_iter):
+        dfdk = g * k_iter * h_iter * ((1 / np.cosh(k_iter * h_iter)) ** 2) + g * np.tanh(k_iter * h_iter)
+        k_iter = k_iter - f / dfdk
+        f = g * k_iter * np.tanh(k_iter * h_iter) - omega_iter**2
+        num_iter += 1
+
+    if vector_input:
+        k_out[idx_zero] = 0
+        k_out[idx_iter] = k_iter
+    else:
+        k_out = k_iter
+
+    return k_out
+
 
 
 def get_cg(k, h):
