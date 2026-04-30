@@ -1,64 +1,39 @@
-import copy
 import numpy as np
 from typing import Optional, Union
 from utils.constants import GRAVITATIONAL_ACCELERATION as g
 
 
-def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray], max_iter=10) -> Union[float, np.ndarray]:
-    """Calculate wavenumber from the surface gravity wave dispersion relation
-    using Newton's method.
+def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray], max_iter: int = 10, tol: float = 1e-10):
+    """Calculate wavenumber from the surface gravity wave dispersion relation using Newton's method.
 
-    Parameters
-    ----------
-    omega : float or np.ndarray
-        Angular frequency (rad/s)
-    h : float or np.ndarray
-        Water depth (m)
+        Parameters
+        ----------
+        omega : float or np.ndarray
+            Angular frequency (rad/s)
+        h : float or np.ndarray
+            Water depth (m)
+        max_iter : int
+            Maximum number of iterations
+        tol : float
+            Convergence tolerance
 
-    Returns
-    -------
-    k : float or np.ndarray
-        Wavenumber (rad/m)
-    """
-
-    # Initial guess
-    k_out = omega / np.sqrt(g * h)
-
-    # Handling the zero case
-    if np.isscalar(k_out):
-        vector_input = False
-        if k_out == 0:
-            return k_out
-        else:
-            omega_iter = omega
-            k_iter = copy.deepcopy(k_out)
-            h_iter = h
-    else:
-        vector_input = True
-        idx_zero = (omega == 0)
-        idx_iter = (omega != 0)
-        k_iter = copy.deepcopy(k_out[idx_iter])
-        omega_iter = omega[idx_iter]
-        h_iter = h[idx_iter]
-
-
-    f = g * k_iter * np.tanh(k_iter * h_iter) - omega_iter**2
-
-    num_iter = 0
-    while (np.max(np.abs(f)) > 1e-10) and (num_iter < max_iter):
-        dfdk = g * k_iter * h_iter * ((1 / np.cosh(k_iter * h_iter)) ** 2) + g * np.tanh(k_iter * h_iter)
-        k_iter = k_iter - f / dfdk
-        f = g * k_iter * np.tanh(k_iter * h_iter) - omega_iter**2
-        num_iter += 1
-
-    if vector_input:
-        k_out[idx_zero] = 0
-        k_out[idx_iter] = k_iter
-    else:
-        k_out = k_iter
-
-    return k_out
-
+        Returns
+        -------
+        k : float or np.ndarray
+            Wavenumber (rad/m)
+        """
+    omega = np.asarray(omega, dtype=float)
+    h = np.broadcast_to(np.asarray(h, dtype=float), omega.shape)
+    k = np.where(omega == 0, 0.0, omega / np.sqrt(g * h))
+    mask = omega != 0
+    for _ in range(max_iter):
+        th = np.tanh(k * h)
+        f = g * k * th - omega ** 2
+        if np.max(np.abs(f[mask])) < tol:
+            break
+        dfdk = g * h * k / np.cosh(k * h) ** 2 + g * th
+        k = np.where(mask, k - f / np.where(mask, dfdk, 1.0), 0.0)
+    return k.item() if k.ndim == 0 else k
 
 
 def get_cg(k, h):

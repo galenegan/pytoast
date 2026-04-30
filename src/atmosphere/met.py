@@ -10,7 +10,9 @@ Numeric: TypeAlias = float | int | np.ndarray
 class Met(BaseInstrument):
     """Class for processing bulk meteorological data.
 
-    Contains methods for: - Loading data from source files
+    Contains methods for:
+
+    - Loading data from source files
     - Preprocessing
     - Calculating and converting from/to various useful thermodynamic quantities
 
@@ -171,7 +173,7 @@ class Met(BaseInstrument):
             }.get(self._despike_method)
             if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
-            for key in self.var_keys:
+            for key in self._burst_var_keys:
                 burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
 
         return burst_data
@@ -503,7 +505,7 @@ class Met(BaseInstrument):
         return burst_data
 
     @property
-    def var_keys(self):
+    def _burst_var_keys(self):
         return [k for k in self.name_map if k != "time"]
 
     def subsample(self, start_idx: int, end_idx: int):

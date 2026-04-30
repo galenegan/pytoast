@@ -600,6 +600,7 @@ class ADV(BaseInstrument):
         ----------
         Schmid, P. J. (2010). Dynamic mode decomposition of numerical and experimental data. Journal of fluid mechanics,
             656, 5-28.
+
         Chávez-Dorado, J., Scherl, I., & DiBenedetto, M. (2025). Wave and turbulence separation using dynamic mode
             decomposition. Journal of Atmospheric and Oceanic Technology, 42(5), 509-526.
         """
@@ -1089,6 +1090,7 @@ class ADV(BaseInstrument):
         ----------
         Feddersen, F., Trowbridge, J. H., & Williams, A. J. (2007). Vertical structure of dissipation in the nearshore.
             Journal of Physical Oceanography, 37(7), 1764-1777.
+
         Gerbi, G. P., Trowbridge, J. H., Terray, E. A., Plueddemann, A. J., & Kukulka, T. (2009). Observations of
             turbulence in the ocean surface boundary layer: Energetics and transport. Journal of Physical Oceanography,
             39(5), 1077-1096.

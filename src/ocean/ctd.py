@@ -54,9 +54,11 @@ class CTD(BaseInstrument):
     IOC, SCOR and IAPSO, 2010: The international thermodynamic equation of
         seawater - 2010. Intergovernmental Oceanographic Commission,
         Manuals and Guides No. 56, UNESCO.
+
     Roquet, F., G. Madec, T.J. McDougall, P.M. Barker, 2015: Accurate
         polynomial expressions for the density and specific volume of seawater
         using the TEOS-10 standard. Ocean Modelling, 90, 29-43.
+
     McDougall, T.J. and P.M. Barker, 2011: Getting started with TEOS-10 and
         the Gibbs Seawater (GSW) Oceanographic Toolbox. SCOR/IAPSO WG127.
     """
@@ -623,9 +625,6 @@ class CTD(BaseInstrument):
 
         return burst_data
 
-    @property
-    def var_keys(self):
-        return [k for k in self.name_map if k != "time"]
 
     def subsample(self, start_idx: int, end_idx: int):
         new_ctd = self.__class__(

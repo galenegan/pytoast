@@ -32,12 +32,12 @@ def test_dissipation_recovers_prescribed_eps():
     within sample-estimation noise.
     """
     eps_true = 1.0e-5
-    U_d = 1.0
+    U = 1.0
     u, v, w, _, truth = generate_wave_turb_burst(
         fs=16,
         duration_s=1800,
         a=0.0,
-        u_d_mean=U_d,
+        U=U,
         epsilon=eps_true,
         seed=0,
     )

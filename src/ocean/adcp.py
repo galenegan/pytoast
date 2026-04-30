@@ -21,7 +21,9 @@ class ADCP(BaseInstrument):
     """Class for processing data from Acoustic Doppler Current Profiler (ADCP)
     instruments.
 
-    Contains methods for: - Loading data from source files
+    Contains methods for:
+
+    - Loading data from source files
     - Preprocessing (despiking, coordinate transformations, flow-dependent rotations)
     - Calculating mean shear
     - Calculating turbulence statistics: TKE dissipation, Reynolds stress
@@ -449,9 +451,11 @@ class ADCP(BaseInstrument):
         ----------
         Stacey, M. T., Monismith, S. G., & Burau, J. R. (1999). Measurements of Reynolds stress profiles in unstratified
             tidal flow. Journal of Geophysical Research: Oceans, 104(C5), 10933-10949.
+
         Kirincich, A. R., Lentz, S. J., & Gerbi, G. P. (2010). Calculating Reynolds stresses from ADCP measurements in
             the presence of surface gravity waves using the cospectra-fit method. Journal of Atmospheric and Oceanic
             Technology, 27(5), 889-907.
+
         Guerra, M., & Thomson, J. (2017). Turbulence measurements from five-beam acoustic Doppler current profilers.
             Journal of Atmospheric and Oceanic Technology, 34(6), 1267-1284.
         """
@@ -613,7 +617,8 @@ class ADCP(BaseInstrument):
             u5_var = np.mean(u5_prime**2, axis=1)
 
             # Getting u-v covariance from xyz transformed data
-            burst_xyz = self._apply_coord_transform(burst_data, "xyz")
+            burst_data_temp = copy.deepcopy(burst_data)
+            burst_xyz = self._apply_coord_transform(burst_data_temp, "xyz")
             u = burst_xyz["u1"]
             v = burst_xyz["u2"]
             u_bar = np.mean(u, axis=1, keepdims=True)
@@ -711,6 +716,7 @@ class ADCP(BaseInstrument):
         ----------
         McMillan, J. M., Hay, A. E., Lueck, R. G., & Wolk, F. (2016). Rates of dissipation of turbulent kinetic energy
             in a high Reynolds number tidal channel. Journal of Atmospheric and Oceanic Technology, 33(4), 817-837.
+
         McMillan, J. M., & Hay, A. E. (2017). Spectral and structure function estimates of turbulence dissipation rates
             in a high-flow tidal channel using broadband ADCPs. Journal of Atmospheric and Oceanic Technology, 34(1), 5-20.
         """
