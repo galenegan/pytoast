@@ -18,7 +18,7 @@ class BaseInstrument(ABC):
         self,
         files: Union[str, List[str]],
         name_map: dict,
-        deployment_type: str = "moored",
+        deployment_type: str = "fixed",
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -33,7 +33,7 @@ class BaseInstrument(ABC):
         name_map : dict
             Mapping of variable names
         deployment_type : str, optional
-            One of {"moored", "cast"} depending on how the instrument is deployed. Default is "moored", in which case
+            One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
             self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
             heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
             variable within individual measurement bursts.
@@ -88,7 +88,7 @@ class BaseInstrument(ABC):
         name_map : dict
             Variable name mapping
         deployment_type : str
-            "moored" or "cast"
+            "fixed" or "cast"
         fs : float, optional
             Sampling frequency
         z : float, List[float], or np.ndarray, optional
@@ -127,8 +127,8 @@ class BaseInstrument(ABC):
         if not isinstance(deployment_type, str):
             raise TypeError("`deployment_type` must be a string")
 
-        if deployment_type not in ["moored", "cast"]:
-            raise ValueError("`deployment_type` must be either 'moored' or 'cast'")
+        if deployment_type not in ["fixed", "cast"]:
+            raise ValueError("`deployment_type` must be either 'fixed' or 'cast'")
 
         # Validate "z"
         if z is not None:
@@ -195,14 +195,14 @@ class BaseInstrument(ABC):
         z : float, list, np.ndarray, or None
             Height coordinates, or None to infer from data dimensions
         deployment_type : str
-            Either "moored" or "cast". Determines whether z is a constant array of height coordinates or None.
+            Either "fixed" or "cast". Determines whether z is a constant array of height coordinates or None.
 
         Returns
         -------
         fs : float
             Sampling frequency (provided or inferred)
         z : np.ndarray or None
-            If `deployment_type == "moored"`, height coordinates as a numpy array (provided or inferred). If
+            If `deployment_type == "fixed"`, height coordinates as a numpy array (provided or inferred). If
             `deployment` == "cast", None.
         file_type : str
             File format identifier (`"mat"`, `"npy"`, `"csv"`, `"nc"`)

@@ -57,7 +57,7 @@ class Met(BaseInstrument):
         self,
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "moored",
+        deployment_type: str = "fixed",
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -82,7 +82,7 @@ class Met(BaseInstrument):
             Lists are used when data from multiple instruments are stored in
             separate variables rather than a 2-D array.
         deployment_type : str, optional
-            One of {"moored", "cast"} depending on how the instrument is deployed. Default is "moored", in which case
+            One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
             self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
             heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
             variable within individual measurement bursts.
@@ -108,7 +108,7 @@ class Met(BaseInstrument):
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "moored",
+        deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -505,3 +505,16 @@ class Met(BaseInstrument):
     @property
     def var_keys(self):
         return [k for k in self.name_map if k != "time"]
+
+    def subsample(self, start_idx: int, end_idx: int):
+        new_met = self.__class__(
+            files=self.files[start_idx:end_idx],
+            name_map=self.name_map,
+            deployment_type=self.deployment_type,
+            fs=self.fs,
+            z=self.z,
+            data_keys=self.data_keys
+        )
+        if self._preprocess_enabled:
+            new_met.set_preprocess_opts(self._preprocess_opts)
+        return new_met

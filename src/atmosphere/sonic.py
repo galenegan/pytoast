@@ -21,7 +21,7 @@ class Sonic(BaseInstrument):
         self,
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "moored",
+        deployment_type: str = "fixed",
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -49,7 +49,7 @@ class Sonic(BaseInstrument):
             also not provided. Lists are used when data from multiple instruments are stored in
             separate variables rather than a 2-D array.
         deployment_type : str, optional
-            One of {"moored", "cast"} depending on how the instrument is deployed. Default is "moored", in which case
+            One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
             self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
             heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
             variable within individual measurement bursts.
@@ -79,7 +79,7 @@ class Sonic(BaseInstrument):
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "moored",
+        deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -430,12 +430,13 @@ class Sonic(BaseInstrument):
             Subsampled Sonic object
         """
         new_sonic = self.__class__(
-            self.files[start_idx:end_idx],
-            self.name_map,
-            self.fs,
-            self.z,
-            self.data_keys,
-            self.path_length,
+            files=self.files[start_idx:end_idx],
+            name_map=self.name_map,
+            deployment_type=self.deployment_type,
+            fs=self.fs,
+            z=self.z,
+            data_keys=self.data_keys,
+            path_length=self.path_length,
         )
         if self._preprocess_enabled:
             new_sonic.set_preprocess_opts(self._preprocess_opts)

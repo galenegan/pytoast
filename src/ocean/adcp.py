@@ -31,7 +31,7 @@ class ADCP(BaseInstrument):
         self,
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "moored",
+        deployment_type: str = "fixed",
         fs: Optional[float] = None,
         z: Optional[Union[List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -69,7 +69,7 @@ class ADCP(BaseInstrument):
             transformation involving ENU coordinates. "u4" and "u5" can be optionally specified for instruments with
             4 or 5 beams.
         deployment_type : str, optional
-            One of {"moored", "cast"} depending on how the instrument is deployed. Default is "moored", in which case
+            One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
             self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
             heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
             variable within individual measurement bursts.
@@ -122,7 +122,7 @@ class ADCP(BaseInstrument):
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "moored",
+        deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -844,3 +844,35 @@ class ADCP(BaseInstrument):
     @property
     def num_beams(self):
         return len(self.beam_keys)
+
+    def subsample(self, start_idx, end_idx):
+        """Subsample the ADCP object between files[start_idx] and
+        files[end_idx].
+
+        Parameters
+        ----------
+        start_idx : int
+            First file to include in subsampling
+        end_idx : int
+            Upper bound (exclusive) on file index in subsampling
+
+        Returns
+        -------
+        new_adcp : ADCP
+            Subsampled ADCP object
+        """
+        new_adcp = self.__class__(
+            files=self.files[start_idx:end_idx],
+            name_map=self.name_map,
+            deployment_type=self.deployment_type,
+            fs=self.fs,
+            z=self.z,
+            data_keys=self.data_keys,
+            source_coords=self.source_coords,
+            orientation=self.orientation,
+            beam_angle=self.beam_angle,
+            manufacturer=self.manufacturer,
+        )
+        if self._preprocess_enabled:
+            new_adcp.set_preprocess_opts(self._preprocess_opts)
+        return new_adcp
