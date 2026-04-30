@@ -171,7 +171,7 @@ class Met(BaseInstrument):
             }.get(self._despike_method)
             if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
-            for key in self.data_keys:
+            for key in self.var_keys:
                 burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
 
         return burst_data
@@ -503,5 +503,5 @@ class Met(BaseInstrument):
         return burst_data
 
     @property
-    def data_keys(self):
+    def var_keys(self):
         return [k for k in self.name_map if k != "time"]

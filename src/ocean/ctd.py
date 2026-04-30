@@ -624,5 +624,5 @@ class CTD(BaseInstrument):
         return burst_data
 
     @property
-    def data_keys(self):
+    def var_keys(self):
         return [k for k in self.name_map if k != "time"]
