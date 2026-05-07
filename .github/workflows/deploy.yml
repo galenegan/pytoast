@@ -1,0 +1,17 @@
+name: Deploy MkDocs
+on:
+  push:
+    branches:
+      - main  # Trigger on pushes to the main branch
+permissions:
+  contents: write  # Necessary to push to the gh-pages branch
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - run: pip install mkdocs mkdocs-material mkdocstrings[python] # Install your theme/plugins
+      - run: mkdocs gh-deploy --force    # Build and deploy to gh-pages branch
