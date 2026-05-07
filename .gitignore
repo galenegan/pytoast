@@ -6,6 +6,10 @@ __pycache__/
 # MAC OS
 .DS_Store
 
+# AI
+CLAUDE.md
+pytoast_eval.md
+
 # C extensions
 *.so
 

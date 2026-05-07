@@ -1,4 +1,5 @@
 from abc import ABC
+from contextlib import contextmanager
 import datetime
 import numpy as np
 import os
@@ -59,14 +60,14 @@ class BaseInstrument(ABC):
         self.deployment_type = deployment_type
         self.data_keys = [data_keys] if isinstance(data_keys, str) else (list(data_keys) if data_keys else [])
         self.burst_dim = burst_dim
-        self._monolithic_ds = None
+        self._monolithic_n_bursts: Optional[int] = None
         if burst_dim is not None:
             if len(files) != 1 or not files[0].lower().endswith(".nc"):
                 raise ValueError("`burst_dim` requires `files` to be a single .nc path")
-            ds = xr.open_dataset(files[0])
-            if burst_dim not in ds.dims:
-                raise ValueError(f"burst_dim {burst_dim!r} not found in dataset dims {tuple(ds.dims)}")
-            self._monolithic_ds = ds
+            with self._open_monolithic_ds() as ds:
+                if burst_dim not in ds.dims:
+                    raise ValueError(f"burst_dim {burst_dim!r} not found in dataset dims {tuple(ds.dims)}")
+                self._monolithic_n_bursts = int(ds.sizes[burst_dim])
         self.fs, self.z, self.file_type, self.num_samples_per_burst = self._inspect_first_file(fs, z, deployment_type)
         self._cached_idx = None
         self._cached_data = None
@@ -148,6 +149,18 @@ class BaseInstrument(ABC):
             if not isinstance(data_keys, (str, list)):
                 raise TypeError("`data_keys` must be either a string or a list")
 
+    @contextmanager
+    def _open_monolithic_ds(self):
+        """Open the monolithic NetCDF file for the duration of a `with` block.
+
+        The dataset is closed on exit, releasing the file handle.
+        """
+        ds = xr.open_dataset(self.files[0])
+        try:
+            yield ds
+        finally:
+            ds.close()
+
     @staticmethod
     def _load_file(file_path, data_keys=None):
         suffix = file_path.split(".")[-1].lower()
@@ -215,8 +228,9 @@ class BaseInstrument(ABC):
         if not self.files:
             raise ValueError("No files provided")
 
-        if self._monolithic_ds is not None:
-            data = self._monolithic_ds.isel({self.burst_dim: 0})
+        if self.burst_dim is not None:
+            with self._open_monolithic_ds() as ds:
+                data = ds.isel({self.burst_dim: 0}).load()
             file_type = "nc"
         else:
             data, file_type = self._load_file(self.files[0], self.data_keys)
@@ -245,7 +259,9 @@ class BaseInstrument(ABC):
                     data_var = self._as_array(data, non_time_key, file_type)
                     if data_var.ndim > 1:
                         num_rows, num_cols = data_var.shape
-                        if num_rows > num_cols:
+                        if num_rows == num_cols:
+                            raise ValueError(f"Vertical coordinate not specified and cannot be inferred for {data_var} with ncols={num_cols} and nrows={num_rows}.")
+                        elif num_rows > num_cols:
                             data_var = data_var.T
                         z = np.arange(data_var.shape[0])
                     else:
@@ -343,8 +359,9 @@ class BaseInstrument(ABC):
         if self._cached_idx == burst_idx:
             return self._cached_data
 
-        if self._monolithic_ds is not None:
-            data = self._monolithic_ds.isel({self.burst_dim: burst_idx})
+        if self.burst_dim is not None:
+            with self._open_monolithic_ds() as ds:
+                data = ds.isel({self.burst_dim: burst_idx}).load()
             file_type = "nc"
         else:
             file_path = self.files[burst_idx]
@@ -395,8 +412,8 @@ class BaseInstrument(ABC):
 
     @property
     def n_bursts(self):
-        if self._monolithic_ds is not None:
-            return int(self._monolithic_ds.sizes[self.burst_dim])
+        if self._monolithic_n_bursts is not None:
+            return self._monolithic_n_bursts
         return len(self.files)
 
     @property

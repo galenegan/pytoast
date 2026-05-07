@@ -22,11 +22,18 @@ def coord_transform_3_beam_nortek(
 
     Parameters
     ----------
-    transformation_matrix
-    orientation
-    heading
-    pitch
-    roll
+    u1, u2, u3 : array-like
+        Velocity components in the input coordinate system
+    heading, pitch, roll : float or array-like
+        Instrument orientation in degrees. If arrays, rotation is applied about the mean angles.
+    transformation_matrix : np.ndarray
+        3x3 beam-to-xyz transformation matrix from the instrument config
+    declination : float
+        Magnetic declination in degrees
+    orientation : str
+        `up` or `down`
+    coords_in, coords_out : str
+        One of {`beam`, `xyz`, `enu`}
 
     Returns
     -------
@@ -137,7 +144,7 @@ def coord_transform_4_beam_nortek(
     u1, u2, u3, u4 : array-like
         Velocity components in the input coordinate system
     heading, pitch, roll : float or array-like
-        Instrument orientation in degrees
+        Instrument orientation in degrees. If arrays, rotation is applied about the mean angles.
     transformation_matrix : np.ndarray
         4x4 beam-to-xyz transformation matrix from the instrument config
     declination : float
@@ -249,7 +256,7 @@ def coord_transform_4_beam_rdi(
         Velocity components in the input coordinate system. For xyz inputs,
         u4 is the error velocity. For enu inputs, u4 is unused.
     heading, pitch, roll : float or array-like
-        Instrument orientation in degrees
+        Instrument orientation in degrees. If arrays, rotation is applied about the mean angles.
     beam_angle : float
         Beam angle from vertical in degrees (used when transformation_matrix is None)
     transformation_matrix : np.ndarray, optional
@@ -465,8 +472,10 @@ def apply_flow_rotation(burst_data, flow_rotation):
             )
     elif isinstance(flow_rotation, tuple):
         theta_h, theta_v = flow_rotation
-        assert len(theta_h) == burst_data["u1"].shape[0]
-        assert len(theta_v) == burst_data["u1"].shape[0]
+        if len(theta_h) != burst_data["u1"].shape[0] or len(theta_v) != burst_data["u1"].shape[0]:
+            raise ValueError(
+                f"flow_rotation must have the same length as u1, u2, and u3, got {len(theta_h)}, {len(theta_v)}, {len(burst_data['u1'])}"
+            )
     else:
         raise TypeError(f"flow_rotation must be a str or tuple, got {type(flow_rotation)}")
 
