@@ -53,6 +53,7 @@ class ADCP(BaseInstrument):
             dimension is assumed to be time and the shorter dimension a vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
+            ```
             {
                 "u1": "first beam/direction velocity variable name",
                 "u2": "second beam/direction velocity variable name",
@@ -66,6 +67,7 @@ class ADCP(BaseInstrument):
                 "p": "pressure variable name",        # optional
                 "time": "time variable name",         # optional
             }
+            ```
             An error is raised if `time` is absent and `fs` is also not provided. `z` in the name_map is only used if
             the `z` argument is not specified directly. `heading`, `pitch`, and `roll` are required for any coordinate
             transformation involving ENU coordinates. "u4" and "u5" can be optionally specified for instruments with
@@ -99,7 +101,8 @@ class ADCP(BaseInstrument):
 
         Returns
         -------
-        ADCP object
+        ADCP
+            Initialized `ADCP` object.
         """
         self.source_coords = source_coords
         self.orientation = orientation
@@ -220,8 +223,10 @@ class ADCP(BaseInstrument):
 
     def _apply_preprocessing(self, burst_data):
         burst_data["coords"] = self.source_coords
-        burst_data = super()._apply_preprocessing(burst_data, self.beam_keys)
+        if not self._preprocess_enabled:
+            return burst_data
 
+        burst_data = super()._apply_preprocessing(burst_data, self.beam_keys)
         if self._rotate:
             coords_out = self._rotate.get("coords_out")
             if coords_out:
@@ -671,6 +676,7 @@ class ADCP(BaseInstrument):
             Upper bound of inertial subrange for the spectral fits.
         sf_kwargs : dict
             Additional keyword arguments to pass to the structure function method. Keys allowed:
+
                 z_start_idx : int
                     Lower bound index of self.z to include in the structure function calculation. Defaults to 0.
                 z_end_idx : int

@@ -3,7 +3,6 @@ import scipy.signal as sig
 from typing import Optional, Union, List, Dict, Any
 from utils.base_instrument import BaseInstrument
 from utils.burst_utils import get_uvw
-from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from utils.wave_utils import get_wavenumber, get_cg, jones_monismith_correction
 from scipy.stats import linregress
 
@@ -207,6 +206,8 @@ class ADV(BaseInstrument):
     def _apply_preprocessing(self, burst_data):
         """Applies preprocessing to a burst data dictionary during loading."""
         burst_data["coords"] = self.source_coords
+        if not self._preprocess_enabled:
+            return burst_data
         burst_data = super()._apply_preprocessing(burst_data, keys_to_process=["u1", "u2", "u3"])
 
         if self._rotate:
@@ -693,8 +694,11 @@ class ADV(BaseInstrument):
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
         rho: Optional[float] = 1020,
-        phase_kwargs: Optional[dict] = None,
-        dmd_kwargs: Optional[dict] = None,
+        f_wave_low: Optional[float] = None,
+        f_wave_high: Optional[float] = None,
+        rank_truncation: Union[int, float] = 0.05,
+        time_delay_size: Optional[int] = None,
+        return_time_series: bool = False,
         **kwargs,
     ) -> dict:
         """Calculate components of the covariance matrix (i.e., the Reynolds
@@ -706,33 +710,42 @@ class ADV(BaseInstrument):
             Burst data dictionary. Must be in non-beam coordinates.
         method : str
             Method to calculate covariances. Options are:
+
             - `cov`: Standard covariance calculation using the built-in `np.cov`
             - `spectral_integral`: Integrate the cross-spectrum over a specified frequency range
             - `benilov`: Benilov wave-turbulence decomposition
             - `phase`:  Bricker & Monismith phase-method wave-turbulence decomposition
             - `dmd`: Chavez-Dorado et al. DMD wave-turbulence decomposition.
+
         f_low : float, optional
             Lower frequency bound (Hz) for spectral integration, by default None
         f_high : float, optional
             Upper frequency bound (Hz) for spectral integration, by default None
         rho : float, optional
             Water density (kg/m^3), by default 1020
-        phase_kwargs : dict, optional
-            Additional arguments specific to phase decomposition method, by default None. If specified, should include
-            keys `f_wave_low` and `f_wave_high` to define the frequency range of the wave band.
-        dmd_kwargs : dict, optional
-            Additional arguments specific to DMD decomposition method, by default None. If specified, should include
-            keys...
+        f_wave_low : float, optional
+            Lower frequency bound (Hz) for the wave band. Only used for `phase` and `dmd` methods; by default None
+        f_wave_high : float, optional
+            Upper frequency bound (Hz) for the wave band. Only used for `phase` and `dmd` methods; by default None
+        rank_truncation : int or float, optional
+            Controls how many DMD modes are retained after SVD. If a float, modes are kept if their corresponding
+            singular value is at least `rank_truncation` times the largest singular value. If an int, exactly that many
+            modes are kept. Only used for `dmd` method. Defaults to 0.05.
+        time_delay_size : int, optional
+            Number of time-lag rows in the Hankel embedding matrix. Only used for `dmd` method. Defaults to `N // 5`.
+        return_time_series : bool, optional
+            If True, also return the decomposed wave and turbulence time series for each velocity component. Only used
+            for `dmd` method. Defaults to False.
         **kwargs
             Additional arguments passed to spectral calculations
 
         Returns
         -------
         dict
-            Dictionary containing covariance components. For method='cov' or
-            'spectral_integral', keys are velocity component pairs
-            (e.g. 'uu','uv','uw'). For wave decomposition methods, keys include
-            turbulence and wave components (e.g. 'uu_turb', 'uu_wave').
+            Dictionary containing covariance components. For `method="cov"` or
+            `method = "spectral_integral"`, keys are velocity component pairs
+            (e.g. `uu`,`uv`,`uw`). For wave decomposition methods, keys include
+            turbulence and wave components (e.g. `uu_turb`, `uu_wave`).
         """
         u_full, v_full, w_full = get_uvw(burst_data)
 
@@ -831,11 +844,6 @@ class ADV(BaseInstrument):
                 out["uv_wave"][height_idx] = b_out["uv_wave"]
 
         elif method == "phase":
-            # Extract phase method-specific kwargs with error handling
-            phase_kwargs = phase_kwargs or {}
-            f_wave_low = phase_kwargs.get("f_wave_low", None)
-            f_wave_high = phase_kwargs.get("f_wave_high", None)
-
             out["uu_turb"] = np.empty((n_heights,))
             out["vv_turb"] = np.empty((n_heights,))
             out["ww_turb"] = np.empty((n_heights,))
@@ -880,14 +888,6 @@ class ADV(BaseInstrument):
                 out["vw_wave"][height_idx] = p_out["vw_wave"]
                 out["uv_wave"][height_idx] = p_out["uv_wave"]
         elif method == "dmd":
-            # Extract dmd method-specific kwargs with error handling
-            dmd_kwargs = dmd_kwargs or {}
-            f_wave_low = dmd_kwargs.get("f_wave_low", None)
-            f_wave_high = dmd_kwargs.get("f_wave_high", None)
-            rank_truncation = dmd_kwargs.get("rank_truncation", 0.05)
-            time_delay_size = dmd_kwargs.get("time_delay_size", None)
-            return_time_series = dmd_kwargs.get("return_time_series", False)
-
             out["uu_turb"] = np.empty((n_heights,))
             out["vv_turb"] = np.empty((n_heights,))
             out["ww_turb"] = np.empty((n_heights,))
@@ -1182,9 +1182,11 @@ class ADV(BaseInstrument):
             Dictionary defining frequency bands for spectral sums of the form
              `{"infragravity": (f_low, f_high), "swell": (f_low, f_high), "sea": (f_low, f_high)}`
              If None, uses default bands:
+
             - infragravity: 1/250 to 1/25 Hz
             - swell: 1/25 to 0.2 Hz
             - sea: 0.2 to 0.5 Hz
+
             Statistics for the full frequency range (`all`) will be calculated as well.
         sea_correction : bool, optional
             Whether to apply Jones-Monismith correction for sea waves, by default True
@@ -1459,7 +1461,6 @@ class ADV(BaseInstrument):
             First file to include in subsampling
         end_idx : int
             Upper bound (exclusive) on file index in subsampling
-
 
         Returns
         -------

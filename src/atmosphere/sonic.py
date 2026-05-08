@@ -145,7 +145,8 @@ class Sonic(BaseInstrument):
         self._rotate = opts.get("rotate", {})
 
     def _apply_preprocessing(self, burst_data):
-
+        if not self._preprocess_enabled:
+            return burst_data
         burst_data = super()._apply_preprocessing(burst_data, keys_to_process=["u1", "u2", "u3"])
         if self._rotate:
             flow_rotation = self._rotate.get("flow_rotation")
@@ -273,8 +274,10 @@ class Sonic(BaseInstrument):
             Burst data dictionary.
         method : str
             Method to calculate covariances. Options are:
+
             - `cov`: Standard covariance calculation using the built-in `np.cov`
             - `spectral_integral`: Integrate the cross-spectrum over a specified frequency range
+
         f_low : float, optional
             Lower frequency bound (Hz) for spectral integration, by default None
         f_high : float, optional
