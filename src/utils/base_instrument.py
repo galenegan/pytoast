@@ -1,6 +1,7 @@
 from abc import ABC
 from contextlib import contextmanager
 import datetime
+from enum import StrEnum
 import numpy as np
 import os
 from typing import Any, List, Union, Optional, Dict
@@ -13,6 +14,18 @@ from utils.io_utils import results_to_dataset
 
 DatetimeLike = datetime.datetime | np.datetime64 | pd.Timestamp
 
+class DeploymentType(StrEnum):
+    """Enumeration of possible deployment types."""
+    FIXED = "fixed"
+    CAST = "cast"
+
+class ZConvention(StrEnum):
+    """Enumeration of possible z convention types."""
+
+    MAB = "m_above_bed"
+    DEPTH = "depth"
+    MAS = "m_above_surf"
+
 
 class BaseInstrument(ABC):
     """Abstract base class containing data loading and parsing methods that are
@@ -22,9 +35,10 @@ class BaseInstrument(ABC):
         self,
         files: Union[str, List[str]],
         name_map: dict,
-        deployment_type: str = "fixed",
+        deployment_type: DeploymentType = DeploymentType.FIXED,
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float], np.ndarray]] = None,
+        z_convention: ZConvention = ZConvention.MAB,
         data_keys: Optional[Union[str, List[str]]] = None,
         burst_dim: Optional[str] = None,
     ):
@@ -36,8 +50,8 @@ class BaseInstrument(ABC):
             Path(s) to data file(s)
         name_map : dict
             Mapping of variable names
-        deployment_type : str, optional
-            One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
+        deployment_type : DeploymentType, optional
+            One of `{"fixed", "cast"}` depending on how the instrument is deployed. Default is "fixed", in which case
             self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
             heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
             variable within individual measurement bursts.
@@ -45,6 +59,9 @@ class BaseInstrument(ABC):
             Sampling frequency
         z : float, List[float], or np.ndarray, optional
             Height coordinates
+        z_convention : ZConvention, optional
+            Convention for vertical coordinate, one of `{"m_above_bed", "depth", "m_above_surf"}`.
+            Default will vary by instrument class.
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading a file (e.g. `"Data"` if
             variables in `name_map` live at `file["Data"]["variable_name"]`)
@@ -59,6 +76,7 @@ class BaseInstrument(ABC):
         self.files = files
         self.name_map = name_map
         self.deployment_type = deployment_type
+        self.z_convention = ZConvention(z_convention)
         self.data_keys = [data_keys] if isinstance(data_keys, str) else (list(data_keys) if data_keys else [])
         self.burst_dim = burst_dim
         self._monolithic_n_bursts: Optional[int] = None

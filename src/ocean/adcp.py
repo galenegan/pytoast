@@ -59,13 +59,13 @@ class ADCP(BaseInstrument):
                 "u2": "second beam/direction velocity variable name",
                 "u3": "third beam/direction velocity variable name",
                 "u4": "fourth beam/direction velocity variable name",  # optional
-                "u5": "fifth beam/direction velocity variable name",   # optional
-                "heading": "heading variable name",   # optional
-                "pitch": "pitch variable name",       # optional
-                "roll": "roll variable name",         # optional
-                "z": "height variable name",          # optional
-                "p": "pressure variable name",        # optional
-                "time": "time variable name",         # optional
+                "u5": "fifth beam/direction velocity variable name",  # optional
+                "heading": "heading variable name",  # optional
+                "pitch": "pitch variable name",  # optional
+                "roll": "roll variable name",  # optional
+                "z": "height variable name",  # optional
+                "p": "pressure variable name",  # optional
+                "time": "time variable name",  # optional
             }
             ```
             An error is raised if `time` is absent and `fs` is also not provided. `z` in the name_map is only used if

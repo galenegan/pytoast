@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.signal as sig
 from typing import Optional, Union, List, Dict, Any
-from utils.base_instrument import BaseInstrument
+from utils.base_instrument import BaseInstrument, ZConvention, DeploymentType
 from utils.burst_utils import get_uvw
 from utils.wave_utils import get_wavenumber, get_cg, jones_monismith_correction
 from scipy.stats import linregress
@@ -12,24 +12,6 @@ from utils.rotate_utils import (
     coord_transform_3_beam_nortek,
     apply_flow_rotation,
 )
-
-
-def _find_wave_band(f: np.ndarray, P_uu: np.ndarray, df: float) -> np.ndarray:
-    """
-    Locate the wave peak in the u-component auto-spectrum and return indices spanning
-    0.35 * f_peak below to 0.8 * f_peak above, clipped to the valid range of `f`.
-    """
-    f_offset = 0.07  # Assume wave peak is above this value
-    width_ratio_low = 0.35
-    width_ratio_high = 0.8
-    search = (f > f_offset) & (f < 1)
-    peak_idx = int(np.flatnonzero(search)[np.argmax(P_uu[search])])
-    f_peak = f[peak_idx]
-    n_below = int((f_peak * width_ratio_low) // df)
-    n_above = int((f_peak * width_ratio_high) // df)
-    lo = max(peak_idx - n_below, 0)
-    hi = min(peak_idx + n_above, len(f) - 1)
-    return np.arange(lo, hi)
 
 
 class ADV(BaseInstrument):
@@ -48,12 +30,14 @@ class ADV(BaseInstrument):
         self,
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "fixed",
+        deployment_type: DeploymentType = DeploymentType.FIXED,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
+        z_convention: ZConvention = ZConvention.MAB,
         data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: str = "xyz",
         orientation: str = "up",
+        water_depth: Optional[float] = None,
     ):
         """Initialize an ADV object.
 
@@ -83,15 +67,17 @@ class ADV(BaseInstrument):
             One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
             self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
             heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
-            variable within individual measurement bursts.
+            variable within individual measurement bursts. NOTE: depth-dependent calculations assume a fixed
+            depth per measurement bust even when `deployment_type = "cast"`, so it is recommended to preprocess
+            data into fixed-depth bursts prior to intializing an `ADV` object.
         fs : int or float, optional
             Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
             `time` variable
         z : float, List[float, int], or np.ndarray, optional
-            Mean height above the bed (m) for each instrument. If not provided, it will default to integer indices, in
-            which case certain functionality (e.g., wave statistics) will not be available. Unlike the ADCP class,
-            interpretation of `z` will not vary depending on `orientation`: input must be in meters above bed for
-            depth-dependent calculations to work correctly.
+            Vertical coordinate (m) for each instrument. If not provided, it will default to integer indices, in
+            which case certain functionality (e.g., wave statistics) will not be available.
+        z_convention : ZConvention, optional
+            Convention for vertical coordinate, one of `{"m_above_bed", "depth"}`. Default is `"m_above_bed"`.
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables in name_map are
             stored at `burst["Data"]["variable_name"]`).
@@ -102,15 +88,33 @@ class ADV(BaseInstrument):
             Orientation of the ADV probe. One of {`up`, `down`}. Defaults to `up`. For Nortek Vector ADVs, this
             corresponds to the end cap pointing up and the probe pointing down (see
             https://support.nortekgroup.com/hc/en-us/articles/360029507712-What-do-the-Error-and-Status-codes-mean)
+        water_depth : float, optional
+            Water depth (m) at deployment site. Required if `z_convention = "depth"` and Benilov decomposition or
+            directional wave statistics are requested. If `z_convention = "m_above_bed"`, `water_depth` is inferred
+            from `self.z` and pressure data wherever needed.
 
         Returns
         -------
         ADV
+            Initialize ADV object
         """
         self.source_coords = source_coords
         self.orientation = orientation
+        self.z_convention = ZConvention(z_convention)
+        self.water_depth = water_depth
         files_list = files if isinstance(files, list) else [files]
-        ADV.validate_inputs(files_list, name_map, deployment_type, fs, z, data_keys, source_coords, orientation)
+        ADV.validate_inputs(
+            files_list,
+            name_map,
+            deployment_type,
+            fs,
+            z,
+            z_convention,
+            data_keys,
+            source_coords,
+            orientation,
+            water_depth,
+        )
         super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
 
     @staticmethod
@@ -120,9 +124,11 @@ class ADV(BaseInstrument):
         deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]], np.ndarray]] = None,
+        z_convention: ZConvention = ZConvention.MAB,
         data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: Optional[str] = "xyz",
         orientation: Optional[str] = "up",
+        water_depth: Optional[float] = None,
     ):
 
         # General validation
@@ -142,6 +148,15 @@ class ADV(BaseInstrument):
 
         if orientation not in ["down", "up"]:
             raise ValueError(f"Invalid value for `orientation`: {orientation}. Must be one of ['down', 'up']")
+
+        if z_convention not in [ZConvention.MAB, ZConvention.DEPTH]:
+            raise ValueError(
+                f"Invalid value for `z_convention`: {z_convention.value}. Must be one of ['m_above_bed', 'depth']"
+            )
+
+        if water_depth is not None:
+            if not isinstance(water_depth, (float, int)):
+                raise ValueError(f"Invalid value for `water_depth`: {water_depth}. Must be a float or int")
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the
@@ -243,8 +258,8 @@ class ADV(BaseInstrument):
         Returns
         -------
         dict
-            burst_data with velocity components transformed in-place and
-            burst_data["coords"] updated to coords_out.
+            `burst_data` with velocity components transformed in-place and
+            `burst_data["coords"]` updated to `coords_out`.
         """
         coords_in = burst_data["coords"]
         n_heights = self.n_heights
@@ -413,6 +428,57 @@ class ADV(BaseInstrument):
 
         return out
 
+    def _get_mab(self, burst_data):
+
+        if self.deployment_type == DeploymentType.FIXED:
+            if not self._physical_z:
+                raise ValueError("`z` values must be specified during initialization to calculate meters above bed.")
+
+            if self.z_convention == ZConvention.MAB:
+                mab = self.z
+            elif self.z_convention == ZConvention.DEPTH:
+                if self.water_depth is None:
+                    raise ValueError(
+                        f"With z_convention = {ZConvention.DEPTH}, `water_depth` must be specified during initialization to calculate meters above bed."
+                    )
+                if "p" in burst_data:
+                    water_depth_above_sensor = np.mean(burst_data["p"], axis=1, keepdims=True)
+                    mab = self.water_depth - water_depth_above_sensor
+                else:
+                    mab = self.water_depth - self.z
+        elif self.deployment_type == DeploymentType.CAST:
+            if "p" not in burst_data:
+                raise ValueError(f"Pressure data must be provided to calculate depths when `deployment_type = {DeploymentType.CAST}`")
+
+            if self.water_depth is None:
+                raise ValueError(
+                    f"With deployment_type = {DeploymentType.CAST}, `water_depth` must be specified during initialization to calculate meters above bed."
+                )
+            water_depth_above_sensor = np.mean(burst_data["p"], axis=1, keepdims=True)
+            mab = self.water_depth - water_depth_above_sensor
+        else:
+            raise ValueError(f"Invalid deployment_type: {self.deployment_type}")
+
+        return mab
+
+    @staticmethod
+    def _find_wave_band(f: np.ndarray, P_uu: np.ndarray, df: float) -> np.ndarray:
+        """
+        Locate the wave peak in the u-component auto-spectrum and return indices spanning
+        0.35 * f_peak below to 0.8 * f_peak above, clipped to the valid range of `f`.
+        """
+        f_offset = 0.07  # Assume wave peak is above this value
+        width_ratio_low = 0.35
+        width_ratio_high = 0.8
+        search = (f > f_offset) & (f < 1)
+        peak_idx = int(np.flatnonzero(search)[np.argmax(P_uu[search])])
+        f_peak = f[peak_idx]
+        n_below = int((f_peak * width_ratio_low) // df)
+        n_above = int((f_peak * width_ratio_high) // df)
+        lo = max(peak_idx - n_below, 0)
+        hi = min(peak_idx + n_above, len(f) - 1)
+        return np.arange(lo, hi)
+
     def phase_decomposition(
         self,
         u: np.ndarray,
@@ -484,7 +550,7 @@ class ADV(BaseInstrument):
         if f_wave_low and f_wave_high:
             waverange = np.flatnonzero((f > f_wave_low) & (f < f_wave_high))
         else:
-            waverange = _find_wave_band(f, P_uu, df)
+            waverange = self._find_wave_band(f, P_uu, df)
 
         # Turbulent band: 0 < f < 1 Hz, wave band excluded. Used to fit the inertial subrange.
         interp_end = int(np.nanargmin(np.abs(f - 1)))
@@ -797,6 +863,9 @@ class ADV(BaseInstrument):
                 out["vw"][height_idx] = np.sum(np.real(P_vw[start_index:end_index]) * df)
                 out["uv"][height_idx] = np.sum(np.real(P_uv[start_index:end_index]) * df)
         elif method == "benilov":
+            if "p" not in burst_data.keys():
+                raise ValueError("Pressure must be included in dataset for Benilov decomposition")
+
             out["uu_turb"] = np.empty((n_heights,))
             out["vv_turb"] = np.empty((n_heights,))
             out["ww_turb"] = np.empty((n_heights,))
@@ -811,6 +880,8 @@ class ADV(BaseInstrument):
             out["vw_wave"] = np.empty((n_heights,))
             out["uv_wave"] = np.empty((n_heights,))
 
+            mab = self._get_mab(burst_data)
+
             for height_idx in range(n_heights):
                 u = u_full[height_idx, :]
                 v = v_full[height_idx, :]
@@ -822,7 +893,7 @@ class ADV(BaseInstrument):
                     v=v,
                     w=w,
                     p=p,
-                    mab=self.z[height_idx],
+                    mab=mab[height_idx],
                     rho=rho,
                     f_low=f_low,
                     f_high=f_high,
@@ -1228,7 +1299,7 @@ class ADV(BaseInstrument):
             raise ValueError("Pressure must be included in dataset to calculate directional wave statistics")
 
         u_full, v_full, _ = get_uvw(burst_data)
-
+        mab = self._get_mab(burst_data)
         n_heights = self.n_heights
         results = []
         for height_idx in range(n_heights):
@@ -1240,7 +1311,7 @@ class ADV(BaseInstrument):
                     u=u,
                     v=v,
                     p=p,
-                    mab=self.z[height_idx],
+                    mab=mab[height_idx],
                     rho=rho,
                     band_definitions=band_definitions,
                     sea_correction=sea_correction,
@@ -1473,9 +1544,11 @@ class ADV(BaseInstrument):
             deployment_type=self.deployment_type,
             fs=self.fs,
             z=self.z,
+            z_convention=self.z_convention,
             data_keys=self.data_keys,
             source_coords=self.source_coords,
             orientation=self.orientation,
+            water_depth=self.water_depth,
         )
         if self._preprocess_enabled:
             new_adv.set_preprocess_opts(self._preprocess_opts)

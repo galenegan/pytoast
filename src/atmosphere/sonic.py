@@ -6,7 +6,7 @@ from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from utils.spectral_utils import psd, csd, get_frequency_range
 from utils.base_instrument import BaseInstrument
 from utils.burst_utils import get_uvw
-from utils.constants import GRAVITATIONAL_ACCELERATION as g
+from utils.constants import T0, GRAVITATIONAL_ACCELERATION as g
 from utils.rotate_utils import apply_flow_rotation
 
 
@@ -398,7 +398,7 @@ class Sonic(BaseInstrument):
         w_bar = np.mean(w_full, axis=1, keepdims=True)
         Ts_prime = burst_data["Ts"] - Ts_bar
         w_prime = w_full - w_bar
-        B = g * np.mean(Ts_prime * w_prime, axis=1) / (Ts_bar + 273.15)
+        B = g * np.mean(Ts_prime * w_prime, axis=1) / (Ts_bar + T0)
         return B
 
     def subsample(self, start_idx, end_idx):
