@@ -214,33 +214,13 @@ class ADCP(BaseInstrument):
                         unless a coordinate system change to `xyz` or `enu` is also requested.
         """
 
-        self._preprocess_opts = opts
-        self._preprocess_enabled = True
-
-        self._despike = opts.get("despike", {})
-        if self._despike:
-            self._despike_method = self._despike.get("method")
-            self._despike_opts = {key: val for key, val in self._despike.items() if key != "method"}
-
+        # Handles all preprocessing settings except for rotation
+        super().set_preprocess_opts(opts)
         self._rotate = opts.get("rotate", {})
-        self._cached_idx = None
-        self._cached_data = None
 
     def _apply_preprocessing(self, burst_data):
         burst_data["coords"] = self.source_coords
-        if not self._preprocess_enabled:
-            return burst_data
-
-        if self._despike:
-            despike_fn = {
-                "goring_nikora": goring_nikora,
-                "threshold": threshold,
-                "recursive_gaussian": recursive_gaussian,
-            }.get(self._despike_method)
-            if despike_fn is None:
-                raise ValueError(f"Invalid despiking method '{self._despike_method}'")
-            for key in ["u1", "u2", "u3"]:
-                burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
+        burst_data = super()._apply_preprocessing(burst_data, self.beam_keys)
 
         if self._rotate:
             coords_out = self._rotate.get("coords_out")

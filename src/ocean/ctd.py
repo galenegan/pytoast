@@ -155,33 +155,10 @@ class CTD(BaseInstrument):
                     alpha : float
                     max_iter : int
         """
-        self._preprocess_opts = opts
-        self._preprocess_enabled = True
-
-        self._despike = opts.get("despike", {})
-        if self._despike:
-            self._despike_method = self._despike.get("method")
-            self._despike_opts = {key: val for key, val in self._despike.items() if key != "method"}
-
-        self._cached_idx = None
-        self._cached_data = None
+        super().set_preprocess_opts(opts)
 
     def _apply_preprocessing(self, burst_data):
-        if not self._preprocess_enabled:
-            return burst_data
-
-        if self._despike:
-            despike_fn = {
-                "goring_nikora": goring_nikora,
-                "threshold": threshold,
-                "recursive_gaussian": recursive_gaussian,
-            }.get(self._despike_method)
-            if despike_fn is None:
-                raise ValueError(f"Invalid despiking method '{self._despike_method}'")
-            var_keys = [k for k in self.name_map if k != "time"]
-            for key in var_keys:
-                burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
-
+        burst_data = super()._apply_preprocessing(burst_data, keys_to_process=self._burst_var_keys)
         return burst_data
 
     def sa_from_sp(self, sp: Numeric) -> Numeric:
@@ -625,6 +602,9 @@ class CTD(BaseInstrument):
 
         return burst_data
 
+    @property
+    def _burst_var_keys(self):
+        return [k for k in self.name_map if k != "time"]
 
     def subsample(self, start_idx: int, end_idx: int):
         new_ctd = self.__class__(
@@ -633,7 +613,7 @@ class CTD(BaseInstrument):
             deployment_type=self.deployment_type,
             fs=self.fs,
             z=self.z,
-            data_keys=self.data_keys
+            data_keys=self.data_keys,
         )
         if self._preprocess_enabled:
             new_ctd.set_preprocess_opts(self._preprocess_opts)

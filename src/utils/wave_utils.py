@@ -3,32 +3,34 @@ from typing import Optional, Union
 from utils.constants import GRAVITATIONAL_ACCELERATION as g
 
 
-def get_wavenumber(omega: Union[float, np.ndarray], h: Union[float, np.ndarray], max_iter: int = 10, tol: float = 1e-10):
+def get_wavenumber(
+    omega: Union[float, np.ndarray], h: Union[float, np.ndarray], max_iter: int = 10, tol: float = 1e-10
+):
     """Calculate wavenumber from the surface gravity wave dispersion relation using Newton's method.
 
-        Parameters
-        ----------
-        omega : float or np.ndarray
-            Angular frequency (rad/s)
-        h : float or np.ndarray
-            Water depth (m)
-        max_iter : int
-            Maximum number of iterations
-        tol : float
-            Convergence tolerance
+    Parameters
+    ----------
+    omega : float or np.ndarray
+        Angular frequency (rad/s)
+    h : float or np.ndarray
+        Water depth (m)
+    max_iter : int
+        Maximum number of iterations
+    tol : float
+        Convergence tolerance
 
-        Returns
-        -------
-        k : float or np.ndarray
-            Wavenumber (rad/m)
-        """
+    Returns
+    -------
+    k : float or np.ndarray
+        Wavenumber (rad/m)
+    """
     omega = np.asarray(omega, dtype=float)
     h = np.broadcast_to(np.asarray(h, dtype=float), omega.shape)
     k = np.where(omega == 0, 0.0, omega / np.sqrt(g * h))
     mask = omega != 0
     for _ in range(max_iter):
         th = np.tanh(k * h)
-        f = g * k * th - omega ** 2
+        f = g * k * th - omega**2
         if np.max(np.abs(f[mask])) < tol:
             break
         dfdk = g * h * k / np.cosh(k * h) ** 2 + g * th

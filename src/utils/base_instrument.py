@@ -8,6 +8,7 @@ import scipy.io as sio
 import pandas as pd
 import xarray as xr
 
+from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from utils.io_utils import results_to_dataset
 
 DatetimeLike = datetime.datetime | np.datetime64 | pd.Timestamp
@@ -260,7 +261,9 @@ class BaseInstrument(ABC):
                     if data_var.ndim > 1:
                         num_rows, num_cols = data_var.shape
                         if num_rows == num_cols:
-                            raise ValueError(f"Vertical coordinate not specified and cannot be inferred for {data_var} with ncols={num_cols} and nrows={num_rows}.")
+                            raise ValueError(
+                                f"Vertical coordinate not specified and cannot be inferred for {data_var} with ncols={num_cols} and nrows={num_rows}."
+                            )
                         elif num_rows > num_cols:
                             data_var = data_var.T
                         z = np.arange(data_var.shape[0])
@@ -398,8 +401,63 @@ class BaseInstrument(ABC):
 
         return burst_data_out
 
-    def _apply_preprocessing(self, burst_data):
-        """Override in subclasses to add preprocessing steps."""
+    def set_preprocess_opts(self, opts: Dict[str, Any]):
+        """Enable preprocessing for all subsequent burst loads using the
+        options defined in the input dictionary.
+
+        Parameters
+        ----------
+        opts : dict
+            Preprocessing options. Supported keys:
+
+            despike : dict, optional
+                Options for despiking. If not specified, no despiking is applied. Supported keys:
+
+                method : {'threshold', 'goring_nikora', 'recursive_gaussian'}
+                    If `threshold`, data is despiked by replacing any samples with a magnitude outside a specified
+                    range. If `goring_nikora`, data is despiked using the Goring & Nikora (2002) algorithm. If
+                    `recursive_gaussian`, data is despiked using a recursive Gaussian filter.
+
+                If ``{'method': 'goring_nikora', ...}``, additional keys can be (see `goring_nikora` docstring):
+                    remaining_spikes : int
+                    max_iter : int
+                    robust_statistics : bool
+
+                If ``{'method': 'threshold', ...}``, additional keys can be:
+                    threshold_min : float
+                    threshold_max : float
+
+                If ``{'method': 'recursive_gaussian', ...}``, additional keys can be:
+                    alpha : float
+                    max_iter : int
+        """
+        self._preprocess_opts = opts
+        self._preprocess_enabled = True
+
+        self._despike = opts.get("despike", {})
+        if self._despike:
+            self._despike_method = self._despike.get("method")
+            self._despike_opts = {key: val for key, val in self._despike.items() if key != "method"}
+
+        self._cached_idx = None
+        self._cached_data = None
+
+    def _apply_preprocessing(self, burst_data, keys_to_process: List[str] = []):
+        """Applies preprocessing to a burst data dictionary during loading."""
+        if not self._preprocess_enabled:
+            return burst_data
+
+        if self._despike:
+            despike_fn = {
+                "goring_nikora": goring_nikora,
+                "threshold": threshold,
+                "recursive_gaussian": recursive_gaussian,
+            }.get(self._despike_method)
+            if despike_fn is None:
+                raise ValueError(f"Invalid despiking method '{self._despike_method}'")
+            for key in keys_to_process:
+                burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
+
         return burst_data
 
     def subsample(self, start_idx: int, end_idx: int):

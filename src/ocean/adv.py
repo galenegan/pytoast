@@ -2,6 +2,7 @@ import numpy as np
 import scipy.signal as sig
 from typing import Optional, Union, List, Dict, Any
 from utils.base_instrument import BaseInstrument
+from utils.burst_utils import get_uvw
 from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from utils.wave_utils import get_wavenumber, get_cg, jones_monismith_correction
 from scipy.stats import linregress
@@ -199,34 +200,14 @@ class ADV(BaseInstrument):
                     planes. Specifying any option will throw an error if `burst["coords"] == "beam"`, unless a
                     coordinate system change to `xyz` or `enu` is also requested.
         """
-        self._preprocess_opts = opts
-        self._preprocess_enabled = True
-
-        self._despike = opts.get("despike", {})
-        if self._despike:
-            self._despike_method = self._despike.get("method")
-            self._despike_opts = {key: val for key, val in self._despike.items() if key != "method"}
-
+        # Handles all preprocessing settings except for rotation
+        super().set_preprocess_opts(opts)
         self._rotate = opts.get("rotate", {})
-        self._cached_idx = None
-        self._cached_data = None
 
     def _apply_preprocessing(self, burst_data):
         """Applies preprocessing to a burst data dictionary during loading."""
         burst_data["coords"] = self.source_coords
-        if not self._preprocess_enabled:
-            return burst_data
-
-        if self._despike:
-            despike_fn = {
-                "goring_nikora": goring_nikora,
-                "threshold": threshold,
-                "recursive_gaussian": recursive_gaussian,
-            }.get(self._despike_method)
-            if despike_fn is None:
-                raise ValueError(f"Invalid despiking method '{self._despike_method}'")
-            for key in ["u1", "u2", "u3"]:
-                burst_data[key] = despike_fn(burst_data[key], **self._despike_opts)
+        burst_data = super()._apply_preprocessing(burst_data, keys_to_process=["u1", "u2", "u3"])
 
         if self._rotate:
             coords_out = self._rotate.get("coords_out")
@@ -753,21 +734,17 @@ class ADV(BaseInstrument):
             (e.g. 'uu','uv','uw'). For wave decomposition methods, keys include
             turbulence and wave components (e.g. 'uu_turb', 'uu_wave').
         """
-        if burst_data["coords"] == "beam":
-            raise ValueError(
-                "Reynolds stress is not implemented for beam coordinates."
-                " Switch to either xyz or enu as a preprocessing step"
-            )
+        u_full, v_full, w_full = get_uvw(burst_data)
 
         out = {}
         n_heights = self.n_heights
         if method == "cov":
-            u_bar = np.mean(burst_data["u1"], axis=1, keepdims=True)
-            v_bar = np.mean(burst_data["u2"], axis=1, keepdims=True)
-            w_bar = np.mean(burst_data["u3"], axis=1, keepdims=True)
-            u_prime = burst_data["u1"] - u_bar
-            v_prime = burst_data["u2"] - v_bar
-            w_prime = burst_data["u3"] - w_bar
+            u_bar = np.mean(u_full, axis=1, keepdims=True)
+            v_bar = np.mean(v_full, axis=1, keepdims=True)
+            w_bar = np.mean(w_full, axis=1, keepdims=True)
+            u_prime = u_full - u_bar
+            v_prime = v_full - v_bar
+            w_prime = w_full - w_bar
 
             out["uu"] = np.mean(u_prime**2, axis=1)
             out["vv"] = np.mean(v_prime**2, axis=1)
@@ -785,9 +762,9 @@ class ADV(BaseInstrument):
             out["uv"] = np.empty((n_heights,))
 
             for height_idx in range(n_heights):
-                u = burst_data["u1"][height_idx, :]
-                v = burst_data["u2"][height_idx, :]
-                w = burst_data["u3"][height_idx, :]
+                u = u_full[height_idx, :]
+                v = v_full[height_idx, :]
+                w = w_full[height_idx, :]
 
                 # Power spectral densities
                 f, P_uu = psd(u, fs=self.fs, **kwargs)
@@ -822,9 +799,9 @@ class ADV(BaseInstrument):
             out["uv_wave"] = np.empty((n_heights,))
 
             for height_idx in range(n_heights):
-                u = burst_data["u1"][height_idx, :]
-                v = burst_data["u2"][height_idx, :]
-                w = burst_data["u3"][height_idx, :]
+                u = u_full[height_idx, :]
+                v = v_full[height_idx, :]
+                w = w_full[height_idx, :]
                 p = burst_data["p"][height_idx, :]
 
                 b_out = self.benilov_decomposition(
@@ -874,9 +851,9 @@ class ADV(BaseInstrument):
             out["uv_wave"] = np.empty((n_heights,))
 
             for height_idx in range(n_heights):
-                u = burst_data["u1"][height_idx, :]
-                v = burst_data["u2"][height_idx, :]
-                w = burst_data["u3"][height_idx, :]
+                u = u_full[height_idx, :]
+                v = v_full[height_idx, :]
+                w = w_full[height_idx, :]
 
                 p_out = self.phase_decomposition(
                     u=u,
@@ -926,7 +903,7 @@ class ADV(BaseInstrument):
             out["uv_wave"] = np.empty((n_heights,))
 
             if return_time_series:
-                N = burst_data["u1"].shape[1]
+                N = u_full.shape[1]
                 out["u_turb"] = np.empty((n_heights, N))
                 out["v_turb"] = np.empty((n_heights, N))
                 out["w_turb"] = np.empty((n_heights, N))
@@ -935,9 +912,9 @@ class ADV(BaseInstrument):
                 out["w_wave"] = np.empty((n_heights, N))
 
             for height_idx in range(n_heights):
-                u = burst_data["u1"][height_idx, :]
-                v = burst_data["u2"][height_idx, :]
-                w = burst_data["u3"][height_idx, :]
+                u = u_full[height_idx, :]
+                v = v_full[height_idx, :]
+                w = w_full[height_idx, :]
 
                 d_out = self.dmd(
                     u=u,
@@ -1140,11 +1117,7 @@ class ADV(BaseInstrument):
 
             return eps, noise, quality_flag
 
-        if burst_data["coords"] == "beam":
-            raise ValueError(
-                "Dissipation is not implemented for beam coordinates."
-                " Switch to either xyz or enu as a preprocessing step"
-            )
+        u_full, v_full, w_full = get_uvw(burst_data)
 
         out = {}
         n_heights = self.n_heights
@@ -1152,9 +1125,9 @@ class ADV(BaseInstrument):
         out["noise"] = np.empty((n_heights,))
         out["quality_flag"] = np.empty((n_heights,), dtype=int)
         for height_idx in range(n_heights):
-            u = burst_data["u1"][height_idx, :]
-            v = burst_data["u2"][height_idx, :]
-            w = burst_data["u3"][height_idx, :]
+            u = u_full[height_idx, :]
+            v = v_full[height_idx, :]
+            w = w_full[height_idx, :]
             (eps, noise, quality_flag) = spectral_fit(u, v, w, f_low, f_high, **kwargs)
             out["eps"][height_idx] = eps
             out["noise"][height_idx] = noise
@@ -1175,18 +1148,15 @@ class ADV(BaseInstrument):
         tke_out : np.ndarray
             TKE at each measurement height
         """
-        if burst_data["coords"] == "beam":
-            raise ValueError(
-                "TKE is not implemented for beam coordinates. Switch to either xyz or enu as a preprocessing step"
-            )
+        u_full, v_full, w_full = get_uvw(burst_data)
 
-        u1_bar = np.mean(burst_data["u1"], axis=1, keepdims=True)
-        u2_bar = np.mean(burst_data["u2"], axis=1, keepdims=True)
-        u3_bar = np.mean(burst_data["u3"], axis=1, keepdims=True)
+        u1_bar = np.mean(u_full, axis=1, keepdims=True)
+        u2_bar = np.mean(v_full, axis=1, keepdims=True)
+        u3_bar = np.mean(w_full, axis=1, keepdims=True)
 
-        u1_prime = burst_data["u1"] - u1_bar
-        u2_prime = burst_data["u2"] - u2_bar
-        u3_prime = burst_data["u3"] - u3_bar
+        u1_prime = u_full - u1_bar
+        u2_prime = v_full - u2_bar
+        u3_prime = w_full - u3_bar
 
         tke_prime = 0.5 * (u1_prime**2 + u2_prime**2 + u3_prime**2)
         tke_out = np.mean(tke_prime, axis=1)
@@ -1255,14 +1225,13 @@ class ADV(BaseInstrument):
         if "p" not in burst_data.keys():
             raise ValueError("Pressure must be included in dataset to calculate directional wave statistics")
 
-        if burst_data["coords"] == "beam":
-            raise ValueError("Directional wave statistics not implemented for beam coordinates.")
+        u_full, v_full, _ = get_uvw(burst_data)
 
         n_heights = self.n_heights
         results = []
         for height_idx in range(n_heights):
-            u = burst_data["u1"][height_idx, :]
-            v = burst_data["u2"][height_idx, :]
+            u = u_full[height_idx, :]
+            v = v_full[height_idx, :]
             p = burst_data["p"][height_idx, :]
             results.append(
                 self._wave_worker(
@@ -1319,8 +1288,8 @@ class ADV(BaseInstrument):
 
         f_bands = {}
         for band_name, (f_low, f_high) in band_definitions.items():
-            f_bands[band_name] = ((f >= f_low) & (f < f_high) & (f < f_cutoff))
-        f_bands["all"] = ((f > 0) & (f < f_cutoff))
+            f_bands[band_name] = (f >= f_low) & (f < f_high) & (f < f_cutoff)
+        f_bands["all"] = (f > 0) & (f < f_cutoff)
 
         # Getting sea surface elevation spectrum
         omega = 2 * np.pi * f
