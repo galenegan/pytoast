@@ -100,13 +100,11 @@ class ADV(BaseInstrument):
         """
         self.source_coords = source_coords
         self.orientation = orientation
-        self.z_convention = ZConvention(z_convention)
         self.water_depth = water_depth
         files_list = files if isinstance(files, list) else [files]
         ADV.validate_inputs(
             files_list,
             name_map,
-            deployment_type,
             fs,
             z,
             z_convention,
@@ -115,13 +113,12 @@ class ADV(BaseInstrument):
             orientation,
             water_depth,
         )
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]], np.ndarray]] = None,
         z_convention: ZConvention = ZConvention.MAB,
@@ -132,7 +129,7 @@ class ADV(BaseInstrument):
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]
@@ -150,9 +147,7 @@ class ADV(BaseInstrument):
             raise ValueError(f"Invalid value for `orientation`: {orientation}. Must be one of ['down', 'up']")
 
         if z_convention not in [ZConvention.MAB, ZConvention.DEPTH]:
-            raise ValueError(
-                f"Invalid value for `z_convention`: {z_convention.value}. Must be one of ['m_above_bed', 'depth']"
-            )
+            raise ValueError(f"Invalid value for `z_convention`: {z_convention}. Must be one of ['m_above_bed', 'depth']")
 
         if water_depth is not None:
             if not isinstance(water_depth, (float, int)):
@@ -349,7 +344,8 @@ class ADV(BaseInstrument):
 
         Returns
         -------
-        Dictionary of turbulent and wave momentum flux components
+        dict
+            Dictionary of turbulent and wave momentum flux components
 
         References
         ----------
@@ -518,7 +514,8 @@ class ADV(BaseInstrument):
 
         Returns
         -------
-        Dictionary of turbulent and wave momentum flux components
+        dict
+            Dictionary of turbulent and wave momentum flux components
 
         References
         ----------
@@ -610,10 +607,8 @@ class ADV(BaseInstrument):
         return_time_series: bool = False,
     ) -> dict:
         """Estimate Reynolds stresses with the DMD-based wave-turbulence
-        decomposition of Chavez-Dorado et al.
-
-        (2025). This function is a Python port (with various simplifications) of the MATLAB implementation found here:
-        https://github.com/DiBenedettoLab/Wave-Turbulence_DMD
+        decomposition of Chavez-Dorado et al. (2025). This function is a Python port (with various simplifications)
+        of the MATLAB implementation found here: https://github.com/DiBenedettoLab/Wave-Turbulence_DMD
 
         Parameters
         ----------
@@ -639,7 +634,7 @@ class ADV(BaseInstrument):
 
         Returns
         -------
-        out : dict
+        dict
             Dictionary with turbulence Reynolds stress components: `uu_turb`, `vv_turb`, `ww_turb`,
             `uw_turb`, `vw_turb`, `uv_turb`, each a scalar. If `return_time_series` is True, also
             includes `u_wave`, `u_turb`, `v_wave`, `v_turb`, `w_wave`, `w_turb`, each length N-1.
@@ -767,8 +762,7 @@ class ADV(BaseInstrument):
         return_time_series: bool = False,
         **kwargs,
     ) -> dict:
-        """Calculate components of the covariance matrix (i.e., the Reynolds
-        stress)
+        """Calculate components of the covariance matrix (i.e., the Reynolds stress)
 
         Parameters
         ----------
@@ -1027,9 +1021,7 @@ class ADV(BaseInstrument):
     @staticmethod
     def _calcJii(sig1, sig2, sig3, u1, u2):
         """Calculates J11, J22, and J33, the diagonal elements of equation A.13
-        in Gerbi et al.
-
-        (2009)
+        in Gerbi et al. (2009)
         """
         # Initializing coordinate arrays
         r_len = 120
@@ -1125,14 +1117,12 @@ class ADV(BaseInstrument):
 
         Returns
         -------
-        Dictionary with the following keys/values at each height:
-            eps : float
-                dissipation rate of TKE (m^2/s^3)
-            noise : float
-                intercept from dissipation linear regression
-            quality_flag : int
-                1 for good eps estimate, 0 for bad eps estimate.
-                Defined based on Gerbi Eq. 11
+        dict
+            Dictionary with the following keys/values at each height:
+
+            * `eps` (float) : dissipation rate of TKE (m^2/s^3)
+            * `noise` (float) : intercept from dissipation linear regression
+            * `quality_flag` (int) : 1 for good eps estimate, 0 for bad eps estimate. Defined based on Gerbi Eq. 11
 
         References
         ----------

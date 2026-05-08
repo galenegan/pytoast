@@ -4,8 +4,7 @@ from scipy.integrate import cumulative_trapezoid
 from scipy.optimize import curve_fit
 from scipy.stats import circmean, linregress
 from typing import Optional, Union, List, Dict, Any
-from utils.base_instrument import BaseInstrument
-from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
+from utils.base_instrument import BaseInstrument, ZConvention, DeploymentType
 from utils.spectral_utils import psd
 
 from utils.rotate_utils import (
@@ -33,9 +32,10 @@ class ADCP(BaseInstrument):
         self,
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "fixed",
+        deployment_type: DeploymentType = DeploymentType.FIXED,
         fs: Optional[float] = None,
         z: Optional[Union[List[float], np.ndarray]] = None,
+        z_convention: ZConvention = ZConvention.MAB,
         data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: str = "beam",
         orientation: str = "up",
@@ -83,6 +83,10 @@ class ADCP(BaseInstrument):
         z : List[float] or np.ndarray, optional
             Vertical coordinate for each cell (interpreted as m above bed if `orientation="up"`, m below surface if
             `orientation="down"`). Defaults to integer indices if not specified.
+        z_convention : ZConvention, optional
+            Convention for vertical coordinate, one of `{"m_above_bed", "depth"}`. Default is `"m_above_bed"`. Unlike
+            the ADV class, this is not currently used in any calculations, but it's a good attribute to keep attached
+            to the ADCP object for interpretibility.
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables in name_map are
             stored at `burst["Data"]["variable_name"]`).
@@ -90,8 +94,7 @@ class ADCP(BaseInstrument):
             Velocity coordinate system in the source files. One of {`beam`, `xyz`, `enu`}.
             Defaults to `beam`.
         orientation : str, optional
-            Instrument orientation. One of {`up`, `down`}. Affects interpretation of the vertical
-            coordinate. Defaults to `up`.
+            Instrument orientation. One of {`up`, `down`}. Defaults to `up`.
         beam_angle : float, optional
             Beam angle from vertical (degrees). Used in beam-to-xyz coordinate transformations.
             Defaults to 25.0.
@@ -115,13 +118,14 @@ class ADCP(BaseInstrument):
             deployment_type,
             fs,
             z,
+            z_convention,
             data_keys,
             source_coords,
             orientation,
             beam_angle,
             manufacturer,
         )
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
@@ -130,6 +134,7 @@ class ADCP(BaseInstrument):
         deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
+        z_convention: ZConvention = ZConvention.MAB,
         data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: str = "beam",
         orientation: str = "up",
@@ -155,6 +160,9 @@ class ADCP(BaseInstrument):
 
         if not isinstance(beam_angle, (int, float)):
             raise ValueError("`beam_angle` must be a number")
+
+        if z_convention not in [ZConvention.MAB, ZConvention.DEPTH]:
+            raise ValueError("`z_convention` must be either 'mab' or 'depth'")
 
         if manufacturer not in ["nortek", "rdi"]:
             raise ValueError(
@@ -862,11 +870,12 @@ class ADCP(BaseInstrument):
             deployment_type=self.deployment_type,
             fs=self.fs,
             z=self.z,
+            z_convention=self.z_convention,
             data_keys=self.data_keys,
             source_coords=self.source_coords,
             orientation=self.orientation,
             beam_angle=self.beam_angle,
-            manufacturer=self.manufacturer,
+            manufacturer=self.manufacturer
         )
         if self._preprocess_enabled:
             new_adcp.set_preprocess_opts(self._preprocess_opts)

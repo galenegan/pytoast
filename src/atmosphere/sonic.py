@@ -2,9 +2,8 @@ import numpy as np
 import scipy.signal as sig
 from scipy.stats import linregress
 from typing import Optional, Union, List, Dict, Any
-from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from utils.spectral_utils import psd, csd, get_frequency_range
-from utils.base_instrument import BaseInstrument
+from utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
 from utils.burst_utils import get_uvw
 from utils.constants import T0, GRAVITATIONAL_ACCELERATION as g
 from utils.rotate_utils import apply_flow_rotation
@@ -22,9 +21,10 @@ class Sonic(BaseInstrument):
         self,
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "fixed",
+        deployment_type: DeploymentType = DeploymentType.FIXED,
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float]]] = None,
+        z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
         path_length: float = 0.15,
     ):
@@ -49,17 +49,17 @@ class Sonic(BaseInstrument):
             "Ts" and "time" are optional, but an error is raised if "time" is absent and `fs` is
             also not provided. Lists are used when data from multiple instruments are stored in
             separate variables rather than a 2-D array.
-        deployment_type : str, optional
+        deployment_type : DeploymentType
             One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
             self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
-            heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
-            variable within individual measurement bursts.
+            heights. If "cast", self.z will be set to None
         fs : float, optional
             Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
             `time` variable
         z : float or List[float], optional
-            Mean height above the surface (m) for each instrument. Defaults to integer indices if not
-            specified.
+            Height coordinate (m) for each instrument. Defaults to integer indices if not specified.
+        z_convention : ZConvention, optional
+            Convention for vertical coordinate, must `"m_above_surface"` for Sonic instruments.
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables
             in name_map are stored at `burst["Data"]["variable_name"]`).
@@ -73,8 +73,8 @@ class Sonic(BaseInstrument):
         """
         self.path_length = path_length
         files_list = files if isinstance(files, list) else [files]
-        Sonic.validate_inputs(files_list, name_map, deployment_type, fs, z, data_keys, path_length)
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
+        Sonic.validate_inputs(files_list, name_map, deployment_type, fs, z, z_convention, data_keys, path_length)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
@@ -83,6 +83,7 @@ class Sonic(BaseInstrument):
         deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
         path_length: float = 0.15,
     ):
@@ -99,6 +100,9 @@ class Sonic(BaseInstrument):
 
         if not isinstance(path_length, float):
             raise TypeError("`path length` must be a float")
+
+        if z_convention != ZConvention.MAS:
+            raise ValueError("Sonic instruments use 'm_above_surface' convention for vertical coordinates")
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the
@@ -423,6 +427,7 @@ class Sonic(BaseInstrument):
             deployment_type=self.deployment_type,
             fs=self.fs,
             z=self.z,
+            z_convention=self.z_convention,
             data_keys=self.data_keys,
             path_length=self.path_length,
         )

@@ -24,7 +24,7 @@ class ZConvention(StrEnum):
 
     MAB = "m_above_bed"
     DEPTH = "depth"
-    MAS = "m_above_surf"
+    MAS = "m_above_surface"
 
 
 class BaseInstrument(ABC):
@@ -75,7 +75,7 @@ class BaseInstrument(ABC):
         self.validate_common_inputs(files, name_map, deployment_type, fs, z)
         self.files = files
         self.name_map = name_map
-        self.deployment_type = deployment_type
+        self.deployment_type = DeploymentType(deployment_type)
         self.z_convention = ZConvention(z_convention)
         self.data_keys = [data_keys] if isinstance(data_keys, str) else (list(data_keys) if data_keys else [])
         self.burst_dim = burst_dim
@@ -96,7 +96,6 @@ class BaseInstrument(ABC):
     def validate_common_inputs(
         files: List[str],
         name_map: dict,
-        deployment_type: str,
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
@@ -109,8 +108,6 @@ class BaseInstrument(ABC):
             Input files
         name_map : dict
             Variable name mapping
-        deployment_type : str
-            "fixed" or "cast"
         fs : float, optional
             Sampling frequency
         z : float, List[float], or np.ndarray, optional
@@ -145,12 +142,6 @@ class BaseInstrument(ABC):
 
         if "time" not in name_map and fs is None:
             raise ValueError("You must specify either 'time' in name_map or provide 'fs'")
-
-        if not isinstance(deployment_type, str):
-            raise TypeError("`deployment_type` must be a string")
-
-        if deployment_type not in ["fixed", "cast"]:
-            raise ValueError("`deployment_type` must be either 'fixed' or 'cast'")
 
         # Validate "z"
         if z is not None:
@@ -229,7 +220,7 @@ class BaseInstrument(ABC):
             Sampling frequency, or None to infer from time variable
         z : float, list, np.ndarray, or None
             Height coordinates, or None to infer from data dimensions
-        deployment_type : str
+        deployment_type : DeploymentType
             Either "fixed" or "cast". Determines whether z is a constant array of height coordinates or None.
 
         Returns
@@ -256,7 +247,7 @@ class BaseInstrument(ABC):
 
         # Normalize z to a numpy array, or infer from data dimensions
         self._physical_z = False
-        if deployment_type == "cast":
+        if deployment_type == DeploymentType.CAST:
             z = None
         else:
             if z is not None:
