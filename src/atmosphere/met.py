@@ -22,9 +22,11 @@ class Met(BaseInstrument):
     ----------------------------
     Variables in a burst dict are assumed to be 2-D arrays of shape (n_heights, n_samples), where the first axis
     corresponds to instrument heights (length self.n_heights) and the second axis is time. The individual thermodynamic
-    methods accept any Numeric type and broadcast over these arrays without modification. Height information is always
-    taken from self.z (shape (n_heights,)) rather than from burst dict keys, so that self.z remains the single source of
-    truth.
+    methods accept any Numeric type and broadcast over these arrays without modification.
+
+    This class requires deployment_type="fixed". Height information is taken from self.z (shape (n_heights,), meters
+    above the sea surface, since Met locks z_convention to ZConvention.MAS) rather than from burst dict keys, so that
+    self.z remains the single source of truth.
 
     Standard burst dict keys recognized by `Met.derive`:
 
@@ -105,13 +107,14 @@ class Met(BaseInstrument):
         Met
         """
         files_list = files if isinstance(files, list) else [files]
-        Met.validate_inputs(files_list, name_map, fs, z, z_convention, data_keys)
+        Met.validate_inputs(files_list, name_map, deployment_type, fs, z, z_convention, data_keys)
         super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
+        deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         z_convention: ZConvention = ZConvention.MAS,
@@ -120,6 +123,9 @@ class Met(BaseInstrument):
 
         # General validation
         BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+
+        if deployment_type != "fixed":
+            raise ValueError(f"Met.deployment_type must be 'fixed', not {deployment_type!r}")
 
         if z_convention != ZConvention.MAS:
             raise ValueError(f"Met.z_convention must be {ZConvention.MAS}, not {z_convention}")
