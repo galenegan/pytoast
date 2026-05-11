@@ -27,6 +27,7 @@ class Sonic(BaseInstrument):
         z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
         path_length: float = 0.15,
+        burst_dim: Optional[str] = None,
     ):
         """Initialize a Sonic object.
 
@@ -65,6 +66,10 @@ class Sonic(BaseInstrument):
         path_length : float, optional
             Sonic path length (m). Used in the Henjes correction to the spectral curve fit in
             `Sonic.dissipation`. Defaults to 0.15.
+        burst_dim : str, optional
+            Name of the burst dimension inside a monolithic NetCDF file. When given, `files` must be a single `.nc`
+            path; the file is opened lazily and each burst is exposed by slicing along this dimension. When None
+            (default), each entry in `files` is treated as one burst.
 
         Returns
         -------
@@ -73,7 +78,7 @@ class Sonic(BaseInstrument):
         self.path_length = path_length
         files_list = files if isinstance(files, list) else [files]
         Sonic.validate_inputs(files_list, name_map, deployment_type, fs, z, z_convention, data_keys, path_length)
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys, burst_dim=burst_dim)
 
     @staticmethod
     def validate_inputs(

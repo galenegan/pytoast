@@ -65,6 +65,7 @@ class Met(BaseInstrument):
         z: Optional[Union[float, List[float]]] = None,
         z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
+        burst_dim: Optional[str] = None,
     ):
         """Initialize a Met object.
 
@@ -99,6 +100,10 @@ class Met(BaseInstrument):
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables
             in name_map are stored at `burst["Data"]["variable_name"]`).
+        burst_dim : str, optional
+            Name of the burst dimension inside a monolithic NetCDF file. When given, `files` must be a single `.nc`
+            path; the file is opened lazily and each burst is exposed by slicing along this dimension. When None
+            (default), each entry in `files` is treated as one burst.
 
         Returns
         -------
@@ -106,7 +111,7 @@ class Met(BaseInstrument):
         """
         files_list = files if isinstance(files, list) else [files]
         Met.validate_inputs(files_list, name_map, deployment_type, fs, z, z_convention, data_keys)
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys, burst_dim=burst_dim)
 
     @staticmethod
     def validate_inputs(

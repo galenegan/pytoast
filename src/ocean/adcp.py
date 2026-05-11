@@ -41,6 +41,7 @@ class ADCP(BaseInstrument):
         orientation: str = "up",
         beam_angle: float = 25.0,
         manufacturer: str = "nortek",
+        burst_dim: Optional[str] = None,
     ):
         """Initialize an ADCP object.
 
@@ -99,6 +100,10 @@ class ADCP(BaseInstrument):
         manufacturer : str, optional
             Instrument manufacturer. One of {`nortek`, `rdi`}. Determines the coordinate transformation logic. Defaults
             to `nortek`.
+        burst_dim : str, optional
+            Name of the burst dimension inside a monolithic NetCDF file. When given, `files` must be a single `.nc`
+            path; the file is opened lazily and each burst is exposed by slicing along this dimension. When None
+            (default), each entry in `files` is treated as one burst.
 
         Returns
         -------
@@ -123,7 +128,7 @@ class ADCP(BaseInstrument):
             beam_angle,
             manufacturer,
         )
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys, burst_dim=burst_dim)
 
     @staticmethod
     def validate_inputs(

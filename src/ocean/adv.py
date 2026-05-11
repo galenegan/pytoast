@@ -38,6 +38,7 @@ class ADV(BaseInstrument):
         source_coords: str = "xyz",
         orientation: str = "up",
         water_depth: Optional[float] = None,
+        burst_dim: Optional[str] = None,
     ):
         """Initialize an ADV object.
 
@@ -88,6 +89,10 @@ class ADV(BaseInstrument):
             Water depth (m) at deployment site. Required if `z_convention = "depth"` and Benilov decomposition or
             directional wave statistics are requested. If `z_convention = "m_above_bed"`, `water_depth` is inferred
             from `self.z` and pressure data wherever needed.
+        burst_dim : str, optional
+            Name of the burst dimension inside a monolithic NetCDF file. When given, `files` must be a single `.nc`
+            path; the file is opened lazily and each burst is exposed by slicing along this dimension. When None
+            (default), each entry in `files` is treated as one burst.
 
         Returns
         -------
@@ -110,7 +115,7 @@ class ADV(BaseInstrument):
             orientation,
             water_depth,
         )
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys, burst_dim=burst_dim)
 
     @staticmethod
     def validate_inputs(
