@@ -76,19 +76,18 @@ class BaseInstrument(ABC):
         z : float, List[float], or np.ndarray, optional
             Height coordinates
         z_convention : ZConvention, optional
-            Convention for vertical coordinate, one of `{"m_above_bed", "depth", "m_above_surf"}`.
-            Default will vary by instrument class.
+            Convention for vertical coordinate, one of `{"m_above_bed", "depth", "m_above_surf"}`. Default will vary by
+            instrument class.
         data_keys : str or List[str], optional
-            One or more nested keys to traverse after loading a file (e.g. `"Data"` if
-            variables in `name_map` live at `file["Data"]["variable_name"]`)
+            One or more nested keys to traverse after loading a file (e.g. `"Data"` if variables in `name_map` live at
+            `file["Data"]["variable_name"]`)
         burst_dim : str, optional
-            Name of the burst dimension inside a monolithic NetCDF file. When given, `files`
-            must be a single `.nc` path; the file is opened lazily with `xr.open_dataset` and
-            each burst is exposed by slicing along this dimension. When None (default), each
-            entry in `files` is treated as one burst.
+            Name of the burst dimension inside a monolithic NetCDF file. When given, `files` must be a single `.nc`
+            path; the file is opened lazily with `xr.open_dataset` and each burst is exposed by slicing along this
+            dimension. When None (default), each entry in `files` is treated as one burst.
         """
         files = files if isinstance(files, list) else [files]
-        self.validate_common_inputs(files, name_map, deployment_type, fs, z)
+        self.validate_common_inputs(files, name_map, fs, z, data_keys)
         self.files = files
         self.name_map = name_map
         self.deployment_type = DeploymentType(deployment_type)
@@ -191,8 +190,11 @@ class BaseInstrument(ABC):
     def _load_file(file_path, data_keys=None):
         suffix = file_path.split(".")[-1].lower()
         if suffix == "mat":
-            # TODO: add error handling to fall back on mat73
-            data = strip_mat_nulls(sio.loadmat(file_path, simplify_cells=True))
+            try:
+                data = strip_mat_nulls(sio.loadmat(file_path, simplify_cells=True))
+            except NotImplementedError:
+                import mat73
+                data = strip_mat_nulls(mat73.loadmat(file_path))
             file_type = "mat"
         elif suffix == "npy":
             data = np.load(file_path, allow_pickle=True).item()
@@ -409,6 +411,12 @@ class BaseInstrument(ABC):
                 var_data = self._as_array(data, in_key, file_type)
                 if var_data.ndim > 1:
                     # Transpose if needed (time should be last dimension)
+                    if self.n_heights is None:
+                        # For deployment_type == "cast", and multiple data streams within var_data, assume that
+                        # time is the longer dimension
+                        n_rows, n_cols = var_data.shape
+                        if n_rows > n_cols:
+                            var_data = var_data.T
                     if var_data.shape[1] == self.n_heights:
                         var_data = var_data.T
                 else:
@@ -501,6 +509,8 @@ class BaseInstrument(ABC):
 
     @property
     def n_heights(self):
+        if self.z is None:
+            return None
         return len(self.z)
 
     def to_dataset(

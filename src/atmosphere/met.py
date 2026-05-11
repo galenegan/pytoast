@@ -86,10 +86,8 @@ class Met(BaseInstrument):
             Lists are used when data from multiple instruments are stored in
             separate variables rather than a 2-D array.
         deployment_type : str, optional
-            One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
-            self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
-            heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
-            variable within individual measurement bursts.
+            Must be "fixed" (the only supported value). self.z will be converted to a constant numpy array of
+            instrument deployment depths or measurement cell heights.
         fs : float, optional
             Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
             `time` variable

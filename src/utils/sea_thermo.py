@@ -1124,6 +1124,7 @@ def buoyancy_frequency(
     ct: np.ndarray,
     p: np.ndarray,
     lat: Optional[Numeric] = None,
+    axis: int = 0,
 ) -> np.ndarray:
     """
     Squared buoyancy (Brunt-Vaisala) frequency from a vertical profile.
@@ -1134,7 +1135,7 @@ def buoyancy_frequency(
 
     where dp is in dbar and the 1e4 factor converts to Pa.  N^2 is evaluated
     at mid-pressure points between adjacent levels, so the output has length
-    n_heights - 1 along axis 0.
+    n_heights - 1 along axis.
 
     Parameters
     ----------
@@ -1147,11 +1148,13 @@ def buoyancy_frequency(
     lat : Numeric, optional
         Latitude (degrees north).  If provided, gravity is computed via the
         UNESCO formula.
+    axis : int, optional
+        Axis of arrays to calculate gradients over. Default is 0.
 
     Returns
     -------
     np.ndarray
-        N^2 at mid-pressure levels, shape (n_heights - 1, ...) (rad^2/s^2)
+        N^2 at mid-pressure levels, shape (n_heights - 1, ...) for `axis=0`. (rad^2/s^2)
     """
     sa_mid = 0.5 * (sa[:-1] + sa[1:])
     ct_mid = 0.5 * (ct[:-1] + ct[1:])
@@ -1161,9 +1164,9 @@ def buoyancy_frequency(
     beta_mid = beta(sa_mid, ct_mid, p_mid)
     specvol_mid = specific_volume(sa_mid, ct_mid, p_mid)
 
-    dp = np.diff(p, axis=0)  # dbar
-    dct = np.diff(ct, axis=0)
-    dsa = np.diff(sa, axis=0)
+    dp = np.diff(p, axis=axis)
+    dct = np.diff(ct, axis=axis)
+    dsa = np.diff(sa, axis=axis)
 
     if lat is not None:
         g_lat = gravity_at_lat(lat)

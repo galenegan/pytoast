@@ -73,10 +73,8 @@ class ADCP(BaseInstrument):
             transformation involving ENU coordinates. "u4" and "u5" can be optionally specified for instruments with
             4 or 5 beams.
         deployment_type : str, optional
-            One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
-            self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
-            heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
-            variable within individual measurement bursts.
+            Must be "fixed" (the only supported value). self.z will be converted to a constant numpy array of
+            instrument deployment depths or measurement cell heights.
         fs : float, optional
             Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
             `time` variable
@@ -143,7 +141,10 @@ class ADCP(BaseInstrument):
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+
+        if deployment_type != "fixed":
+            raise ValueError(f"ADCP.deployment_type must be 'fixed', not {deployment_type!r}")
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]

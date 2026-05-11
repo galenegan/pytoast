@@ -443,6 +443,7 @@ class CTD(BaseInstrument):
         sa: np.ndarray,
         ct: np.ndarray,
         p: np.ndarray,
+        axis: int = 0
     ) -> np.ndarray:
         """
         Squared buoyancy (Brunt-Vaisala) frequency from a vertical profile.
@@ -470,7 +471,7 @@ class CTD(BaseInstrument):
         np.ndarray
             N^2 at mid-depth levels, shape (n_heights - 1, n_samples) (1/s^2)
         """
-        return sea_thermo.buoyancy_frequency(sa, ct, p)
+        return sea_thermo.buoyancy_frequency(sa, ct, p, axis)
 
     def depth_from_pressure(self, p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
         """
@@ -542,8 +543,10 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         burst_data : dict
-            Burst dictionary. Arrays are expected to have shape
-            (n_heights, n_samples). Modified in-place and also returned.
+            Burst dictionary, Modified in-place and also returned. If `self.deployment_type == "fixed"`, arrays are
+            expected to have shape (n_heights, n_samples). If `self.deployment_type == "cast"`, arrays are expected to
+            have shape (n_instruments, n_samples) where n_instruments is the number of sensors/data streams stored in
+            each data variable from the source files.
 
         Returns
         -------
@@ -587,8 +590,11 @@ class CTD(BaseInstrument):
         if sa is not None and has_t:
             burst_data["nu"] = self.kinematic_viscosity(t, sa)
 
-        if sa is not None and ct is not None and has_p and self.n_heights > 1:
-            burst_data["N2"] = self.buoyancy_frequency(sa, ct, p)
+        if sa is not None and ct is not None and has_p:
+            if self.z is not None and self.n_heights > 1:
+                burst_data["N2"] = self.buoyancy_frequency(sa, ct, p, axis=0)
+            elif self.z is None:
+                burst_data["N2"] = self.buoyancy_frequency(sa, ct, p, axis=1)
 
         if has_p:
             burst_data["z"] = self.depth_from_pressure(p, lat)

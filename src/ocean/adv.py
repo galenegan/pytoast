@@ -64,12 +64,8 @@ class ADV(BaseInstrument):
             `heading`, `pitch`, and `roll` are also optional but required for ENU coordinate transformations. Lists are
             used when data from multiple instruments are stored in separate variables rather than a 2-D array.
         deployment_type : str, optional
-            One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
-            self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
-            heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
-            variable within individual measurement bursts. NOTE: depth-dependent calculations assume a fixed
-            depth per measurement bust even when `deployment_type = "cast"`, so it is recommended to preprocess
-            data into fixed-depth bursts prior to intializing an `ADV` object.
+            Must be "fixed" (the only supported value). self.z will be converted to a constant numpy array of
+            instrument deployment depths or measurement cell heights.
         fs : int or float, optional
             Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
             `time` variable
@@ -105,6 +101,7 @@ class ADV(BaseInstrument):
         ADV.validate_inputs(
             files_list,
             name_map,
+            deployment_type,
             fs,
             z,
             z_convention,
@@ -119,6 +116,7 @@ class ADV(BaseInstrument):
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
+        deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]], np.ndarray]] = None,
         z_convention: ZConvention = ZConvention.MAB,
@@ -130,6 +128,9 @@ class ADV(BaseInstrument):
 
         # General validation
         BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+
+        if deployment_type != "fixed":
+            raise ValueError(f"ADV.deployment_type must be 'fixed', not {deployment_type!r}")
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]

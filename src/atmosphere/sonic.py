@@ -49,10 +49,9 @@ class Sonic(BaseInstrument):
             "Ts" and "time" are optional, but an error is raised if "time" is absent and `fs` is
             also not provided. Lists are used when data from multiple instruments are stored in
             separate variables rather than a 2-D array.
-        deployment_type : DeploymentType
-            One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
-            self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
-            heights. If "cast", self.z will be set to None
+        deployment_type : str, optional
+            Must be "fixed" (the only supported value). self.z will be converted to a constant numpy array of
+            instrument deployment depths or measurement cell heights.
         fs : float, optional
             Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
             `time` variable
@@ -89,7 +88,10 @@ class Sonic(BaseInstrument):
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+
+        if deployment_type != "fixed":
+            raise ValueError(f"Sonic.deployment_type must be 'fixed', not {deployment_type!r}")
 
         # Instrument-specific requirements
         required_keys = ["u1", "u2", "u3"]
