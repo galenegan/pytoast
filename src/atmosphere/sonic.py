@@ -59,7 +59,7 @@ class Sonic(BaseInstrument):
         z : float or List[float], optional
             Height coordinate (m) for each instrument. Defaults to integer indices if not specified.
         z_convention : ZConvention, optional
-            Convention for vertical coordinate, must `"m_above_surface"` for Sonic instruments.
+            Convention for vertical coordinate, must be `"m_above_surface"` for Sonic instruments.
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables
             in name_map are stored at `burst["Data"]["variable_name"]`).

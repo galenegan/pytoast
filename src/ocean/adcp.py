@@ -86,7 +86,7 @@ class ADCP(BaseInstrument):
         z_convention : ZConvention, optional
             Convention for vertical coordinate, one of `{"m_above_bed", "depth"}`. Default is `"m_above_bed"`. Unlike
             the ADV class, this is not currently used in any calculations, but it's a good attribute to keep attached
-            to the ADCP object for interpretibility.
+            to the ADCP object for interpretability.
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables in name_map are
             stored at `burst["Data"]["variable_name"]`).
