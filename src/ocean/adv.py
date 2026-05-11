@@ -525,7 +525,7 @@ class ADV(BaseInstrument):
 
         References
         ----------
-        Bricker, J. D., & Monismith, S. G. (2007). Spectral wave–turbulence decomposition. Journal of Atmospheric and
+        Bricker, J. D., & Monismith, S. G. (2007). Spectral wave-turbulence decomposition. Journal of Atmospheric and
             Oceanic Technology, 24(8), 1479-1487.
         """
         out = {}
@@ -1275,7 +1275,7 @@ class ADV(BaseInstrument):
         Herbers, T. H. C., Elgar, S., & Guza, R. T. (1999). Directional spreading of waves in the nearshore. Journal of
             Geophysical Research: Oceans, 104(C4), 7683-7693.
 
-        Jones, N. L., & Monismith, S. G. (2007). Measuring short‐period wind waves in a tidally forced environment with
+        Jones, N. L., & Monismith, S. G. (2007). Measuring short-period wind waves in a tidally forced environment with
             a subsurface pressure gauge. Limnology and Oceanography: Methods, 5(10), 317-327.
 
         Kumar, N., Cahl, D. L., Crosby, S. C., & Voulgaris, G. (2017). Bulk versus spectral wave parameters:

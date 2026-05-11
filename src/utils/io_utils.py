@@ -153,7 +153,7 @@ def _infer_dims(
             )
         if len(candidates) == 1:
             return (candidates[0],), shape
-        # Unknown 1D size — create a key-specific dim so users can still persist
+        # Unknown 1D size -- create a key-specific dim so users can still persist
         # custom quantities (e.g. mode amplitudes).
         return (f"{key}_dim",), shape
 

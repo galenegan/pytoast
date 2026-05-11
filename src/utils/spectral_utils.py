@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.signal as sig
-from typing import Optional
+from typing import Optional, Tuple
 
 
 def get_window_len(N: int, num_windows: int) -> int:
@@ -12,7 +12,7 @@ def get_window_len(N: int, num_windows: int) -> int:
     return int(2 * N / (num_windows + 1))
 
 
-def get_frequency_range(f: np.ndarray, f_low: Optional[float] = None, f_high: Optional[float] = None) -> (int, int):
+def get_frequency_range(f: np.ndarray, f_low: Optional[float] = None, f_high: Optional[float] = None) -> Tuple[int, int]:
 
     if f_low is not None:
         start_index = np.argmin(np.abs(f - f_low))
@@ -36,7 +36,7 @@ def psd(
     nfft=None,
     detrend=False,
     onesided=True,
-) -> (np.ndarray, np.ndarray):
+) -> Tuple[np.ndarray, np.ndarray]:
     N = max(x.shape)
     if window_len is None:
         window_len = get_window_len(N, num_windows)
@@ -66,7 +66,7 @@ def csd(
     nfft=None,
     detrend=False,
     onesided=True,
-) -> (np.ndarray, np.ndarray):
+) -> Tuple[np.ndarray, np.ndarray]:
     N = max(x.shape)
     if window_len is None:
         window_len = get_window_len(N, num_windows)

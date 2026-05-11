@@ -145,7 +145,7 @@ def sea_surface_albedo(
 
     References
     ----------
-    Payne, R. E., 1972: Albedo of the sea surface. J. Atmos. Sci., 29, 959–970.
+    Payne, R. E., 1972: Albedo of the sea surface. J. Atmos. Sci., 29, 959-970.
     """
     sw_down = np.atleast_1d(np.asarray(sw_down, dtype=float))
 
@@ -382,7 +382,7 @@ def coare36(
     k_water = 0.6  # thermal conductivity of seawater [W/(m K)]
     # Combined cool-skin parameter
     cool_skin_param = 16 * g * cp_water * (rho_water * visw) ** 3 / (k_water**2 * rho_air**2)
-    # Linearized surface humidity–temperature coefficient [kg/(kg K)]
+    # Linearized surface humidity-temperature coefficient [kg/(kg K)]
     dqs_dT = 0.622 * L_e * q_s / (R_AIR * (ts + T0) ** 2)
 
     # Radiative fluxes
@@ -391,7 +391,9 @@ def coare36(
     # lw_net is positive when cooling the ocean (sign flipped at output)
     lw_net = 0.97 * (SB * (ts - 0.3 * j_cool + T0) ** 4 - lw_down)
 
-    # ── First-guess initial conditions ───────────────────────────────────────
+    ##################################
+    # First-guess initial conditions
+    ##################################
     delta_u = u - u_surf  # air-sea relative wind speed [m/s]
     # Temperature difference including lapse-rate correction
     delta_T = ts - t - lapse_rate * z_t
