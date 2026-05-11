@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Optional, Union, List, Dict, Any, TypeAlias
-from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
-from utils.base_instrument import BaseInstrument
+from utils.base_instrument import BaseInstrument, ZConvention
 import utils.sea_thermo as sea_thermo
 
 Numeric: TypeAlias = float | int | np.ndarray
@@ -10,22 +9,18 @@ Numeric: TypeAlias = float | int | np.ndarray
 class CTD(BaseInstrument):
     """Class for processing CTD (conductivity/temperature/depth) data.
 
-    Contains methods for loading data from source files, preprocessing, and calculating
-    thermodynamic quantities from CTD observations.
+    Contains methods for loading data from source files, preprocessing, and calculating thermodynamic quantities from
+    CTD observations.
 
-    The core functionality is a *very limited* port of the Gibbs SeaWater (GSW)
-    Oceanographic Toolbox (TEOS-10, https://www.teos-10.org). Only the
-    equation of state and directly derived quantities are implemented. Variable
-    names generally follow the GSW conventions for consistency with the source
-    code.
+    The core functionality is a *very limited* port of the Gibbs SeaWater (GSW) Oceanographic Toolbox (TEOS-10,
+    https://www.teos-10.org). Only the equation of state and directly derived quantities are implemented. Variable names
+    generally follow the GSW conventions for consistency with the source code.
 
     Burst dictionary conventions
     ----------------------------
-    Variables in a burst dict are assumed to be 2-D arrays of shape
-    (n_heights, n_samples), where the first axis corresponds to instrument
-    depths (length self.n_heights) and the second axis is time. The individual
-    thermodynamic methods accept any Numeric type and broadcast over these
-    arrays without modification.
+    Variables in a burst dict are assumed to be 2-D arrays of shape (n_heights, n_samples), where the first axis
+    corresponds to instrument depths (length self.n_heights) and the second axis is time. The individual thermodynamic
+    methods accept any Numeric type and broadcast over these arrays without modification.
 
     Standard burst dict keys recognized by `CTD.derive`:
 
@@ -49,18 +44,16 @@ class CTD(BaseInstrument):
         N2          : buoyancy frequency squared (n_heights > 1)     (1/s^2)
         z           : depth (positive downward)                          (m)
 
-    References  # TODO: Double Check these
+    References
     ----------
-    IOC, SCOR and IAPSO, 2010: The international thermodynamic equation of
-        seawater - 2010. Intergovernmental Oceanographic Commission,
-        Manuals and Guides No. 56, UNESCO.
+    IOC, SCOR and IAPSO, 2010: The international thermodynamic equation of seawater - 2010. Intergovernmental
+        Oceanographic Commission, Manuals and Guides No. 56, UNESCO.
 
-    Roquet, F., G. Madec, T.J. McDougall, P.M. Barker, 2015: Accurate
-        polynomial expressions for the density and specific volume of seawater
-        using the TEOS-10 standard. Ocean Modelling, 90, 29-43.
+    Roquet, F., G. Madec, T.J. McDougall, P.M. Barker, 2015: Accurate polynomial expressions for the density and
+        specific volume of seawater using the TEOS-10 standard. Ocean Modelling, 90, 29-43.
 
-    McDougall, T.J. and P.M. Barker, 2011: Getting started with TEOS-10 and
-        the Gibbs Seawater (GSW) Oceanographic Toolbox. SCOR/IAPSO WG127.
+    McDougall, T.J. and P.M. Barker, 2011: Getting started with TEOS-10 and the Gibbs Seawater (GSW) Oceanographic
+        Toolbox. SCOR/IAPSO WG 127(532), 1-28.
     """
 
     def __init__(
@@ -70,6 +63,7 @@ class CTD(BaseInstrument):
         deployment_type: str = "fixed",
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float]]] = None,
+        z_convention: ZConvention = ZConvention.DEPTH,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
         """Initialize a CTD object.
@@ -77,12 +71,10 @@ class CTD(BaseInstrument):
         Parameters
         ----------
         files : str or List[str]
-            Path(s) to data files. If a list, each element is treated as a file
-            containing data from an individual burst period. Supported formats:
-            .npy (saved as a dict), .mat (saved as a MATLAB struct), .csv
-            (variables in columns). If variables are two-dimensional, the larger
-            dimension is assumed to be time and the shorter dimension a vertical
-            coordinate.
+            Path(s) to data files. If a list, each element is treated as a file containing data from an individual burst
+            period. Supported formats: npy (saved as a dict), .mat (saved as a MATLAB struct), .csv (variables in
+            columns). If variables are two-dimensional, the larger dimension is assumed to be time and the shorter
+            dimension a vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
             {
@@ -99,34 +91,39 @@ class CTD(BaseInstrument):
             heights. If "cast", self.z will be set to None and vertical coordinates will be calculated as a data
             variable within individual measurement bursts.
         fs : float, optional
-            Sampling frequency (Hz). If not provided, it will be inferred (and
-            rounded to 2 decimal places) from the ``time`` variable.
+            Sampling frequency (Hz). If not provided, it will be inferred (and rounded to 2 decimal places) from the
+            ``time`` variable.
         z : float or List[float], optional
-            Instrument depth(s) below the surface (m). Defaults to integer
-            indices if not specified.
+            Instrument depth(s) (m). Defaults to integer indices if not specified.
+        z_convention : ZConvention, optional
+            Convention for vertical coordinate, one of `{"m_above_bed", "depth"}`. Default is `"depth"`. Note that even
+            if set to `"m_above_bed"` that will *only* apply to `self.z`, and the `z` calculated per-burst by
+            `CTD.depth_from_pressure` will remain in depth convention (positive downward).
         data_keys : str or List[str], optional
-            One or more nested keys to traverse after loading the file (e.g.
-            ``"Data"`` if the variables in name_map are stored at
-            ``burst["Data"]["variable_name"]``).
+            One or more nested keys to traverse after loading the file (e.g. ``"Data"`` if the variables in name_map are
+            stored at ``burst["Data"]["variable_name"]``).
 
         Returns
         -------
         CTD
         """
         files_list = files if isinstance(files, list) else [files]
-        CTD.validate_inputs(files_list, name_map, deployment_type, fs, z, data_keys)
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
+        CTD.validate_inputs(files_list, name_map, fs, z, z_convention, data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str,
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        z_convention: ZConvention = ZConvention.DEPTH,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
-        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+
+        if z_convention not in [ZConvention.MAB, ZConvention.DEPTH]:
+            raise ValueError(f"Invalid value for `z_convention`: {z_convention}. Must be one of ['m_above_bed', 'depth']")
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads.
@@ -163,13 +160,11 @@ class CTD(BaseInstrument):
 
     def sa_from_sp(self, sp: Numeric) -> Numeric:
         """
-        Absolute Salinity from Practical Salinity using the constant-ratio
-        approximation (gsw_sa_from_sp.m, simplified).
+        Absolute Salinity from Practical Salinity using the constant-ratio approximation (gsw_sa_from_sp.m, simplified).
 
-        Uses sa = sp * (35.16504 / 35), which skips the geographic Absolute
-        Salinity Anomaly (SAAR) correction. Typical error is  ~0.01 g/kg in
-        the open ocean. Errors can reach ~0.1 g/kg in marginal seas (Baltic,
-        Red Sea, Arctic shelf) where SAAR is significant.
+        Uses sa = sp * (35.16504 / 35), which skips the geographic Absolute Salinity Anomaly (SAAR) correction. Typical
+        error is  ~0.01 g/kg in the open ocean. Errors can reach ~0.1 g/kg in marginal seas (Baltic, Red Sea, Arctic
+        shelf) where SAAR is significant.
 
         Parameters
         ----------
@@ -187,9 +182,8 @@ class CTD(BaseInstrument):
         """
         Conservative Temperature from in-situ temperature (gsw_ct_from_t.m).
 
-        Computes potential temperature at p_ref = 0 dbar via two iterations of
-        Newton's method using Gibbs-entropy polynomials, then converts to
-        Conservative Temperature via the potential-enthalpy polynomial.
+        Computes potential temperature at p_ref = 0 dbar via two iterations of Newton's method using Gibbs-entropy
+        polynomials, then converts to Conservative Temperature via the potential-enthalpy polynomial.
 
         Parameters
         ----------
@@ -252,8 +246,8 @@ class CTD(BaseInstrument):
         return sea_thermo.density(sa, ct, p)
 
     def alpha(self, sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-        """Thermal expansion coefficient with respect to Conservative
-        Temperature from the 75-term polynomial EOS (gsw_alpha.m).
+        """Thermal expansion coefficient with respect to Conservative Temperature from the 75-term polynomial EOS
+        (gsw_alpha.m).
 
         Parameters
         ----------
@@ -272,8 +266,8 @@ class CTD(BaseInstrument):
         return sea_thermo.alpha(sa, ct, p)
 
     def beta(self, sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-        """Haline contraction coefficient at constant Conservative Temperature
-        from the 75-term polynomial EOS (gsw_beta.m).
+        """Haline contraction coefficient at constant Conservative Temperature from the 75-term polynomial EOS
+        (gsw_beta.m).
 
         Parameters
         ----------
@@ -292,8 +286,7 @@ class CTD(BaseInstrument):
         return sea_thermo.beta(sa, ct, p)
 
     def sound_speed(self, sa: Numeric, ct: Numeric, p: Numeric) -> Numeric:
-        """Speed of sound in seawater from the 75-term polynomial EOS
-        (gsw_sound_speed.m).
+        """Speed of sound in seawater from the 75-term polynomial EOS (gsw_sound_speed.m).
 
         Parameters
         ----------
@@ -312,8 +305,8 @@ class CTD(BaseInstrument):
         return sea_thermo.sound_speed(sa, ct, p)
 
     def sigma0(self, sa: Numeric, ct: Numeric) -> Numeric:
-        """Potential density anomaly referenced to 0 dbar from the 75-term EOS
-        (gsw_sigma0.m). Equal to potential density minus 1000 kg/m^3.
+        """Potential density anomaly referenced to 0 dbar from the 75-term EOS (gsw_sigma0.m). Equal to potential
+        density minus 1000 kg/m^3.
 
         Parameters
         ----------
@@ -330,12 +323,10 @@ class CTD(BaseInstrument):
         return sea_thermo.sigma0(sa, ct)
 
     def freezing_temperature(self, sa: Numeric, p: Numeric) -> Numeric:
-        """In-situ freezing temperature from a direct polynomial fit
-        (gsw_t_freezing_poly.m).
+        """In-situ freezing temperature from a direct polynomial fit (gsw_t_freezing_poly.m).
 
-        Uses the 23-coefficient polynomial given in the comments of gsw_t_freezing_poly.m,
-        which avoids calling CT_freezing and t_from_CT. Error is between -8e-4 K and
-        +3e-4 K compared with the exact Newton-Raphson method.
+        Uses the 23-coefficient polynomial given in the comments of gsw_t_freezing_poly.m, which avoids calling
+        CT_freezing and t_from_CT. Error is between -8e-4 K and +3e-4 K compared with the exact Newton-Raphson method.
 
         Parameters
         ----------
@@ -379,9 +370,8 @@ class CTD(BaseInstrument):
 
         References
         ----------
-        Fofonoff, N.P., 1985: Physical properties of seawater: A new salinity
-            scale and equation of state for seawater. J. Geophys. Res., 90,
-            3332-3342.
+        Fofonoff, N.P., 1985: Physical properties of seawater: A new salinity scale and equation of state for seawater.
+            J. Geophys. Res., 90, 3332-3342.
         """
         return sea_thermo.heat_capacity(sa, t, p)
 
@@ -399,6 +389,11 @@ class CTD(BaseInstrument):
         -------
         Numeric
             Dynamic viscosity (Pa s)
+
+        References
+        ----------
+        Sharqawy, M. H., Lienhard, J. H., & Zubair, S. M. (2010). Thermophysical properties of seawater: a review of
+            existing correlations and data. Desalination and water treatment, 16(1-3), 354-380.
         """
         return sea_thermo.dynamic_viscosity(t, sa)
 
@@ -420,23 +415,26 @@ class CTD(BaseInstrument):
         return sea_thermo.kinematic_viscosity(t, sa)
 
     def thermal_conductivity(self, sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
-        """Thermal conductivity of seawater (Sharqawy et al., 2010, Eq.
+        """Thermal conductivity of seawater (Sharqawy et al., 2010, Eq. 14).
 
-        14).
-                Parameters
-                ----------
-                sa : Numeric
-                    Absolute Salinity (g/kg)
-                t : Numeric
-                    In-situ temperature (deg C)
-                p : Numeric
-                    Sea pressure (dbar)
+        Parameters
+        ----------
+        sa : Numeric
+            Absolute Salinity (g/kg)
+        t : Numeric
+            In-situ temperature (deg C)
+        p : Numeric
+            Sea pressure (dbar)
 
+        Returns
+        -------
+        Numeric
+            Thermal conductivity (W/(m K))
 
-                Returns
-                -------
-                Numeric
-                    Thermal conductivity (W/(m K))
+        References
+        ----------
+        Sharqawy, M. H., Lienhard, J. H., & Zubair, S. M. (2010). Thermophysical properties of seawater: a review of
+            existing correlations and data. Desalination and water treatment, 16(1-3), 354-380.
         """
         return sea_thermo.thermal_conductivity(sa, t, p)
 
@@ -447,18 +445,16 @@ class CTD(BaseInstrument):
         p: np.ndarray,
     ) -> np.ndarray:
         """
-        Squared buoyancy (Brunt-Väisälä) frequency from a vertical profile.
+        Squared buoyancy (Brunt-Vaisala) frequency from a vertical profile.
 
         Implements the TEOS-10 / GSW formula (Roquet et al., 2015):
 
         N^2 = g^2 / (specvol_mid * 1e4 * dp) * (beta*dSA - alpha*dCT)
 
-        where dp is in dbar and the 1e4 factor converts to Pa.  N^2 is evaluated
-        at mid-pressure points between adjacent levels, so the output has length
-        n_heights - 1 along axis 0.
+        where dp is in dbar and the 1e4 factor converts to Pa.  N^2 is evaluated at mid-pressure points between adjacent
+        levels, so the output has length n_heights - 1 along axis 0.
 
-        Requires n_heights > 1 (i.e., the mooring/cast must have measurements at more than
-        one depth).
+        Requires n_heights > 1 (i.e., the mooring/cast must have measurements at more than one depth).
 
         Parameters
         ----------
@@ -478,8 +474,8 @@ class CTD(BaseInstrument):
 
     def depth_from_pressure(self, p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
         """
-        Depth from sea pressure using the UNESCO (1983) formula with optional
-        latitude-dependent gravity. Depth is returned as a positive quantity (distance below surface).
+        Depth from sea pressure using the UNESCO (1983) formula with optional latitude-dependent gravity. Depth is
+        returned as a positive quantity (distance below surface).
 
         Parameters
         ----------
@@ -497,8 +493,7 @@ class CTD(BaseInstrument):
 
     def pressure_from_depth(self, z: Numeric, lat: Optional[Numeric] = None) -> Numeric:
         """
-        Sea pressure from depth (positive downward) using a one-step Newton
-        refinement of a hydrostatic initial guess.
+        Sea pressure from depth (positive downward) using a one-step Newton refinement of a hydrostatic initial guess.
 
         Parameters
         ----------
@@ -515,13 +510,11 @@ class CTD(BaseInstrument):
         return sea_thermo.pressure_from_depth(z, lat)
 
     def derive(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        """Compute all thermodynamic quantities derivable from the variables
-        present in a burst dictionary, and return the burst dictionary
-        augmented with those results.
+        """Compute all thermodynamic quantities derivable from the variables present in a burst dictionary, and return
+        the burst dictionary augmented with those results.
 
-        Each quantity is computed only when all of its required inputs are
-        available as keys in ``burst_data``. The method never raises for missing
-        inputs -- it simply skips any quantities it cannot compute.
+        Each quantity is computed only when all of its required inputs are available as keys in ``burst_data``. The
+        method never raises for missing inputs -- it simply skips any quantities it cannot compute.
 
         Input keys recognized
         ----------------------

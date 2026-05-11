@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Optional, Union, List, Dict, Any, TypeAlias
-from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
-from utils.base_instrument import BaseInstrument
+from utils.base_instrument import BaseInstrument, ZConvention
 import utils.air_thermo as air_thermo
 
 Numeric: TypeAlias = float | int | np.ndarray
@@ -21,13 +20,13 @@ class Met(BaseInstrument):
 
     Burst dictionary conventions
     ----------------------------
-    Variables in a burst dict are assumed to be 2-D arrays of shape (n_heights, n_samples), where the
-    first axis corresponds to instrument heights (length self.n_heights) and the second axis is time.
-    The individual thermodynamic methods accept any Numeric type and broadcast over these arrays without
-    modification. Height information is always taken from self.z (shape (n_heights,)) rather than
-    from burst dict keys, so that self.z remains the single source of truth.
+    Variables in a burst dict are assumed to be 2-D arrays of shape (n_heights, n_samples), where the first axis
+    corresponds to instrument heights (length self.n_heights) and the second axis is time. The individual thermodynamic
+    methods accept any Numeric type and broadcast over these arrays without modification. Height information is always
+    taken from self.z (shape (n_heights,)) rather than from burst dict keys, so that self.z remains the single source of
+    truth.
 
-    Standard burst dict keys recognised by :meth:`derive`:
+    Standard burst dict keys recognized by `Met.derive`:
 
     Input keys
         t         : air temperature (deg C)
@@ -62,6 +61,7 @@ class Met(BaseInstrument):
         deployment_type: str = "fixed",
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float]]] = None,
+        z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
         """Initialize a Met object.
@@ -94,6 +94,8 @@ class Met(BaseInstrument):
         z : float or List[float], optional
             Mean height above the surface (m) for each instrument. Defaults to integer indices if not
             specified.
+        z_convention : ZConvention, optional
+            Convention for vertical coordinate, must be `"m_above_surface"` for Met instruments.
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables
             in name_map are stored at `burst["Data"]["variable_name"]`).
@@ -103,21 +105,24 @@ class Met(BaseInstrument):
         Met
         """
         files_list = files if isinstance(files, list) else [files]
-        Met.validate_inputs(files_list, name_map, deployment_type, fs, z, data_keys)
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, data_keys=data_keys)
+        Met.validate_inputs(files_list, name_map, fs, z, z_convention, data_keys)
+        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys)
 
     @staticmethod
     def validate_inputs(
         files: Union[str, List],
         name_map: dict,
-        deployment_type: str = "fixed",
         fs: Optional[Union[int, float]] = None,
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
     ):
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, deployment_type, fs, z, data_keys)
+        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+
+        if z_convention != ZConvention.MAS:
+            raise ValueError(f"Met.z_convention must be {ZConvention.MAS}, not {z_convention}")
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads using the

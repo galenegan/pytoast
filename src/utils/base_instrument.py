@@ -15,12 +15,28 @@ from utils.io_utils import results_to_dataset
 DatetimeLike = datetime.datetime | np.datetime64 | pd.Timestamp
 
 class DeploymentType(StrEnum):
-    """Enumeration of possible deployment types."""
+    """Enumeration of possible deployment types.
+
+    FIXED
+        Instrument is at a fixed vertical height for the duration of the measurements. In this case, the vertical
+        coordinate self.z is constant.
+    CAST
+        Instrument is cast over the water column. In this case, the vertical coordinate self.z is None and z is
+        calculated per-measurement burst based on pressure measurements.
+    """
     FIXED = "fixed"
     CAST = "cast"
 
 class ZConvention(StrEnum):
-    """Enumeration of possible z convention types."""
+    """Enumeration of possible z convention types.
+
+    MAB
+        Meters above bed, positive upward
+    DEPTH
+        Meters below surface, positive downward
+    MAS
+        Meters above surface, positive upward
+    """
 
     MAB = "m_above_bed"
     DEPTH = "depth"
