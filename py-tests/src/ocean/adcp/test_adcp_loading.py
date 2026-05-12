@@ -6,6 +6,7 @@ import pytest
 
 from ocean.adcp import ADCP
 from testhelpers.rotate_utils import nortek_4beam_T
+from testhelpers.stub_utils import eq_except
 
 
 NAME_MAP = {
@@ -148,3 +149,13 @@ def test_invalid_inputs_raise():
 
     with pytest.raises(ValueError, match="manufacturer"):
         ADCP(files=files, name_map=NAME_MAP, manufacturer="acme", data_keys="Data")
+
+
+def test_subsample():
+    adcp = _make_adcp()
+    adcp_subsampled = adcp.subsample(start_idx=0, end_idx=2)
+    original_files = getattr(adcp, "files")
+    subsampled_files = getattr(adcp_subsampled, "files")
+    assert len(original_files) == 3
+    assert len(subsampled_files) == 2
+    assert eq_except(adcp_subsampled, adcp, "files")

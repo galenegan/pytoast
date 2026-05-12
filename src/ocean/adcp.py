@@ -128,7 +128,16 @@ class ADCP(BaseInstrument):
             beam_angle,
             manufacturer,
         )
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys, burst_dim=burst_dim)
+        super().__init__(
+            files,
+            name_map,
+            deployment_type=deployment_type,
+            fs=fs,
+            z=z,
+            z_convention=z_convention,
+            data_keys=data_keys,
+            burst_dim=burst_dim,
+        )
 
     @staticmethod
     def validate_inputs(
@@ -881,7 +890,7 @@ class ADCP(BaseInstrument):
             source_coords=self.source_coords,
             orientation=self.orientation,
             beam_angle=self.beam_angle,
-            manufacturer=self.manufacturer
+            manufacturer=self.manufacturer,
         )
         if self._preprocess_enabled:
             new_adcp.set_preprocess_opts(self._preprocess_opts)

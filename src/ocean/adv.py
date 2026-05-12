@@ -7,7 +7,7 @@ from utils.wave_utils import get_wavenumber, wave_stats
 from scipy.stats import linregress
 
 from utils.spectral_utils import psd, csd, get_frequency_range
-from utils.constants import GRAVITATIONAL_ACCELERATION as g
+from utils.constants import GRAVITATIONAL_ACCELERATION as g, WATER_DENSITY as rho0
 from utils.rotate_utils import (
     coord_transform_3_beam_nortek,
     apply_flow_rotation,
@@ -115,7 +115,16 @@ class ADV(BaseInstrument):
             orientation,
             water_depth,
         )
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys, burst_dim=burst_dim)
+        super().__init__(
+            files,
+            name_map,
+            deployment_type=deployment_type,
+            fs=fs,
+            z=z,
+            z_convention=z_convention,
+            data_keys=data_keys,
+            burst_dim=burst_dim,
+        )
 
     @staticmethod
     def validate_inputs(
@@ -153,7 +162,9 @@ class ADV(BaseInstrument):
             raise ValueError(f"Invalid value for `orientation`: {orientation}. Must be one of ['down', 'up']")
 
         if z_convention not in [ZConvention.MAB, ZConvention.DEPTH]:
-            raise ValueError(f"Invalid value for `z_convention`: {z_convention}. Must be one of ['m_above_bed', 'depth']")
+            raise ValueError(
+                f"Invalid value for `z_convention`: {z_convention}. Must be one of ['m_above_bed', 'depth']"
+            )
 
         if water_depth is not None:
             if not isinstance(water_depth, (float, int)):
@@ -450,7 +461,9 @@ class ADV(BaseInstrument):
                     mab = self.water_depth - self.z
         elif self.deployment_type == DeploymentType.CAST:
             if "p" not in burst_data:
-                raise ValueError(f"Pressure data must be provided to calculate depths when `deployment_type = {DeploymentType.CAST}`")
+                raise ValueError(
+                    f"Pressure data must be provided to calculate depths when `deployment_type = {DeploymentType.CAST}`"
+                )
 
             if self.water_depth is None:
                 raise ValueError(
@@ -760,7 +773,7 @@ class ADV(BaseInstrument):
         method: str = "cov",
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
-        rho: Optional[float] = 1020,
+        rho: Optional[float] = rho0,
         f_wave_low: Optional[float] = None,
         f_wave_high: Optional[float] = None,
         rank_truncation: Union[int, float] = 0.05,
@@ -788,7 +801,7 @@ class ADV(BaseInstrument):
         f_high : float, optional
             Upper frequency bound (Hz) for spectral integration, by default None
         rho : float, optional
-            Water density (kg/m^3), by default 1020
+            Water density (kg/m^3), by default 1025
         f_wave_low : float, optional
             Lower frequency bound (Hz) for the wave band. Only used for `phase` and `dmd` methods; by default None
         f_wave_high : float, optional
@@ -1235,7 +1248,7 @@ class ADV(BaseInstrument):
         band_definitions: Optional[dict] = None,
         sea_correction: Optional[bool] = True,
         f_cutoff: Optional[float] = 1.0,
-        rho: Optional[float] = 1020,
+        rho: Optional[float] = rho0,
         **kwargs,
     ) -> dict:
         """Calculate directional wave statistics from velocity and pressure
@@ -1318,7 +1331,6 @@ class ADV(BaseInstrument):
             )
 
         return {key: np.array([r[key] for r in results]) for key in results[0]}
-
 
     def subsample(self, start_idx: int, end_idx: int):
         """Subsample the ADV object between files[start_idx] and

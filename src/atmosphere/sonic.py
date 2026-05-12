@@ -78,7 +78,16 @@ class Sonic(BaseInstrument):
         self.path_length = path_length
         files_list = files if isinstance(files, list) else [files]
         Sonic.validate_inputs(files_list, name_map, deployment_type, fs, z, z_convention, data_keys, path_length)
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys, burst_dim=burst_dim)
+        super().__init__(
+            files,
+            name_map,
+            deployment_type=deployment_type,
+            fs=fs,
+            z=z,
+            z_convention=z_convention,
+            data_keys=data_keys,
+            burst_dim=burst_dim,
+        )
 
     @staticmethod
     def validate_inputs(

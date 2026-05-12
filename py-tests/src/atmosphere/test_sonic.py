@@ -1,6 +1,7 @@
+import numpy as np
 import numpy.testing as npt
 from testhelpers.synth_utils import generate_wave_turb_burst
-from testhelpers.stub_utils import make_sonic
+from testhelpers.stub_utils import eq_except, make_sonic
 from atmosphere.sonic import Sonic
 
 
@@ -71,3 +72,29 @@ class TestDissipation:
         # Accounting for different Kolmogorov constants in the synthetic spectra vs Edson method
         eps_calc *= 0.53 / (1.5 * 18 / 55)
         npt.assert_allclose(eps_truth, eps_calc, rtol=1e-1)
+
+
+def _write_sonic_npy(path, n_samples=64):
+    data = {
+        "U": np.zeros(n_samples),
+        "V": np.zeros(n_samples),
+        "W": np.zeros(n_samples),
+        "TIME": np.arange(n_samples, dtype=float),
+    }
+    np.save(path, data, allow_pickle=True)
+
+
+def test_subsample(tmp_path):
+    files = []
+    for i in range(3):
+        p = str(tmp_path / f"burst_{i}.npy")
+        _write_sonic_npy(p)
+        files.append(p)
+
+    name_map = {"u1": "U", "u2": "V", "u3": "W", "time": "TIME"}
+    sonic_full = Sonic(files=files, name_map=name_map, fs=1.0, z=10.0)
+    sonic_subsampled = sonic_full.subsample(start_idx=0, end_idx=2)
+
+    assert len(sonic_full.files) == 3
+    assert len(sonic_subsampled.files) == 2
+    assert eq_except(sonic_subsampled, sonic_full, "files")

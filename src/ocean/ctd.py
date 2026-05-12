@@ -114,7 +114,16 @@ class CTD(BaseInstrument):
         """
         files_list = files if isinstance(files, list) else [files]
         CTD.validate_inputs(files_list, name_map, fs, z, z_convention, data_keys)
-        super().__init__(files, name_map, deployment_type=deployment_type, fs=fs, z=z, z_convention=z_convention, data_keys=data_keys, burst_dim=burst_dim)
+        super().__init__(
+            files,
+            name_map,
+            deployment_type=deployment_type,
+            fs=fs,
+            z=z,
+            z_convention=z_convention,
+            data_keys=data_keys,
+            burst_dim=burst_dim,
+        )
 
     @staticmethod
     def validate_inputs(
@@ -128,7 +137,9 @@ class CTD(BaseInstrument):
         BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
 
         if z_convention not in [ZConvention.MAB, ZConvention.DEPTH]:
-            raise ValueError(f"Invalid value for `z_convention`: {z_convention}. Must be one of ['m_above_bed', 'depth']")
+            raise ValueError(
+                f"Invalid value for `z_convention`: {z_convention}. Must be one of ['m_above_bed', 'depth']"
+            )
 
     def set_preprocess_opts(self, opts: Dict[str, Any]):
         """Enable preprocessing for all subsequent burst loads.
@@ -443,13 +454,7 @@ class CTD(BaseInstrument):
         """
         return sea_thermo.thermal_conductivity(sa, t, p)
 
-    def buoyancy_frequency(
-        self,
-        sa: np.ndarray,
-        ct: np.ndarray,
-        p: np.ndarray,
-        axis: int = 0
-    ) -> np.ndarray:
+    def buoyancy_frequency(self, sa: np.ndarray, ct: np.ndarray, p: np.ndarray, axis: int = 0) -> np.ndarray:
         """
         Squared buoyancy (Brunt-Vaisala) frequency from a vertical profile.
 

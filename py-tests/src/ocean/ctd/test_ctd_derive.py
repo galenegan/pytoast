@@ -2,7 +2,8 @@ import numpy as np
 import numpy.testing as npt
 
 import utils.sea_thermo as sea_thermo
-from testhelpers.stub_utils import make_ctd
+from ocean.ctd import CTD
+from testhelpers.stub_utils import eq_except, make_ctd
 
 NAME_MAP = {"sp": "PSAL", "t": "TEMP", "p": "PRES", "time": "TIME"}
 ALL_DERIVED = {"sa", "ct", "rho", "sigma0", "alpha", "beta", "sound_speed", "t_freezing", "cp", "nu", "z"}
@@ -62,3 +63,28 @@ def test_mutates_in_place():
 def test_empty_burst_returns_empty():
     out = ctd.derive({})
     assert out == {}
+
+
+def _write_ctd_npy(path, n_samples=8):
+    data = {
+        "PSAL": np.full(n_samples, 35.0),
+        "TEMP": np.full(n_samples, 15.0),
+        "PRES": np.full(n_samples, 100.0),
+        "TIME": np.arange(n_samples, dtype=float),
+    }
+    np.save(path, data, allow_pickle=True)
+
+
+def test_subsample(tmp_path):
+    files = []
+    for i in range(3):
+        p = str(tmp_path / f"burst_{i}.npy")
+        _write_ctd_npy(p)
+        files.append(p)
+
+    ctd_full = CTD(files=files, name_map={"sp": "PSAL", "t": "TEMP", "p": "PRES", "time": "TIME"}, fs=1.0, z=-1.0)
+    ctd_subsampled = ctd_full.subsample(start_idx=0, end_idx=2)
+
+    assert len(ctd_full.files) == 3
+    assert len(ctd_subsampled.files) == 2
+    assert eq_except(ctd_subsampled, ctd_full, "files")

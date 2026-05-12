@@ -3,6 +3,7 @@ import os
 import numpy as np
 
 from ocean.adv import ADV
+from testhelpers.stub_utils import eq_except
 
 
 def test_mat_list():
@@ -45,6 +46,21 @@ def test_mat_list():
     assert "time" in burst.keys()
     assert burst["coords"] == "xyz"
     assert burst["u1"].shape[0] == adv.n_heights
+
+
+def test_subsample():
+    name_map = {"u1": "E", "u2": "N", "u3": "w", "p": "P2", "time": "dn"}
+    test_dir = os.path.dirname(__file__)
+    files = sorted(glob.glob(os.path.join(test_dir, "testdata", "mat_list", "*.mat")))
+    mean_depth = 13
+    mabs = [mean_depth - mbs for mbs in np.linspace(1.8, 7.2, 6)]
+
+    adv = ADV(files, name_map, fs=32, z=mabs)
+    adv_subsampled = adv.subsample(start_idx=0, end_idx=2)
+
+    assert len(adv.files) == len(files)
+    assert len(adv_subsampled.files) == 2
+    assert eq_except(adv_subsampled, adv, "files")
 
 
 def test_npy_list():

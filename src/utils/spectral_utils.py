@@ -12,7 +12,9 @@ def get_window_len(N: int, num_windows: int) -> int:
     return int(2 * N / (num_windows + 1))
 
 
-def get_frequency_range(f: np.ndarray, f_low: Optional[float] = None, f_high: Optional[float] = None) -> Tuple[int, int]:
+def get_frequency_range(
+    f: np.ndarray, f_low: Optional[float] = None, f_high: Optional[float] = None
+) -> Tuple[int, int]:
 
     if f_low is not None:
         start_index = np.argmin(np.abs(f - f_low))

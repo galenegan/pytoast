@@ -1,7 +1,8 @@
 import numpy as np
 import numpy.testing as npt
 import utils.air_thermo as air_thermo
-from testhelpers.stub_utils import make_met
+from atmosphere.met import Met
+from testhelpers.stub_utils import eq_except, make_met
 
 
 NAME_MAP = {"t": "TEMP", "p": "PRES", "rh": "RH", "time": "TIME"}
@@ -69,3 +70,28 @@ def test_mutates_in_place():
     burst = _burst()
     out = met.derive(burst)
     assert out is burst
+
+
+def _write_met_npy(path, n_samples=8):
+    data = {
+        "TEMP": np.full(n_samples, 20.0),
+        "PRES": np.full(n_samples, 1013.0),
+        "RH": np.full(n_samples, 70.0),
+        "TIME": np.arange(n_samples, dtype=float),
+    }
+    np.save(path, data, allow_pickle=True)
+
+
+def test_subsample(tmp_path):
+    files = []
+    for i in range(3):
+        p = str(tmp_path / f"burst_{i}.npy")
+        _write_met_npy(p)
+        files.append(p)
+
+    met_full = Met(files=files, name_map=NAME_MAP, fs=1.0, z=2.0)
+    met_subsampled = met_full.subsample(start_idx=0, end_idx=2)
+
+    assert len(met_full.files) == 3
+    assert len(met_subsampled.files) == 2
+    assert eq_except(met_subsampled, met_full, "files")

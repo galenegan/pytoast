@@ -4,6 +4,7 @@ from typing import Optional, Union
 from utils.constants import GRAVITATIONAL_ACCELERATION as g
 from utils.spectral_utils import psd, csd
 
+
 def get_wavenumber(
     omega: Union[float, np.ndarray], h: Union[float, np.ndarray], max_iter: int = 10, tol: float = 1e-10
 ):
@@ -116,6 +117,7 @@ def jones_monismith_correction(
     S_out[index_cutoff:] = m * (f[index_cutoff:]) ** (-4)
 
     return S_out
+
 
 def wave_stats(
     u: np.ndarray,
@@ -237,9 +239,7 @@ def wave_stats(
     a2 = np.real((P_uu - P_vv) / (P_uu + P_vv))
     b2 = np.real(2 * P_uv / (P_uu + P_vv))
     dir2 = np.degrees(np.arctan2(b2, a2) / 2)
-    spread2 = np.degrees(
-        np.sqrt(0.5 * (1 - (a2 * np.cos(2 * np.radians(dir2)) + b2 * np.sin(2 * np.radians(dir2)))))
-    )
+    spread2 = np.degrees(np.sqrt(0.5 * (1 - (a2 * np.cos(2 * np.radians(dir2)) + b2 * np.sin(2 * np.radians(dir2))))))
 
     # Phase and group velocity
     cp = omega / k

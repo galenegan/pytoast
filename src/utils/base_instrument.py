@@ -14,6 +14,7 @@ from utils.io_utils import results_to_dataset
 
 DatetimeLike = datetime.datetime | np.datetime64 | pd.Timestamp
 
+
 class DeploymentType(StrEnum):
     """Enumeration of possible deployment types.
 
@@ -24,8 +25,10 @@ class DeploymentType(StrEnum):
         Instrument is cast over the water column. In this case, the vertical coordinate self.z is None and z is
         calculated per-measurement burst based on pressure measurements.
     """
+
     FIXED = "fixed"
     CAST = "cast"
+
 
 class ZConvention(StrEnum):
     """Enumeration of possible z convention types.
@@ -194,6 +197,7 @@ class BaseInstrument(ABC):
                 data = strip_mat_nulls(sio.loadmat(file_path, simplify_cells=True))
             except NotImplementedError:
                 import mat73
+
                 data = strip_mat_nulls(mat73.loadmat(file_path))
             file_type = "mat"
         elif suffix == "npy":

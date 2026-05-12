@@ -8,12 +8,13 @@ GAS_CONSTANT_WATER_VAPOR = 461.5305  # J/(kg*K)
 MOL_MASS_DRY_AIR = 0.028965  # kg/mol
 MOL_MASS_WATER_VAPOR = 0.018015  # kg/mol
 STEFAN_BOLTZMANN = 5.6704e-8
-KINEMATIC_VISCOSITY_AIR = 1.225e-5
+KINEMATIC_VISCOSITY_AIR = 1.225e-5  # m^2/s
+WATER_DENSITY = 1025  # kg/m^3
 
 # Seawater thermodynamics (TEOS-10)
-SSO = 35.16504  # standard ocean Absolute Salinity [g/kg]
-T0 = 273.15  # Celsius to Kelvin offset [K]
-CP0 = 3991.86795711963  # specific heat of seawater at (SSO, 0 degC, 0 dbar) [J/(kg K)]
+SSO = 35.16504  # standard ocean Absolute Salinity (g/kg)
+T0 = 273.15  # Celsius to Kelvin offset (K)
+CP0 = 3991.86795711963  # specific heat of seawater at (SSO, 0 degC, 0 dbar) (J/(kg K))
 
 # Payne (1972) sea-surface albedo look-up table.
 # Rows correspond to atmospheric transmission T = 0.00, 0.05, ..., 1.00 (21 rows).

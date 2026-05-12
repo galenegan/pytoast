@@ -7,6 +7,12 @@ from ocean.ctd import CTD
 from testhelpers.rotate_utils import nortek_4beam_T
 
 
+def eq_except(a, b, *skip):
+    da = {k: v for k, v in vars(a).items() if k not in skip}
+    db = {k: v for k, v in vars(b).items() if k not in skip}
+    return da == db
+
+
 def make_adv(fs, n_heights=1):
     """Return a minimal namespace that satisfies ADV.covariance attribute
     requirements."""
