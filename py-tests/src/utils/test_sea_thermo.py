@@ -140,3 +140,9 @@ def test_depth_pressure_round_trip():
     p = np.array([1000.0, 2000.0, 3000.0])
     z = depth_from_pressure(p, np.zeros(3))
     npt.assert_allclose(pressure_from_depth(z, np.zeros(3)), p, rtol=1e-5)
+
+def test_depth_pressure_unesco_example():
+    p = 10000
+    lat = 30
+    z = depth_from_pressure(p, lat)
+    npt.assert_allclose(z, 9712.653, atol=1e-4)

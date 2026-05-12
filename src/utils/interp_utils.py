@@ -3,7 +3,7 @@ import pandas as pd
 
 
 def naninterp(x: np.ndarray) -> np.ndarray:
-    return pd.Series(x).interpolate(method="linear").ffill().bfill().values
+    return pd.Series(x).interpolate(method="linear").ffill().bfill().to_numpy(copy=True)
 
 
 def interp_rows(u: np.ndarray) -> np.ndarray:

@@ -25,6 +25,7 @@ def threshold(
         Velocity array with spikes removed and interpolated over
     """
     u_out = u.copy()
+    u_out = np.atleast_2d(u_out)
     bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
     u_out[bad_rows] = np.nan
     interp_rows(u_out)
@@ -37,8 +38,7 @@ def goring_nikora(
     max_iter: int = 10,
     robust_statistics: bool = False,
 ) -> np.ndarray:
-    """Implements the Goring & Nikora (2002) phase-space de-spiking algorithm,
-    returning modified velocity array.
+    """Implements the Goring & Nikora (2002) phase-space de-spiking algorithm, returning modified velocity array.
 
     Parameters
     ----------
@@ -65,6 +65,7 @@ def goring_nikora(
     ----------
     Goring, D. G., & Nikora, V. I. (2002). Despiking acoustic Doppler velocimeter data. Journal of hydraulic
         engineering, 128(1), 117-126.
+
     Wahl, T. L. (2003). Discussion of "Despiking acoustic doppler velocimeter data" by
         Derek G. Goring and Vladimir I. Nikora. Journal of Hydraulic Engineering, 129(6), 484-487.
     """
@@ -146,6 +147,7 @@ def goring_nikora(
         return bad_u_du | bad_u_du2 | bad_du_du2
 
     u_out = u.copy()
+    u_out = np.atleast_2d(u_out)
     bad_index = flag_bad_indices(u_out)
     total_bad = np.sum(bad_index, axis=1)
     iterations = 0
@@ -179,6 +181,7 @@ def recursive_gaussian(
 
     """
     u_out = u.copy()
+    u_out = np.atleast_2d(u_out)
     m, n = u_out.shape
     for ii in range(m):
         u_row = u_out[ii, :]
