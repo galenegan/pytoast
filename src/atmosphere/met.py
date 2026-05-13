@@ -20,27 +20,27 @@ class Met(BaseInstrument):
 
     Burst dictionary conventions
     ----------------------------
-    Variables in a burst dict are assumed to be 2-D arrays of shape (n_heights, n_samples), where the first axis
-    corresponds to instrument heights (length self.n_heights) and the second axis is time. The individual thermodynamic
-    methods accept any Numeric type and broadcast over these arrays without modification.
+    Variables in a burst dict are assumed to be 2-D arrays of shape `(n_heights, n_samples)`, where the first axis
+    corresponds to instrument heights (length `self.n_heights`) and the second axis is time. The individual
+    thermodynamic methods accept any Numeric type and broadcast over these arrays without modification.
 
-    This class requires deployment_type="fixed". Height information is taken from self.z (shape (n_heights,), meters
-    above the sea surface, since Met locks z_convention to ZConvention.MAS) rather than from burst dict keys, so that
-    self.z remains the single source of truth.
+    This class requires `deployment_type="fixed"`. Height information is taken from `self.z` (shape (n_heights,),
+    meters above the sea surface, since Met locks `z_convention` to `ZConvention.MAS`) rather than from burst dict keys,
+    so that `self.z` remains the single source of truth.
 
-    Standard burst dict keys recognized by `Met.derive`:
+    Standard burst dict input keys recognized by `Met.derive`:
 
-    Input keys
         t         : air temperature (deg C)
         p         : atmospheric pressure (mbar)
         rh        : relative humidity (%)
         sp        : seawater salinity (practical, PSS-78) -- optional, corrects vapor-pressure quantities
 
-    Output keys added by :meth:`derive`
+    Output keys added by `Met.derive`
+
         e_s         : saturation vapor pressure (mbar)
         e           : water vapor pressure (mbar)
         rho_v       : water vapor density (kg/m^3)
-        w          : mixing ratio (kg/kg)
+        w           : mixing ratio (kg/kg)
         q           : specific humidity (kg/kg)
         t_v         : virtual temperature (deg C)
         rho_air     : moist air density (kg/m^3)
@@ -78,12 +78,16 @@ class Met(BaseInstrument):
             dimension is assumed to be time and the shorter dimension a vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
+
+            ```
             {
                 "t": "temperature variable name" or ["var 1", "var 2", ...],
                 "p": "pressure variable name" or ["var 1", "var 2", ...],
                 "rh": "relative humidity name" or ["var 1", "var 2", ...],
                 "time": "time variable name" or ["var 1", "var 2", ...],
             }
+            ```
+
             Lists are used when data from multiple instruments are stored in
             separate variables rather than a 2-D array.
         deployment_type : str, optional
@@ -108,6 +112,7 @@ class Met(BaseInstrument):
         Returns
         -------
         Met
+            Initialized Met object.
         """
         files_list = files if isinstance(files, list) else [files]
         Met.validate_inputs(files_list, name_map, deployment_type, fs, z, z_convention, data_keys)
@@ -152,6 +157,7 @@ class Met(BaseInstrument):
             Preprocessing options. Supported keys:
 
             despike : dict, optional
+
                 Options for despiking. If not specified, no despiking is applied. Supported keys:
 
                 method : {'threshold', 'goring_nikora', 'recursive_gaussian'}
@@ -424,47 +430,47 @@ class Met(BaseInstrument):
         return air_thermo.potential_temperature(t, z)
 
     def derive(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        """Compute all thermodynamic quantities derivable from the variables
-        present in a burst dictionary, and return the burst dictionary
-        augmented with those results.
+        """Compute all thermodynamic quantities derivable from the variables present in a burst dictionary, and return
+        the burst dictionary augmented with those results.
 
-        Each quantity is computed only when all of its required inputs are available as keys in
-        ``burst_data``. The method never raises for missing inputs -- it simply skips any
-        quantities it cannot compute. Salinity is treated as optional throughout; when the
-        ``"sp"`` key is present its value is forwarded to the vapor-pressure calculations.
+        Each quantity is computed only when all of its required inputs are available as keys in ``burst_data``. The
+        method never raises for missing inputs -- it simply skips any quantities it cannot compute. Salinity is treated
+        as optional throughout; when the ``"sp"`` key is present its value is forwarded to the vapor-pressure
+        calculations.
 
-        Height is always taken from ``self.z`` (shape (n_heights,)) and is not read from
-        ``burst_data``. When computing potential temperature, ``self.z`` is reshaped to
-        (n_heights, 1) so that it broadcasts correctly against (n_heights, n_samples) arrays.
+        Height is always taken from ``self.z`` (shape (n_heights,)) and is not read from ``burst_data``. When computing
+        potential temperature, ``self.z`` is reshaped to (n_heights, 1) so that it broadcasts correctly against
+        (n_heights, n_samples) arrays.
 
         Input keys recognized
         ----------------------
-        t         : air temperature (deg C),         shape (n_heights, n_samples)
-        p         : atmospheric pressure (mbar),     shape (n_heights, n_samples)
-        rh        : relative humidity (%),           shape (n_heights, n_samples)
-        sp        : seawater salinity (PSS-78),      shape (n_heights, n_samples) -- optional
+
+            t         : air temperature (deg C),         shape (n_heights, n_samples)
+            p         : atmospheric pressure (mbar),     shape (n_heights, n_samples)
+            rh        : relative humidity (%),           shape (n_heights, n_samples)
+            sp        : seawater salinity (PSS-78),      shape (n_heights, n_samples) -- optional
 
         Output keys added to burst_data (all shape (n_heights, n_samples))
         -------------------------------------------------------------------
-        e_s         : saturation vapor pressure (mbar)     -- requires t, p
-        rho_air_dry : dry air density (kg/m^3)              -- requires t, p
-        e           : water vapor pressure (mbar)          -- requires t, p, rh
-        rho_v       : water vapor density (kg/m^3)         -- requires t, p, rh
-        w          : mixing ratio (kg/kg)                  -- requires t, p, rh
-        q           : specific humidity (kg/kg)             -- requires t, p, rh
-        t_v         : virtual temperature (deg C)           -- requires t, p, rh
-        rho_air     : moist air density (kg/m^3)            -- requires t, p, rh
-        cp          : specific heat capacity (J/(kg K))     -- requires t
-        L_v         : latent heat of vaporization (J/kg)    -- requires t
-        nu          : kinematic viscosity (m^2/s)           -- requires t
-        theta       : potential temperature (deg C)         -- requires t (uses self.z)
+
+            e_s         : saturation vapor pressure (mbar)     -- requires t, p
+            rho_air_dry : dry air density (kg/m^3)             -- requires t, p
+            e           : water vapor pressure (mbar)          -- requires t, p, rh
+            rho_v       : water vapor density (kg/m^3)         -- requires t, p, rh
+            w           : mixing ratio (kg/kg)                 -- requires t, p, rh
+            q           : specific humidity (kg/kg)            -- requires t, p, rh
+            t_v         : virtual temperature (deg C)          -- requires t, p, rh
+            rho_air     : moist air density (kg/m^3)           -- requires t, p, rh
+            cp          : specific heat capacity (J/(kg K))    -- requires t
+            L_v         : latent heat of vaporization (J/kg)   -- requires t
+            nu          : kinematic viscosity (m^2/s)          -- requires t
+            theta       : potential temperature (deg C)        -- requires t (uses self.z)
 
         Parameters
         ----------
         burst_data : dict
-            Burst dictionary whose keys are standard variable names (see above). Arrays are expected
-            to have shape (n_heights, n_samples). The dictionary is modified in-place and also
-            returned.
+            Burst dictionary whose keys are standard variable names (see above). Arrays are expected to have shape
+            (n_heights, n_samples). The dictionary is modified in-place and also returned.
 
         Returns
         -------

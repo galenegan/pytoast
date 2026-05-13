@@ -240,13 +240,12 @@ def styles(
     max_iter=50,
     tol=1e-4,
 ):
-    """Styles et al.
-
-    (2017) combined wave-current bottom boundary layer model. This is a python port of the Matlab source code (https://cirp.usace.army.mil/products/bblm.php). It has been edited to remove unnecessary input parameters and
-    some variable names have been changed for clarity. The custom bisection and secant solvers have also been
-    replaced with scipy.optimize.brentq and scipy.optimize.newton, respectively. The output on the provided test data is
-    within an acceptable tolerance despite these changes (see py-tests/). Finally, all inputs and outputs use SI units
-    (m) rather than CGS units (centimeters, grams, seconds) like the source.
+    """Styles et al. (2017) combined wave-current bottom boundary layer model. This is a python port of the Matlab
+    source code (https://cirp.usace.army.mil/products/bblm.php). It has been edited to remove unnecessary input
+    parameters and some variable names have been changed for clarity. The custom bisection and secant solvers have also
+    been replaced with scipy.optimize.brentq and scipy.optimize.newton, respectively. The output on the provided test
+    data is within an acceptable tolerance despite these changes (see py-tests/). Finally, all inputs and outputs use SI
+    units (m) rather than CGS units (centimeters, grams, seconds) like the source.
 
     Parameters
     ----------
@@ -284,6 +283,7 @@ def styles(
     Returns
     -------
     dict with keys:
+
         Ro        - internal friction Rossby number (Ab / (z0 * ub / ustar_wc))
         mu        - sqrt(ub_over_ustar_wc * phi); wave/combined stress ratio parameter
         epsilon   - ustar_c / ustar_wc

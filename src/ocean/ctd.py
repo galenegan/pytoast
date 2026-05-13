@@ -22,15 +22,15 @@ class CTD(BaseInstrument):
     corresponds to instrument depths (length self.n_heights) and the second axis is time. The individual thermodynamic
     methods accept any Numeric type and broadcast over these arrays without modification.
 
-    Standard burst dict keys recognized by `CTD.derive`:
+    Standard burst dict input keys recognized by `CTD.derive`:
 
-    Input keys
         sp  : practical salinity (PSS-78)                         (unitless)
         t   : in-situ temperature                                    (deg C)
-        p   : sea pressure (absolute pressure - 10.1325 dbar)          (dbar)
-        lat : latitude (scalar)                         (deg N) -- optional
+        p   : sea pressure (absolute pressure - 10.1325 dbar)         (dbar)
+        lat : latitude                                   (deg N) -- optional
 
     Output keys added by `CTD.derive`:
+
         sa          : Absolute Salinity                               (g/kg)
         ct          : Conservative Temperature                       (deg C)
         rho         : in-situ density                               (kg/m^3)
@@ -111,6 +111,7 @@ class CTD(BaseInstrument):
         Returns
         -------
         CTD
+            Initialized CTD object.
         """
         files_list = files if isinstance(files, list) else [files]
         CTD.validate_inputs(files_list, name_map, fs, z, z_convention, data_keys)
@@ -150,6 +151,7 @@ class CTD(BaseInstrument):
             Preprocessing options. Supported keys:
 
             despike : dict, optional
+
                 Options for despiking. Supported keys:
 
                 method : {'threshold', 'goring_nikora', 'recursive_gaussian'}
@@ -529,26 +531,28 @@ class CTD(BaseInstrument):
 
         Input keys recognized
         ----------------------
-        sp  : Practical Salinity (PSS-78)             (unitless)
-        t   : in-situ temperature                       (deg C)
-        p   : sea pressure                               (dbar)
-        lat : latitude (scalar)     (deg N) -- optional, used for depth
+
+            sp  : Practical Salinity (PSS-78)                                      (unitless)
+            t   : in-situ temperature                                                 (deg C)
+            p   : sea pressure                                                         (dbar)
+            lat : latitude                                (deg N) -- optional, used for depth
 
         Output keys added to burst_data
         --------------------------------
-        sa          : Absolute Salinity (g/kg)             -- requires sp
-        ct          : Conservative Temperature (deg C)     -- requires sa, t, p
-        rho         : in-situ density (kg/m^3)              -- requires sa, ct, p
-        sigma0      : potential density anomaly (kg/m^3)    -- requires sa, ct
-        alpha       : thermal expansion (1/K)              -- requires sa, ct, p
-        beta        : haline contraction (kg/g)            -- requires sa, ct, p
-        sound_speed : speed of sound (m/s)                 -- requires sa, ct, p
-        t_freezing  : freezing temperature (deg C)         -- requires sa, p
-        cp          : isobaric heat capacity (J/(kg K))    -- requires sa, t, p
-        nu          : kinematic viscosity (m^2/s)           -- requires t, sa
-        N2          : buoyancy frequency^2 (1/s^2)          -- requires sa, ct, p
-                      (only computed when n_heights > 1)
-        z           : depth (positive downward) (m)        -- requires p
+
+            sa          : Absolute Salinity (g/kg)             -- requires sp
+            ct          : Conservative Temperature (deg C)     -- requires sa, t, p
+            rho         : in-situ density (kg/m^3)             -- requires sa, ct, p
+            sigma0      : potential density anomaly (kg/m^3)   -- requires sa, ct
+            alpha       : thermal expansion (1/K)              -- requires sa, ct, p
+            beta        : haline contraction (kg/g)            -- requires sa, ct, p
+            sound_speed : speed of sound (m/s)                 -- requires sa, ct, p
+            t_freezing  : freezing temperature (deg C)         -- requires sa, p
+            cp          : isobaric heat capacity (J/(kg K))    -- requires sa, t, p
+            nu          : kinematic viscosity (m^2/s)          -- requires t, sa
+            N2          : buoyancy frequency^2 (1/s^2)         -- requires sa, ct, p
+                          (only computed when n_heights > 1)
+            z           : depth (positive downward) (m)        -- requires p
 
         Parameters
         ----------

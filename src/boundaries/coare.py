@@ -221,10 +221,8 @@ def coare36(
     zref_rh: Numeric = 10.0,
 ) -> Dict[str, np.ndarray]:
     """
-    COARE 3.6 bulk air-sea flux algorithm (Fairall et al. 2003, Edson et al. 2013).
-
-    Computes turbulent and radiative fluxes at the air-sea interface from
-    mean meteorological measurements. Includes the COARE cool-skin
+    COARE 3.6 bulk air-sea flux algorithm (Fairall et al. 2003, Edson et al. 2013). Computes turbulent and radiative
+    fluxes at the air-sea interface from mean meteorological measurements. Includes the COARE cool-skin
     parameterization. For warm-layer effects use ``coare36_warm_layer``.
 
     This is a port of the Python implementation by Ludovic Bariteau which can be found here:
@@ -292,10 +290,11 @@ def coare36(
 
     References
     ----------
-    Fairall, C. W., et al., 2003: Bulk parameterization of air-sea fluxes:
-        Updates and verification for the COARE algorithm. J. Climate, 16, 571-590.
-    Edson, J. B., et al., 2013: On the exchange of momentum over the open ocean.
-        J. Phys. Oceanogr., 43, 1589-1610.
+    Fairall, C. W., et al., 2003: Bulk parameterization of air-sea fluxes: Updates and verification for the COARE
+        algorithm. J. Climate, 16, 571-590.
+
+    Edson, J. B., et al., 2013: On the exchange of momentum over the open ocean. J.
+        Phys. Oceanogr., 43, 1589-1610.
     """
     # Ensure all primary inputs are 1-D float arrays
     u = np.atleast_1d(np.asarray(u, dtype=float)).ravel()
@@ -769,14 +768,11 @@ def coare36_warm_layer(
     """
     COARE 3.6 with diurnal warm-layer parameterization.
 
-    Wraps ``coare36`` with a time-sequential warm-layer model (Fairall et al.
-    1996) that integrates the heat budget through the diurnal warm layer.  The
-    warm-layer depth and temperature anomaly are updated at every time step; the
-    corrected near-surface temperature is then passed to ``coare36`` to compute
-    the final fluxes.
+    Wraps ``coare36`` with a time-sequential warm-layer model (Fairall et al. 1996) that integrates the heat budget
+    through the diurnal warm layer.  The warm-layer depth and temperature anomaly are updated at every time step; the
+    corrected near-surface temperature is then passed to ``coare36`` to compute the final fluxes.
 
-    This function requires a time-ordered input array.  The time step is inferred
-    from successive Julian days.
+    This function requires a time-ordered input array.  The time step is inferred from successive Julian days.
 
     Parameters
     ----------

@@ -24,6 +24,7 @@ class ADV(BaseInstrument):
     - Preprocessing (despiking, coordinate transformations, flow-dependent rotations)
     - Calculating turbulence statistics: TKE, TKE dissipation, Reynolds stress (including wave-turbulence decomposed)
     - Calculating directional wave statistics
+
     """
 
     def __init__(
@@ -51,6 +52,8 @@ class ADV(BaseInstrument):
             dimension is assumed to be a vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
+
+            ```
             {
                 "u1": "first velocity variable name" or ["var 1", "var 2", ...],
                 "u2": "second velocity variable name" or ["var 1", "var 2", ...],
@@ -61,6 +64,8 @@ class ADV(BaseInstrument):
                 "pitch": "pitch variable name" or ["var 1", "var 2", ...],
                 "roll": "roll variable name" or ["var 1", "var 2", ...],
             }
+            ```
+
             `p` and `time` are optional, but an error is raised if `time` is absent and `fs` is also not provided.
             `heading`, `pitch`, and `roll` are also optional but required for ENU coordinate transformations. Lists are
             used when data from multiple instruments are stored in separate variables rather than a 2-D array.
@@ -97,7 +102,7 @@ class ADV(BaseInstrument):
         Returns
         -------
         ADV
-            Initialize ADV object
+            Initialized ADV object
         """
         self.source_coords = source_coords
         self.orientation = orientation
@@ -180,6 +185,7 @@ class ADV(BaseInstrument):
             Preprocessing options. Supported keys:
 
             despike : dict, optional
+
                 Options for despiking. If not specified, no despiking is applied. Supported keys:
 
                 method : {'threshold', 'goring_nikora', 'recursive_gaussian'}
@@ -201,6 +207,7 @@ class ADV(BaseInstrument):
                     max_iter : int
 
             rotate : dict, optional
+
                 Options for rotations and coordinate transformations. If not specified, no rotations applied.
                 Supported keys:
 

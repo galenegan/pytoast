@@ -12,9 +12,12 @@ from utils.rotate_utils import apply_flow_rotation
 class Sonic(BaseInstrument):
     """Class for processing data from Sonic anemometers.
 
-    Contains methods for: - Loading data from source files
+    Contains methods for:
+
+    - Loading data from source files
     - Preprocessing (despiking, flow-dependent rotations)
     - Calculating turbulence statistics: TKE dissipation, Reynolds stress, TKE, buoyancy flux
+
     """
 
     def __init__(
@@ -40,6 +43,8 @@ class Sonic(BaseInstrument):
             dimension is assumed to be time and the shorter dimension a vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
+
+            ```
             {
                 "u1": "x-velocity variable name" or ["var 1", "var 2", ...],
                 "u2": "y-velocity variable name" or ["var 1", "var 2", ...],
@@ -47,6 +52,8 @@ class Sonic(BaseInstrument):
                 "Ts": "sonic temperature variable name" or ["var 1", "var 2", ...],
                 "time": "time variable name" or ["var 1", "var 2", ...],
             }
+            ```
+
             "Ts" and "time" are optional, but an error is raised if "time" is absent and `fs` is
             also not provided. Lists are used when data from multiple instruments are stored in
             separate variables rather than a 2-D array.
@@ -74,6 +81,7 @@ class Sonic(BaseInstrument):
         Returns
         -------
         Sonic
+            Initialized Sonic object
         """
         self.path_length = path_length
         files_list = files if isinstance(files, list) else [files]
@@ -130,6 +138,7 @@ class Sonic(BaseInstrument):
             Preprocessing options. Supported keys:
 
             despike : dict, optional
+
                 Options for despiking. If not specified, no despiking is applied. Supported keys:
 
                 method : {'threshold', 'goring_nikora', 'recursive_gaussian'}
@@ -151,14 +160,16 @@ class Sonic(BaseInstrument):
                     max_iter : int
 
             rotate : dict, optional
+
                 Options for rotations. If not specified, no rotations applied. Supported keys:
-                    flow_rotation : str or Tuple[float], optional.
-                        One of {`align_principal`, `align_streamwise`, or (horizontal_angle_degrees,
-                        vertical_angle_degrees)}. If `align_principal`, then the velocity will be rotated to align with
-                        the principal axes of the flow. If `align_streamwise`, then the velocity will be rotated to
-                        align with the horizontal wind magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity
-                        will be minimized. If float angles are specified in a tuple, the flow will be rotated by those
-                        angles in the horizontal and vertical planes.
+
+                flow_rotation : str or Tuple[float], optional.
+                    One of {`align_principal`, `align_streamwise`, or (horizontal_angle_degrees,
+                    vertical_angle_degrees)}. If `align_principal`, then the velocity will be rotated to align with
+                    the principal axes of the flow. If `align_streamwise`, then the velocity will be rotated to
+                    align with the horizontal wind magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity
+                    will be minimized. If float angles are specified in a tuple, the flow will be rotated by those
+                    angles in the horizontal and vertical planes.
         """
         # Handles all preprocessing settings except for rotation
         super().set_preprocess_opts(opts)
@@ -183,11 +194,10 @@ class Sonic(BaseInstrument):
         henjes_correction: bool,
         **kwargs,
     ) -> np.ndarray:
-        """Estimate the dissipation rate of TKE via spectral curve fit to the
-        streamwise wavenumber spectrum.
+        """Estimate the dissipation rate of TKE via spectral curve fit to the streamwise wavenumber spectrum.
 
-        Choice of constant is consistent with Edson and Fairall (1998), and the path length correction of Henjes et al (1999) can
-        be optionally applied as well.
+        Choice of constant is consistent with Edson and Fairall (1998), and the path length correction of Henjes et al
+        (1999) can be optionally applied as well.
 
         Parameters
         ----------
@@ -212,6 +222,7 @@ class Sonic(BaseInstrument):
         ----------
         Edson, J. B., & Fairall, C. W. (1998). Similarity relationships in the marine atmospheric surface layer for
             terms in the TKE and scalar variance budgets. Journal of the atmospheric sciences, 55(13), 2311-2328.
+
         Henjes, K., Taylor, P. K., & Yelland, M. J. (1999). Effect of pulse averaging on sonic anemometer spectra.
             Journal of Atmospheric and Oceanic Technology, 16(1), 181-184.
         """
@@ -392,8 +403,7 @@ class Sonic(BaseInstrument):
         return tke_out
 
     def buoyancy_flux(self, burst_data: Dict[str, np.ndarray]):
-        """Buoyancy flux from the sonic temperature/vertical velocity
-        covariance (e.g., Liu et al., (2001)).
+        """Buoyancy flux from the sonic temperature/vertical velocity covariance (e.g., Liu et al., (2001)).
 
         Parameters
         ----------
@@ -409,6 +419,7 @@ class Sonic(BaseInstrument):
         ----------
         Liu, H., Peters, G., & Foken, T. (2001). New equations for sonic temperature variance and buoyancy heat flux
             with an omnidirectional sonic anemometer. Boundary-Layer Meteorology, 100(3), 459-468.
+
         """
         if "Ts" not in burst_data:
             raise ValueError("Cannot compute buoyancy flux without sonic temperature data")

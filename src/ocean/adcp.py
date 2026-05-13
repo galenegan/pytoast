@@ -26,6 +26,7 @@ class ADCP(BaseInstrument):
     - Preprocessing (despiking, coordinate transformations, flow-dependent rotations)
     - Calculating mean shear
     - Calculating turbulence statistics: TKE dissipation, Reynolds stress
+
     """
 
     def __init__(
@@ -54,6 +55,7 @@ class ADCP(BaseInstrument):
             dimension is assumed to be time and the shorter dimension a vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
+
             ```
             {
                 "u1": "first beam/direction velocity variable name",
@@ -69,6 +71,7 @@ class ADCP(BaseInstrument):
                 "time": "time variable name",  # optional
             }
             ```
+
             An error is raised if `time` is absent and `fs` is also not provided. `z` in the name_map is only used if
             the `z` argument is not specified directly. `heading`, `pitch`, and `roll` are required for any coordinate
             transformation involving ENU coordinates. "u4" and "u5" can be optionally specified for instruments with
@@ -196,6 +199,7 @@ class ADCP(BaseInstrument):
             Preprocessing options. Supported keys:
 
             despike : dict, optional
+
                 Options for despiking. If not specified, no despiking is applied. Supported keys:
 
                 method : {'threshold', 'goring_nikora', 'recursive_gaussian'}
@@ -217,27 +221,28 @@ class ADCP(BaseInstrument):
                     max_iter : int
 
             rotate : dict, optional
+
                 Options for rotations and coordinate transformations. If not specified, no rotations applied.
                 Supported keys:
 
-                    coords_out : str, optional
-                        Coordinates for burst["coords"] to be transformed to. One of {`beam`, `xyz`, `enu`}.
-                    transformation_matrix : np.ndarray, optional
-                        Transformation matrix for the instrument. Must be specified for coordinate transformation if
-                        manufacturer = 'nortek'. May be excluded if manufacturer = 'rdi' in which case ADCP.beam_angle
-                        is used to compute the transformation matrix.
-                    declination : float, optional
-                        Magnetic declination in degrees. Added to heading for coordinate transformations.
-                    constant_hpr : Tuple[float], optional
-                        Constant heading, pitch, and roll angles to apply.
-                    flow_rotation : str or Tuple[float], optional.
-                        One of {`align_principal`, `align_streamwise`, or (horizontal_angle, vertical_angle)}. If
-                        `align_principal` then the velocity will be rotated to align with the principal axes of the
-                        flow. If `align_streamwise` then the velocity will be rotated to align with the horizontal current
-                        magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float
-                        angles are specified in a tuple, the flow will be rotated by those angles in the horizontal and
-                        vertical planes. Specifying any option will throw an error if `burst["coords"]` == `"beam"`,
-                        unless a coordinate system change to `xyz` or `enu` is also requested.
+                coords_out : str, optional
+                    Coordinates for burst["coords"] to be transformed to. One of {`beam`, `xyz`, `enu`}.
+                transformation_matrix : np.ndarray, optional
+                    Transformation matrix for the instrument. Must be specified for coordinate transformation if
+                    manufacturer = 'nortek'. May be excluded if manufacturer = 'rdi' in which case ADCP.beam_angle
+                    is used to compute the transformation matrix.
+                declination : float, optional
+                    Magnetic declination in degrees. Added to heading for coordinate transformations.
+                constant_hpr : Tuple[float], optional
+                    Constant heading, pitch, and roll angles to apply.
+                flow_rotation : str or Tuple[float], optional.
+                    One of {`align_principal`, `align_streamwise`, or (horizontal_angle, vertical_angle)}. If
+                    `align_principal` then the velocity will be rotated to align with the principal axes of the
+                    flow. If `align_streamwise` then the velocity will be rotated to align with the horizontal current
+                    magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float
+                    angles are specified in a tuple, the flow will be rotated by those angles in the horizontal and
+                    vertical planes. Specifying any option will throw an error if `burst["coords"]` == `"beam"`,
+                    unless a coordinate system change to `xyz` or `enu` is also requested.
         """
 
         # Handles all preprocessing settings except for rotation
