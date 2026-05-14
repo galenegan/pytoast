@@ -22,7 +22,7 @@ def make_adv(fs, n_heights=1):
 def make_sonic(fs, n_heights=1):
     """Return a minimal namespace that satisfies ADV.covariance attribute
     requirements."""
-    return types.SimpleNamespace(fs=fs, n_heights=n_heights)
+    return types.SimpleNamespace(fs=fs, n_heights=n_heights, path_length=0.15)
 
 
 def make_met(name_map, n_heights=1):

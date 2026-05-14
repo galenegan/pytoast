@@ -75,6 +75,26 @@ class TestDissipation:
         eps_calc *= 0.53 / (1.5 * 18 / 55)
         npt.assert_allclose(eps_truth, eps_calc, rtol=1e-1)
 
+    def test_dissipation_close_to_theory_henjes(self):
+        fs = 32
+        eps_truth = 1e-3
+        u, v, w, _, truth = generate_wave_turb_burst(
+            fs=fs,
+            duration_s=600,
+            a=0.0,
+            U=10,
+            epsilon=eps_truth,
+            seed=0,
+        )
+
+        sonic = make_sonic(fs)
+        burst_data = {"u1": u.reshape(1, -1), "u2": v.reshape(1, -1), "u3": w.reshape(1, -1), "coords": "xyz"}
+        eps_calc = Sonic.dissipation(sonic, burst_data, f_low=2, f_high=10, henjes_correction=True)
+
+        # Accounting for different Kolmogorov constants in the synthetic spectra vs Edson method
+        eps_calc *= 0.53 / (1.5 * 18 / 55)
+        npt.assert_allclose(eps_truth, eps_calc, rtol=1e-1)
+
 
 def _write_sonic_npy(path, n_samples=64):
     data = {

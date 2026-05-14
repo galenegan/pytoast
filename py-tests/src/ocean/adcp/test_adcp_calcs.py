@@ -3,8 +3,8 @@ import numpy.testing as npt
 import pytest
 
 from ocean.adcp import ADCP
-from utils.rotate_utils import coord_transform_4_beam_nortek
-from testhelpers.rotate_utils import nortek_4beam_T
+from utils.rotate_utils import coord_transform_4_beam_nortek, coord_transform_4_beam_rdi
+from testhelpers.rotate_utils import nortek_4beam_T, rdi_4beam_T
 from testhelpers.stub_utils import make_adcp
 from testhelpers.synth_utils import KAPPA, generate_profile_burst
 
@@ -19,7 +19,7 @@ def _xyz_burst(u, v, w):
     return {"u1": u, "u2": v, "u3": w, "u4": w.copy(), "u5": w.copy(), "coords": "xyz"}
 
 
-def _beam_burst(u, v, w):
+def _beam_burst_nortek(u, v, w):
     xyz = _xyz_burst(u, v, w)
     beam = coord_transform_4_beam_nortek(
         xyz["u1"],
@@ -41,6 +41,30 @@ def _beam_burst(u, v, w):
         "u5": w,
         "coords": "beam",
     }
+
+def _beam_burst_rdi(u, v, w):
+    xyz = _xyz_burst(u, v, w)
+    err_velocity = np.zeros_like(xyz["u1"])
+    beam = coord_transform_4_beam_rdi(
+        xyz["u1"],
+        xyz["u2"],
+        xyz["u3"],
+        err_velocity,
+        heading=0,
+        pitch=0,
+        roll=0,
+        transformation_matrix=rdi_4beam_T(25.0),
+        coords_in="xyz",
+        coords_out="beam",
+    )
+    return {
+        "u1": beam[0].reshape(u.shape),
+        "u2": beam[1].reshape(u.shape),
+        "u3": beam[2].reshape(u.shape),
+        "u4": beam[3].reshape(u.shape),
+        "coords": "beam",
+    }
+
 
 
 ########
@@ -80,7 +104,7 @@ def test_variance_method_recovers_uw():
     u, v, w, truth = generate_profile_burst(fs=4, duration_s=1800, z=z, u_star=0.05, seed=0)
     adcp = make_adcp(fs=4, z=z, num_beams=4)
     out_xyz = ADCP.covariance(adcp, _xyz_burst(u, v, w), method="variance")
-    out_beam = ADCP.covariance(adcp, _beam_burst(u, v, w), method="variance")
+    out_beam = ADCP.covariance(adcp, _beam_burst_nortek(u, v, w), method="variance")
 
     npt.assert_allclose(out_xyz["uw"], truth["uw"], rtol=0.1)
     npt.assert_allclose(out_xyz["vw"], np.zeros_like(truth["uw"]), atol=2e-4)
@@ -107,6 +131,12 @@ def test_variance_method_zero_for_isotropic():
     npt.assert_allclose(out["uw"], 0.0, atol=5e-3)
     npt.assert_allclose(out["vw"], 0.0, atol=5e-3)
 
+    # And RDI
+    adcp = make_adcp(fs=8, z=z, num_beams=4, manufacturer="rdi", transformation_matrix=rdi_4beam_T(25.0))
+    out_rdi = ADCP.covariance(adcp, _xyz_burst(u, v, w), method="variance")
+    npt.assert_allclose(out_rdi["uw"],0, atol=5e-3)
+    npt.assert_allclose(out_rdi["vw"], 0, atol=5e-3)
+
 
 def test_5beam_method_recovers_stresses():
     z = np.linspace(0.5, 5.0, 8)
@@ -127,7 +157,7 @@ def test_5beam_method_recovers_stresses():
 
     out_beam = ADCP.covariance(
         adcp,
-        _beam_burst(u, v, w),
+        _beam_burst_nortek(u, v, w),
         method="5beam",
         pitch=np.array([0.0]),
         roll=np.array([0.0]),
@@ -142,8 +172,13 @@ def test_ogive_method_recovers_stresses():
     out = ADCP.covariance(adcp, _xyz_burst(u, v, w), method="ogive_fit")
     npt.assert_allclose(out["uw"], truth["uw"], rtol=0.1)
 
-    out_beam = ADCP.covariance(adcp, _beam_burst(u, v, w), method="ogive_fit")
+    out_beam = ADCP.covariance(adcp, _beam_burst_nortek(u, v, w), method="ogive_fit")
     npt.assert_equal(out_beam, out)
+
+    # And with RDI
+    adcp = make_adcp(fs=4, z=z, num_beams=4, manufacturer="rdi", transformation_matrix=rdi_4beam_T(25.0))
+    out_rdi = ADCP.covariance(adcp, _beam_burst_rdi(u, v, w), method="ogive_fit")
+    npt.assert_allclose(out_rdi["uw"], out["uw"], rtol=1e-10, atol=1e-10)
 
 
 def test_covariance_invalid_method_raises():
@@ -182,8 +217,13 @@ def test_4beam_spectral_recovers_eps():
     eps_out = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
     npt.assert_allclose(eps_out, truth["epsilon"], rtol=0.1)
 
-    eps_out_beam = ADCP.dissipation(adcp, _beam_burst(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
+    eps_out_beam = ADCP.dissipation(adcp, _beam_burst_nortek(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
     npt.assert_allclose(eps_out_beam, eps_out, rtol=1e-8)
+
+    # And with RDI
+    adcp = make_adcp(fs=16, z=z, num_beams=4, manufacturer="rdi", transformation_matrix=rdi_4beam_T(25.0))
+    out_rdi = ADCP.dissipation(adcp, _beam_burst_rdi(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
+    npt.assert_allclose(out_rdi, eps_out_beam, rtol=1e-10, atol=1e-10)
 
 
 def test_5th_beam_spectral_recovers_eps():
@@ -201,7 +241,7 @@ def test_5th_beam_spectral_recovers_eps():
     adcp = make_adcp(fs=16, z=z, num_beams=5)
     eps_out = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="5th_beam_spectral", f_min=1.0, f_max=4.0)
     npt.assert_allclose(eps_out, truth["epsilon"], rtol=0.1)
-    eps_out_beam = ADCP.dissipation(adcp, _beam_burst(u, v, w), method="5th_beam_spectral", f_min=1.0, f_max=4.0)
+    eps_out_beam = ADCP.dissipation(adcp, _beam_burst_nortek(u, v, w), method="5th_beam_spectral", f_min=1.0, f_max=4.0)
     npt.assert_allclose(eps_out_beam, eps_out, rtol=1e-8)
 
 
@@ -220,7 +260,7 @@ def test_structure_function_runs():
 
     adcp = make_adcp(fs=16, z=z, num_beams=5)
     eps_out = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="structure_function")
-    eps_out_beam = ADCP.dissipation(adcp, _beam_burst(u, v, w), method="structure_function")
+    eps_out_beam = ADCP.dissipation(adcp, _beam_burst_nortek(u, v, w), method="structure_function")
     npt.assert_allclose(eps_out, eps_out_beam, rtol=1e-8)
 
 
