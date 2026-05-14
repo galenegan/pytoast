@@ -60,6 +60,7 @@ class BaseInstrument(ABC):
         z_convention: ZConvention = ZConvention.MAB,
         data_keys: Optional[Union[str, List[str]]] = None,
         burst_dim: Optional[str] = None,
+        **loader_kwargs: Any,
     ):
         """Base class initialization.
 
@@ -88,7 +89,13 @@ class BaseInstrument(ABC):
             Name of the burst dimension inside a monolithic NetCDF file. When given, `files` must be a single `.nc`
             path; the file is opened lazily with `xr.open_dataset` and each burst is exposed by slicing along this
             dimension. When None (default), each entry in `files` is treated as one burst.
+        **loader_kwargs
+            Additional keyword arguments forwarded to the underlying file reader selected by file extension:
+            `pd.read_csv` for `.csv`/`.dat`, `scipy.io.loadmat` for `.mat`, `numpy.load` for `.npy`, and
+            `xarray.open_dataset` for `.nc`. User-supplied keys override the defaults set internally
+            (e.g. `simplify_cells=True` for `.mat`, `allow_pickle=True` for `.npy`).
         """
+        self.loader_kwargs = dict(loader_kwargs)
         files = files if isinstance(files, list) else [files]
         self.validate_common_inputs(files, name_map, fs, z, data_keys)
         self.files = files
@@ -143,7 +150,7 @@ class BaseInstrument(ABC):
             If specified files don't exist
         """
         # Validate "files"
-        valid_extensions = (".npy", ".mat", ".csv", ".nc")
+        valid_extensions = (".npy", ".mat", ".csv", ".dat", ".nc")
         if isinstance(files, list):
             for file in files:
                 if not isinstance(file, str) or not file.lower().endswith(valid_extensions):
@@ -183,31 +190,40 @@ class BaseInstrument(ABC):
 
         The dataset is closed on exit, releasing the file handle.
         """
-        ds = xr.open_dataset(self.files[0])
+        ds = xr.open_dataset(self.files[0], **self.loader_kwargs)
         try:
             yield ds
         finally:
             ds.close()
 
     @staticmethod
-    def _load_file(file_path, data_keys=None):
+    def _load_file(file_path, data_keys=None, loader_kwargs: Optional[Dict[str, Any]] = None):
+        """Load a single file. Extra reader kwargs are forwarded to the
+        underlying loader selected by extension.
+
+        User-supplied keys in ``loader_kwargs`` override the internal defaults
+        (e.g. ``simplify_cells=True`` for ``.mat``).
+        """
+        loader_kwargs = loader_kwargs or {}
         suffix = file_path.split(".")[-1].lower()
         if suffix == "mat":
+            mat_kwargs = {"simplify_cells": True, **loader_kwargs}
             try:
-                data = strip_mat_nulls(sio.loadmat(file_path, simplify_cells=True))
+                data = strip_mat_nulls(sio.loadmat(file_path, **mat_kwargs))
             except NotImplementedError:
                 import mat73
 
-                data = strip_mat_nulls(mat73.loadmat(file_path))
+                data = strip_mat_nulls(mat73.loadmat(file_path, **loader_kwargs))
             file_type = "mat"
         elif suffix == "npy":
-            data = np.load(file_path, allow_pickle=True).item()
+            npy_kwargs = {"allow_pickle": True, **loader_kwargs}
+            data = np.load(file_path, **npy_kwargs).item()
             file_type = "npy"
-        elif suffix == "csv":
-            data = pd.read_csv(file_path)
+        elif (suffix == "csv") or (suffix == "dat"):
+            data = pd.read_csv(file_path, **loader_kwargs)
             file_type = "csv"
         elif suffix == "nc":
-            data = xr.open_dataset(file_path)
+            data = xr.open_dataset(file_path, **loader_kwargs)
             file_type = "nc"
         else:
             raise ValueError(f"Unrecognized file type .{suffix} for filepath input")
@@ -265,7 +281,7 @@ class BaseInstrument(ABC):
                 data = ds.isel({self.burst_dim: 0}).load()
             file_type = "nc"
         else:
-            data, file_type = self._load_file(self.files[0], self.data_keys)
+            data, file_type = self._load_file(self.files[0], self.data_keys, self.loader_kwargs)
 
         # Normalize z to a numpy array, or infer from data dimensions
         self._physical_z = False
@@ -288,7 +304,7 @@ class BaseInstrument(ABC):
             else:
                 non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
                 if isinstance(non_time_key, str):
-                    data_var = self._as_array(data, non_time_key, file_type)
+                    data_var = self._as_array(data, self.name_map[non_time_key], file_type)
                     if data_var.ndim > 1:
                         num_rows, num_cols = data_var.shape
                         if num_rows == num_cols:
@@ -306,7 +322,7 @@ class BaseInstrument(ABC):
         # Determine num_samples and infer fs if needed
         if "time" not in self.name_map:
             first_out_key = list(self.name_map.keys())[0]
-            data_var = self._as_array(data, first_out_key, file_type)
+            data_var = self._as_array(data, self.name_map[first_out_key], file_type)
             if data_var.ndim > 1:
                 num_rows, num_cols = data_var.shape
                 num_samples = max(num_rows, num_cols)
@@ -400,7 +416,7 @@ class BaseInstrument(ABC):
         else:
             file_path = self.files[burst_idx]
             try:
-                data, file_type = self._load_file(file_path, self.data_keys)
+                data, file_type = self._load_file(file_path, self.data_keys, self.loader_kwargs)
             except Exception as e:
                 raise IOError(f"Failed to load {file_path}: {e}")
 

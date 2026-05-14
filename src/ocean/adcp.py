@@ -43,6 +43,7 @@ class ADCP(BaseInstrument):
         beam_angle: float = 25.0,
         manufacturer: str = "nortek",
         burst_dim: Optional[str] = None,
+        **loader_kwargs,
     ):
         """Initialize an ADCP object.
 
@@ -107,6 +108,10 @@ class ADCP(BaseInstrument):
             Name of the burst dimension inside a monolithic NetCDF file. When given, `files` must be a single `.nc`
             path; the file is opened lazily and each burst is exposed by slicing along this dimension. When None
             (default), each entry in `files` is treated as one burst.
+        **loader_kwargs
+            Additional keyword arguments forwarded to the underlying file reader selected by extension
+            (`pd.read_csv` for `.csv`/`.dat`, `scipy.io.loadmat` for `.mat`, `numpy.load` for `.npy`,
+            `xarray.open_dataset` for `.nc`). See `BaseInstrument.__init__`.
 
         Returns
         -------
@@ -140,6 +145,7 @@ class ADCP(BaseInstrument):
             z_convention=z_convention,
             data_keys=data_keys,
             burst_dim=burst_dim,
+            **loader_kwargs,
         )
 
     @staticmethod

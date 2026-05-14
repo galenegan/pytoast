@@ -29,8 +29,10 @@ class Sonic(BaseInstrument):
         z: Optional[Union[float, List[float]]] = None,
         z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
+        source_coords: str = "xyz",
         path_length: float = 0.15,
         burst_dim: Optional[str] = None,
+        **loader_kwargs,
     ):
         """Initialize a Sonic object.
 
@@ -70,6 +72,9 @@ class Sonic(BaseInstrument):
         data_keys : str or List[str], optional
             One or more nested keys to traverse after loading the file (e.g. "Data" if the variables
             in name_map are stored at `burst["Data"]["variable_name"]`).
+        source_coords : str, optional
+            Velocity coordinate system in the source files. One of {`xyz`, `enu`}.
+            Defaults to `xyz`.
         path_length : float, optional
             Sonic path length (m). Used in the Henjes correction to the spectral curve fit in
             `Sonic.dissipation`. Defaults to 0.15.
@@ -77,15 +82,20 @@ class Sonic(BaseInstrument):
             Name of the burst dimension inside a monolithic NetCDF file. When given, `files` must be a single `.nc`
             path; the file is opened lazily and each burst is exposed by slicing along this dimension. When None
             (default), each entry in `files` is treated as one burst.
+        **loader_kwargs
+            Additional keyword arguments forwarded to the underlying file reader selected by extension
+            (`pd.read_csv` for `.csv`/`.dat`, `scipy.io.loadmat` for `.mat`, `numpy.load` for `.npy`,
+            `xarray.open_dataset` for `.nc`). See `BaseInstrument.__init__`.
 
         Returns
         -------
         Sonic
             Initialized Sonic object
         """
+        self.source_coords = source_coords
         self.path_length = path_length
         files_list = files if isinstance(files, list) else [files]
-        Sonic.validate_inputs(files_list, name_map, deployment_type, fs, z, z_convention, data_keys, path_length)
+        Sonic.validate_inputs(files_list, name_map, deployment_type, fs, z, z_convention, data_keys, source_coords, path_length)
         super().__init__(
             files,
             name_map,
@@ -95,6 +105,7 @@ class Sonic(BaseInstrument):
             z_convention=z_convention,
             data_keys=data_keys,
             burst_dim=burst_dim,
+            **loader_kwargs,
         )
 
     @staticmethod
@@ -106,6 +117,7 @@ class Sonic(BaseInstrument):
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
+        source_coords: str = "xyz",
         path_length: float = 0.15,
     ):
 
@@ -124,6 +136,12 @@ class Sonic(BaseInstrument):
 
         if not isinstance(path_length, float):
             raise TypeError("`path length` must be a float")
+
+        if not isinstance(source_coords, str):
+            raise TypeError("`source_coords` must be a string")
+
+        if source_coords not in ["xyz", "enu"]:
+            raise ValueError("`source_coords` must be one of 'xyz' or 'enu'")
 
         if z_convention != ZConvention.MAS:
             raise ValueError("Sonic instruments use 'm_above_surface' convention for vertical coordinates")
@@ -176,6 +194,7 @@ class Sonic(BaseInstrument):
         self._rotate = opts.get("rotate", {})
 
     def _apply_preprocessing(self, burst_data):
+        burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
             return burst_data
         burst_data = super()._apply_preprocessing(burst_data, keys_to_process=["u1", "u2", "u3"])

@@ -1,5 +1,7 @@
+import glob
 import numpy as np
 import numpy.testing as npt
+from pathlib import Path
 from testhelpers.synth_utils import generate_wave_turb_burst
 from testhelpers.stub_utils import eq_except, make_sonic
 from atmosphere.sonic import Sonic
@@ -83,6 +85,33 @@ def _write_sonic_npy(path, n_samples=64):
     }
     np.save(path, data, allow_pickle=True)
 
+def test_load_sonic_burst_from_dat():
+    folderpath = f"{Path(__file__).parent}/testdata"
+    files = glob.glob(f"{folderpath}/*.dat")
+    name_map = {"u1": "U", "u2": "V", "u3": "W", "Ts": "Ts"}
+    sonic = Sonic(files=files, name_map=name_map, fs=32, names=["U", "V", "W", "Ts", "Checksum", "Error"], sep=r"\s+")
+    assert sonic.fs == 32
+    assert sonic.name_map == name_map
+    assert "sonic_sample.dat" in sonic.files[0]
+
+    # Testing burst loading
+    burst = sonic.load_burst(0)
+    assert "u1" in burst.keys()
+    assert "u2" in burst.keys()
+    assert "u3" in burst.keys()
+    assert "Ts" in burst.keys()
+    assert burst["coords"] == "xyz"
+    assert burst["u1"].shape[0] == sonic.n_heights
+
+def test_buoyancy_flux():
+    folderpath = f"{Path(__file__).parent}/testdata"
+    files = glob.glob(f"{folderpath}/*.dat")
+    name_map = {"u1": "U", "u2": "V", "u3": "W", "Ts": "Ts"}
+    sonic = Sonic(files=files, name_map=name_map, fs=32, names=["U", "V", "W", "Ts", "Checksum", "Error"], sep=r"\s+")
+    burst = sonic.load_burst(0)
+    B = sonic.buoyancy_flux(burst)
+    assert len(B) == sonic.n_heights
+    npt.assert_almost_equal(B.item(), 0.001564, decimal=6)  # Regression test
 
 def test_subsample(tmp_path):
     files = []
