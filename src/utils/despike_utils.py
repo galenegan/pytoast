@@ -3,6 +3,41 @@ from scipy.stats import median_abs_deviation, norm
 from utils.interp_utils import interp_rows, naninterp
 
 
+def _flatten_to_2d(u: np.ndarray):
+    """Coerce `u` to a `float64` 2-D view shaped `(rows, n_time)` for despiking.
+
+    The last axis of `u` is preserved as the time axis. All other axes are
+    flattened into the leading "rows" axis. 1-D input is promoted to `(1, n)`.
+    The original shape is returned so the caller can restore it on output.
+
+    Parameters
+    ----------
+    u : np.ndarray
+        N-D array with `ndim >= 1`.
+
+    Returns
+    -------
+    flat : np.ndarray
+        `float64` 2-D copy of `u`, shape `(rows, n_time)`. Safe to mutate.
+    orig_shape : tuple
+        The original shape of `u`.
+
+    Raises
+    ------
+    ValueError
+        If `u` is 0-D.
+    """
+    u = np.asarray(u, dtype=float)
+    if u.ndim < 1:
+        raise ValueError(f"despike functions expect ndim >= 1, got ndim={u.ndim}")
+    orig_shape = u.shape
+    if u.ndim == 1:
+        flat = u.reshape(1, -1).copy()
+    else:
+        flat = u.reshape(-1, orig_shape[-1]).copy()
+    return flat, orig_shape
+
+
 def threshold(
     u: np.ndarray,
     threshold_min: float = -3.0,
@@ -10,26 +45,28 @@ def threshold(
 ) -> np.ndarray:
     """Threshold-based despiking.
 
+    Samples outside `[threshold_min, threshold_max]` are set to NaN and
+    linearly interpolated over along the time axis.
+
     Parameters
     ----------
     u : np.ndarray
-        Velocity array to despike
+        N-D array with `ndim >= 1`. The last axis is the time axis.
     threshold_min : float, optional
-        Value below which samples are set to `np.nan` and interpolated over
+        Value below which samples are flagged.
     threshold_max : float, optional
-        Value above which samples are set to `np.nan` and interpolated over
+        Value above which samples are flagged.
 
     Returns
     -------
-    u_out : np.ndarray
-        Velocity array with spikes removed and interpolated over
+    np.ndarray
+        `float64` array of the same shape as `u` with spikes removed.
     """
-    u_out = u.copy()
-    u_out = np.atleast_2d(u_out)
-    bad_rows = (u_out < threshold_min) | (u_out > threshold_max)
-    u_out[bad_rows] = np.nan
-    interp_rows(u_out)
-    return u_out
+    flat, orig_shape = _flatten_to_2d(u)
+    bad = (flat < threshold_min) | (flat > threshold_max)
+    flat[bad] = np.nan
+    flat = interp_rows(flat)
+    return flat.reshape(orig_shape)
 
 
 def goring_nikora(
@@ -43,7 +80,8 @@ def goring_nikora(
     Parameters
     ----------
     u : np.ndarray
-        Velocity array to despike.
+        N-D array with `ndim >= 1`. The last axis is the time axis; all other
+        axes are treated as independent rows.
 
     remaining_spikes : int
         Iterations will stop once there are `remaining_spikes` or fewer bad samples
@@ -58,8 +96,8 @@ def goring_nikora(
 
     Returns
     -------
-    u_out : np.ndarray
-        Velocity array with spikes removed and interpolated over
+    np.ndarray
+        `float64` array of the same shape as `u` with spikes removed and interpolated over.
 
     References
     ----------
@@ -71,7 +109,7 @@ def goring_nikora(
     """
 
     def flag_bad_indices(u: np.ndarray) -> np.ndarray:
-        """Flag spikes in a 2D array (n_heights, n_samples) using phase-space
+        """Flag spikes in a 2D array (n_rows, n_samples) using phase-space
         method."""
         # Gradients along time axis
         du = np.gradient(u, axis=1) / 2
@@ -114,12 +152,12 @@ def goring_nikora(
         A[:, 0, 1] = sin_t**2
         A[:, 1, 0] = sin_t**2
         A[:, 1, 1] = cos_t**2
-        b_vec = np.stack([(lam * sigma_u) ** 2, (lam * sigma_du2) ** 2], axis=1)  # (n_heights, 2)
-        x = np.linalg.solve(A, b_vec[:, :, None]).squeeze(-1)  # (n_heights, 2)
+        b_vec = np.stack([(lam * sigma_u) ** 2, (lam * sigma_du2) ** 2], axis=1)  # (n_rows, 2)
+        x = np.linalg.solve(A, b_vec[:, :, None]).squeeze(-1)  # (n_rows, 2)
         a2 = np.sqrt(x[:, 0])
         b2 = np.sqrt(x[:, 1])
 
-        # Broadcast all (n_heights,) stats to (n_heights, 1)
+        # Broadcast all (n_rows,) stats to (n_rows, 1)
         u_bar = u_bar[:, np.newaxis]
         du_bar = du_bar[:, np.newaxis]
         du2_bar = du2_bar[:, np.newaxis]
@@ -146,45 +184,49 @@ def goring_nikora(
 
         return bad_u_du | bad_u_du2 | bad_du_du2
 
-    u_out = u.copy()
-    u_out = np.atleast_2d(u_out)
-    bad_index = flag_bad_indices(u_out)
+    flat, orig_shape = _flatten_to_2d(u)
+    bad_index = flag_bad_indices(flat)
     total_bad = np.sum(bad_index, axis=1)
     iterations = 0
 
     while np.any(total_bad > remaining_spikes) and iterations < max_iter:
-        u_out[bad_index] = np.nan
-        interp_rows(u_out)
-        bad_index = flag_bad_indices(u_out)
+        flat[bad_index] = np.nan
+        flat = interp_rows(flat)
+        bad_index = flag_bad_indices(flat)
         total_bad = np.sum(bad_index, axis=1)
         iterations += 1
 
-    interp_rows(u_out)
-    return u_out
+    flat = interp_rows(flat)
+    return flat.reshape(orig_shape)
 
 
 def recursive_gaussian(
     u: np.ndarray,
     alpha: float = 3.0,
     max_iter: int = 10,
-):
-    """
+) -> np.ndarray:
+    """Despike each row of `u` by iteratively flagging samples beyond
+    `alpha * sigma` of a Gaussian fit, replacing them with NaN, and
+    interpolating along the time axis.
 
     Parameters
     ----------
-    u
-    alpha
-    max_iter
+    u : np.ndarray
+        N-D array with `ndim >= 1`. The last axis is the time axis.
+    alpha : float, optional
+        Standard-deviation multiplier defining the spike threshold.
+    max_iter : int, optional
+        Maximum number of refit/replace iterations per row.
 
     Returns
     -------
-
+    np.ndarray
+        `float64` array of the same shape as `u`.
     """
-    u_out = u.copy()
-    u_out = np.atleast_2d(u_out)
-    m, n = u_out.shape
+    flat, orig_shape = _flatten_to_2d(u)
+    m, _ = flat.shape
     for ii in range(m):
-        u_row = u_out[ii, :]
+        u_row = flat[ii, :]
         k = 0
         num_bad = np.inf
         while (k < max_iter) and (num_bad > 0):
@@ -194,6 +236,6 @@ def recursive_gaussian(
             num_bad = np.sum(bad_cols)
             u_row = naninterp(u_row)
 
-        u_out[ii, :] = u_row
+        flat[ii, :] = u_row
 
-    return u_out
+    return flat.reshape(orig_shape)
