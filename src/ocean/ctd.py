@@ -471,7 +471,8 @@ class CTD(BaseInstrument):
         N^2 = g^2 / (specvol_mid * 1e4 * dp) * (beta*dSA - alpha*dCT)
 
         where dp is in dbar and the 1e4 factor converts to Pa.  N^2 is evaluated at mid-pressure points between adjacent
-        levels, so the output has length n_heights - 1 along axis 0.
+        levels, so the output has length n_heights - 1 along axis 0. The sign convention is consistent with GSW, in that
+        N^2 > 0 corresponds to stable stratification.
 
         Requires n_heights > 1 (i.e., the mooring/cast must have measurements at more than one depth).
 

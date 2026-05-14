@@ -42,6 +42,7 @@ def _beam_burst_nortek(u, v, w):
         "coords": "beam",
     }
 
+
 def _beam_burst_rdi(u, v, w):
     xyz = _xyz_burst(u, v, w)
     err_velocity = np.zeros_like(xyz["u1"])
@@ -66,7 +67,6 @@ def _beam_burst_rdi(u, v, w):
     }
 
 
-
 ########
 # Shear
 ########
@@ -81,9 +81,6 @@ def test_shear_recovers_log_profile():
     out = adcp.shear(burst)
 
     expected = u_star / (KAPPA * z)
-    # Tolerance is set by two effects: (1) np.gradient(edge_order=2) truncation error,
-    # which scales as dz^2 * |d^3u/dz^3|, and (2) sample-mean noise on u_bar(z) from
-    # the finite-duration turbulence realization. Boundary bins are skipped for (1).
     npt.assert_allclose(out["du1_dz"][2:-2], expected[2:-2], rtol=0.15)
 
 
@@ -134,7 +131,7 @@ def test_variance_method_zero_for_isotropic():
     # And RDI
     adcp = make_adcp(fs=8, z=z, num_beams=4, manufacturer="rdi", transformation_matrix=rdi_4beam_T(25.0))
     out_rdi = ADCP.covariance(adcp, _xyz_burst(u, v, w), method="variance")
-    npt.assert_allclose(out_rdi["uw"],0, atol=5e-3)
+    npt.assert_allclose(out_rdi["uw"], 0, atol=5e-3)
     npt.assert_allclose(out_rdi["vw"], 0, atol=5e-3)
 
 

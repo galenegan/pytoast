@@ -87,11 +87,14 @@ class TestShapeContract:
         return a
 
     @pytest.mark.parametrize("shape", [(64,), (3, 64), (2, 3, 64)])
-    @pytest.mark.parametrize("fn,kwargs", [
-        (threshold, {"threshold_min": -10, "threshold_max": 10}),
-        (goring_nikora, {"remaining_spikes": 0, "max_iter": 5}),
-        (recursive_gaussian, {"alpha": 3, "max_iter": 5}),
-    ])
+    @pytest.mark.parametrize(
+        "fn,kwargs",
+        [
+            (threshold, {"threshold_min": -10, "threshold_max": 10}),
+            (goring_nikora, {"remaining_spikes": 0, "max_iter": 5}),
+            (recursive_gaussian, {"alpha": 3, "max_iter": 5}),
+        ],
+    )
     def test_despike_shape_roundtrip(self, fn, kwargs, shape):
         a = self._make_signal_with_spike(shape)
         out = fn(a, **kwargs)

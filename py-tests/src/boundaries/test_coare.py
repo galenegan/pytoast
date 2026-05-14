@@ -103,18 +103,18 @@ RTOL_WARM = 0.02
 WARM_OUTLIER_FRAC = 0.02  # allow 2% of points to exceed tolerance
 
 _WARM_ATOL_DEFAULT = {
-    "hs": 0.4,                # W/m^2
-    "h_buoyancy": 0.3,        # W/m^2
+    "hs": 0.4,  # W/m^2
+    "h_buoyancy": 0.3,  # W/m^2
     "h_buoyancy_sonic": 0.3,  # W/m^2
-    "hl_webb": 0.03,          # W/m^2
-    "tstar": 1.5e-3,          # K
-    "L": 0.7,                 # m
-    "zeta": 4e-3,             # dimensionless
-    "dq_skin": 2e-4,          # g/kg
-    "dT_warm": 0.1,           # C
-    "dz_warm": 2.0,           # m  (max_warm_depth = 19 m)
+    "hl_webb": 0.03,  # W/m^2
+    "tstar": 1.5e-3,  # K
+    "L": 0.7,  # m
+    "zeta": 4e-3,  # dimensionless
+    "dq_skin": 2e-4,  # g/kg
+    "dT_warm": 0.1,  # C
+    "dz_warm": 2.0,  # m  (max_warm_depth = 19 m)
     "dT_warm_to_skin": 0.03,  # C
-    "du_warm": 0.5,           # m/s
+    "du_warm": 0.5,  # m/s
 }
 
 

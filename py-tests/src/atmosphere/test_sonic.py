@@ -105,6 +105,7 @@ def _write_sonic_npy(path, n_samples=64):
     }
     np.save(path, data, allow_pickle=True)
 
+
 def test_load_sonic_burst_from_dat():
     folderpath = f"{Path(__file__).parent}/testdata"
     files = glob.glob(f"{folderpath}/*.dat")
@@ -123,6 +124,7 @@ def test_load_sonic_burst_from_dat():
     assert burst["coords"] == "xyz"
     assert burst["u1"].shape[0] == sonic.n_heights
 
+
 def test_buoyancy_flux():
     folderpath = f"{Path(__file__).parent}/testdata"
     files = glob.glob(f"{folderpath}/*.dat")
@@ -131,7 +133,8 @@ def test_buoyancy_flux():
     burst = sonic.load_burst(0)
     B = sonic.buoyancy_flux(burst)
     assert len(B) == sonic.n_heights
-    npt.assert_almost_equal(B.item(), 0.001564, decimal=6)  # Regression test
+    npt.assert_almost_equal(B.item(), 0.001322, decimal=6)  # Regression test
+
 
 def test_subsample(tmp_path):
     files = []

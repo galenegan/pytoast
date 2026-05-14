@@ -1,6 +1,7 @@
 import numpy as np
 import numpy.testing as npt
-
+from pathlib import Path
+import glob
 import utils.sea_thermo as sea_thermo
 from ocean.ctd import CTD
 from testhelpers.stub_utils import eq_except, make_ctd
@@ -82,9 +83,29 @@ def test_subsample(tmp_path):
         _write_ctd_npy(p)
         files.append(p)
 
-    ctd_full = CTD(files=files, name_map={"sp": "PSAL", "t": "TEMP", "p": "PRES", "time": "TIME"}, fs=1.0, z=-1.0)
+    ctd_full = CTD(files=files, name_map={"sp": "PSAL", "t": "TEMP", "p": "PRES", "time": "TIME"}, fs=1.0, z=1.0)
     ctd_subsampled = ctd_full.subsample(start_idx=0, end_idx=2)
 
     assert len(ctd_full.files) == 3
     assert len(ctd_subsampled.files) == 2
     assert eq_except(ctd_subsampled, ctd_full, "files")
+
+
+def test_load_and_derive_from_mat():
+    folder = f"{Path(__file__).parent}/testdata"
+    files = glob.glob(f"{folder}/*.mat")
+    ctd = CTD(
+        files=files,
+        name_map={"sp": "sal", "t": "temp", "p": "depth", "time": "time"},
+        fs=1.0,
+        z=[2.5, 3.3],
+        z_convention="depth",
+    )
+
+    # Loading as a burst
+    burst = ctd.load_burst(0)
+    data = ctd.derive(burst)
+    assert all([key in data.keys() for key in ALL_DERIVED])
+    assert burst["N2"].shape[0] == 1
+
+
