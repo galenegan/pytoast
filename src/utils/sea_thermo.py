@@ -1,14 +1,7 @@
 import numpy as np
 from typing import Optional, TypeAlias
 
-from utils.constants import (
-    GRAVITATIONAL_ACCELERATION as g,
-    SSO,
-    T0,
-    CP0,
-)
-
-Numeric: TypeAlias = float | int | np.ndarray
+from utils.constants import GRAVITATIONAL_ACCELERATION as g, SSO, T0, CP0, Numeric
 
 
 # =============================================================================

@@ -69,3 +69,38 @@ class TestWaveStats:
         npt.assert_almost_equal(out["dir1_all"], 0, decimal=4)
         npt.assert_almost_equal(out["dir2_all"], 0, decimal=4)
         npt.assert_almost_equal(out["spread2_all"], 0, decimal=4)
+
+    def test_wave_stats_spectral(self, wave_data):
+        P_etaeta, eta, u, w, p = wave_data
+        df = 16 / len(eta)
+        v = np.zeros_like(u)
+        out = wave_stats(
+            u, v, p, fs=16, mab=9, sea_correction=True
+        )
+
+        # Just verifying some shapes
+        shape_f = out["f"].shape
+        assert out["P_uu"].shape == shape_f
+        assert out["P_pp"].shape == shape_f
+        assert out["P_uv"].shape == shape_f
+        assert out["P_pv"].shape == shape_f
+
+    def test_sea_correction(self, wave_data):
+        P_etaeta, eta, u, w, p = wave_data
+        df = 16 / len(eta)
+        v = np.zeros_like(u)
+        out_corrected = wave_stats(
+            u, v, p, fs=16, mab=2, sea_correction=True
+        )
+
+        out_uncorrected = wave_stats(
+            u, v, p, fs=16, mab=2, sea_correction=False
+        )
+
+        # Bulk statistics integrated below cutoff should be similar
+        npt.assert_almost_equal(out_corrected["Hsig_all"], out_uncorrected["Hsig_all"], decimal=2)
+        npt.assert_almost_equal(out_corrected["Tm_all"], out_uncorrected["Tm_all"], decimal=1)
+
+        # Corrected P_etaeta should not blow up
+        assert all(out_corrected["P_etaeta"] < 10)
+        assert np.max(out_corrected["P_etaeta"]) < np.max(out_uncorrected["P_etaeta"])

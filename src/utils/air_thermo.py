@@ -9,9 +9,8 @@ from utils.constants import (
     MOL_MASS_DRY_AIR as m_a,
     MOL_MASS_WATER_VAPOR as m_v,
     T0,
+    Numeric,
 )
-
-Numeric: TypeAlias = float | int | np.ndarray
 
 
 def t_c2kelvin(t: Numeric) -> Numeric:

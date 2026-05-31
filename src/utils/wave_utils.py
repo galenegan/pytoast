@@ -40,7 +40,7 @@ def get_wavenumber(
     return k.item() if k.ndim == 0 else k
 
 
-def get_cg(k: Union[float, np.ndarray], h: Union[float, np.ndaray]):
+def get_cg(k: Union[float, np.ndarray], h: Union[float, np.ndarray]):
     """Returns the group velocity from the linear wave theory dispersion relation.
 
     Parameters

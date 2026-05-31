@@ -7,11 +7,11 @@ from utils.constants import (
     _PAYNE_TABLE,
     T0,
     GAS_CONSTANT_DRY_AIR as R_AIR,
+    Numeric,
 )
 import utils.air_thermo as at
 import utils.sea_thermo as st
 
-Numeric: TypeAlias = float | int | np.ndarray
 
 # Gustiness scaling coefficient
 BETA = 1.2

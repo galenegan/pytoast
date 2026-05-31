@@ -2,8 +2,7 @@ import numpy as np
 from typing import Optional, Union, List, Dict, Any, TypeAlias
 from utils.base_instrument import BaseInstrument, ZConvention
 import utils.air_thermo as air_thermo
-
-Numeric: TypeAlias = float | int | np.ndarray
+from utils.constants import Numeric
 
 
 class Met(BaseInstrument):

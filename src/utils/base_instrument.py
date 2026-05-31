@@ -4,7 +4,7 @@ import datetime
 from enum import StrEnum
 import numpy as np
 import os
-from typing import Any, List, Union, Optional, Dict
+from typing import Any, List, Union, Optional, Dict, Tuple
 import scipy.io as sio
 import pandas as pd
 import xarray as xr
@@ -197,7 +197,7 @@ class BaseInstrument(ABC):
             ds.close()
 
     @staticmethod
-    def _load_file(file_path, data_keys=None, loader_kwargs: Optional[Dict[str, Any]] = None):
+    def _load_file(file_path, data_keys=None, loader_kwargs: Optional[Dict[str, Any]] = None) -> Tuple[Any, str]:
         """Load a single file. Extra reader kwargs are forwarded to the
         underlying loader selected by extension.
 

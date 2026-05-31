@@ -1,8 +1,10 @@
 import numpy as np
+import pandas as pd
 import numpy.testing as npt
 import pytest
 
 from utils.io_utils import results_to_dataset
+from utils.base_instrument import BaseInstrument
 
 
 N_BURSTS = 4
@@ -127,3 +129,21 @@ def test_unknown_1d_length_uses_keyed_dim(burst_times):
     ds = results_to_dataset(results, burst_times)
     assert ds["mode_amp"].dims == ("burst_time", "mode_amp_dim")
     assert ds["mode_amp"].shape == (N_BURSTS, 7)
+
+def test_time_detection():
+    time = pd.Timestamp.now()
+    time_format = BaseInstrument.detect_time_format(time)
+    assert time_format == "datetime"
+
+    time = 8e5
+    time_format = BaseInstrument.detect_time_format(time)
+    assert time_format == "matlab"
+
+    time = "2026-05-31T00:00:00Z"
+    time_format = BaseInstrument.detect_time_format(time)
+    assert time_format == "datestring"
+
+    time = pd.Timestamp.now().timestamp()
+    time_format = BaseInstrument.detect_time_format(time)
+    assert time_format == "epoch"
+

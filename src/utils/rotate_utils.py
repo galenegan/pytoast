@@ -1,21 +1,21 @@
 import numpy as np
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 from scipy.stats import circmean
 
 
 def coord_transform_3_beam_nortek(
-    u1,
-    u2,
-    u3,
-    heading,
-    pitch,
-    roll,
-    transformation_matrix,
+    u1: np.ndarray,
+    u2: np.ndarray,
+    u3: np.ndarray,
+    heading: Union[float, np.ndarray],
+    pitch: Union[float, np.ndarray],
+    roll: Union[float, np.ndarray],
+    transformation_matrix: np.ndarray,
     declination: float = 0.0,
     orientation: str = "up",
     coords_in: str = "beam",
     coords_out: str = "xyz",
-):
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Implementation of Nortek's coordinate transformation for 3-beam instruments.
     https://support.nortekgroup.com/hc/en-us/articles/26828129966876-How-do-I-transform-a-coordinate-system-manually
@@ -37,7 +37,8 @@ def coord_transform_3_beam_nortek(
 
     Returns
     -------
-
+    tuple of three np.ndarray
+        Velocity components (u1, u2, u3) in the output coordinate system.
     """
     if coords_in == coords_out:
         return (u1, u2, u3)
@@ -112,7 +113,6 @@ def coord_transform_3_beam_nortek(
     else:
         raise ValueError("Invalid coordinate transformation.")
 
-    # TODO: store T inverses so we only need to calculate once
     u1_rot = U_rot[0, :]
     u2_rot = U_rot[1, :]
     u3_rot = U_rot[2, :]
@@ -120,19 +120,19 @@ def coord_transform_3_beam_nortek(
 
 
 def coord_transform_4_beam_nortek(
-    u1,
-    u2,
-    u3,
-    u4,
-    heading,
-    pitch,
-    roll,
-    transformation_matrix,
+    u1: np.ndarray,
+    u2: np.ndarray,
+    u3: np.ndarray,
+    u4: np.ndarray,
+    heading: Union[float, np.ndarray],
+    pitch: Union[float, np.ndarray],
+    roll: Union[float, np.ndarray],
+    transformation_matrix: np.ndarray,
     declination: float = 0.0,
     orientation: str = "up",
     coords_in: str = "beam",
     coords_out: str = "xyz",
-):
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Implementation of Nortek's coordinate transformation for the 4-beam
     Signature instrument. Supports all combinations of beam, xyz, and enu
     coordinates.
@@ -230,20 +230,20 @@ def coord_transform_4_beam_nortek(
 
 
 def coord_transform_4_beam_rdi(
-    u1,
-    u2,
-    u3,
-    u4,
-    heading,
-    pitch,
-    roll,
+    u1: np.ndarray,
+    u2: np.ndarray,
+    u3: np.ndarray,
+    u4: np.ndarray,
+    heading: Union[float, np.ndarray],
+    pitch: Union[float, np.ndarray],
+    roll: Union[float, np.ndarray],
     beam_angle: float = 25.0,
     transformation_matrix: Optional[np.ndarray] = None,
     declination: float = 0.0,
     orientation: str = "up",
     coords_in: str = "beam",
     coords_out: str = "xyz",
-):
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Coordinate transformation for Teledyne RDI 4-beam ADCPs.
 
     Supports all combinations of beam, xyz, and enu coordinates.
@@ -349,18 +349,23 @@ def coord_transform_4_beam_rdi(
     raise ValueError(f"Invalid coordinate transformation: {coords_in!r} -> {coords_out!r}")
 
 
-def align_with_principal_axis(u1, u2, u3) -> Tuple:
+def align_with_principal_axis(u1: np.ndarray, u2: np.ndarray, u3: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     Calculates the direction of maximum variance from the u and v velocities (Thomson & Emery, 4.52b).
 
     Parameters
     ----------
+    u1, u2, u3 : np.ndarray
+        Velocity components with shape (M, N), where M is the number of bursts
+        and N is the number of samples per burst. Assumes u1 = eastward velocity,
+        u2 = northward velocity, u3 = vertical velocity.
 
     Returns
     -------
-    theta : float
-        direction of maximum variance in degrees, CCW positive from east
-        assuming that u = eastward velocity, v = northward velocity
+    theta_h : np.ndarray
+        Direction of maximum variance in degrees, CCW positive from east, shape (M,)
+    theta_v : np.ndarray
+        Vertical rotation angle in degrees, shape (M,)
     """
     # (Co)variances
     u1_bar = np.mean(u1, axis=1, keepdims=True)
@@ -384,23 +389,21 @@ def align_with_principal_axis(u1, u2, u3) -> Tuple:
     return out
 
 
-def align_with_flow(u1, u2, u3) -> Tuple:
-    """Rotates u, v, w velocities to minimize the burst-averaged v and w.
+def align_with_flow(u1: np.ndarray, u2: np.ndarray, u3: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Computes the rotation angles that minimize the burst-averaged v and w velocities.
 
     Parameters
     ----------
-
+    u1, u2, u3 : np.ndarray
+        Velocity components with shape (M, N), where M is the number of bursts
+        and N is the number of samples per burst.
 
     Returns
     -------
-    u_rot: DataArray
-        Major axis horizontal velocity
-
-    v_rot: DataArray
-        Minor axis horizontal velocity
-
-    w_rot: DataArray
-        Zero-mean vertical velocity
+    theta_h : np.ndarray
+        Horizontal rotation angle in degrees, shape (M,)
+    theta_v : np.ndarray
+        Vertical rotation angle in degrees, shape (M,)
     """
     u_bar = np.mean(u1, axis=1)
     v_bar = np.mean(u2, axis=1)
@@ -412,13 +415,20 @@ def align_with_flow(u1, u2, u3) -> Tuple:
     return out
 
 
-def rotate_velocity_by_theta(u1, u2, u3, theta_h, theta_v):
+def rotate_velocity_by_theta(
+    u1: np.ndarray,
+    u2: np.ndarray,
+    u3: np.ndarray,
+    theta_h: Union[float, np.ndarray],
+    theta_v: Union[float, np.ndarray],
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Rotates u, v, w velocities by directions defined by theta_h and theta_v.
 
     Parameters
     ----------
-    data : dict
-        Dictionary containing `"u"`, `"v"`, and `"w"` velocity arrays with shape (M, N)
+    u1, u2, u3 : np.ndarray
+        Velocity components with shape (M, N), where M is the number of bursts
+        and N is the number of samples per burst.
     theta_h : float or np.ndarray
         Horizontal rotation angle(s) in degrees, scalar or shape (M,)
     theta_v : float or np.ndarray
@@ -426,8 +436,8 @@ def rotate_velocity_by_theta(u1, u2, u3, theta_h, theta_v):
 
     Returns
     -------
-    data : dict
-        Original data dictionary with "u", "v", and "w" velocity arrays rotated
+    u_rot, v_rot, w_rot : np.ndarray
+        Rotated velocity components, each with shape (M, N)
     """
     # (M,) or scalar -> (M, 1) for broadcasting against (M, N)
     th = np.deg2rad(np.atleast_1d(theta_h))[:, np.newaxis]
@@ -442,11 +452,23 @@ def rotate_velocity_by_theta(u1, u2, u3, theta_h, theta_v):
     return u_rot, v_rot, w_rot
 
 
-def min_angle(alpha):
+def min_angle(alpha: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+    """Wraps angle(s) to the range [-180, 180) degrees.
+
+    Parameters
+    ----------
+    alpha : float or np.ndarray
+        Angle(s) in degrees.
+
+    Returns
+    -------
+    float or np.ndarray
+        Equivalent angle(s) wrapped to [-180, 180) degrees.
+    """
     return (alpha + 180) % 360 - 180
 
 
-def apply_flow_rotation(burst_data, flow_rotation):
+def apply_flow_rotation(burst_data: dict, flow_rotation: Union[str, tuple]) -> dict:
     """Rotate u1/u2/u3 to align with a particular flow direction.
 
     Parameters
