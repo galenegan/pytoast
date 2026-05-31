@@ -198,17 +198,21 @@ def saturation_specific_humidity(
 def relative_humidity_from_specific_humidity(
     t: Numeric, p: Numeric, q: Numeric, t_freeze: Optional[Numeric] = None
 ) -> Numeric:
-    """
+    """Relative humidity (%) given temperature, pressure, specific humidity, and (optionally) freezing temperature
 
-    Parameters
-    ----------
-    t
-    p
-    q
-    t_freeze
+    t : Numeric
+        Air temperature in Celcius
+    p : Numeric
+        Atmospheric pressure in millibar
+    q : Numeric
+        Specific humidity in kg/kg
+    t_freeze: Numeric, optional
+        If specific, the saturation vapor pressure is corrected to account for ice conditions
 
     Returns
     -------
+    Numeric
+        Relative humidity in %
 
     """
     e_s = saturation_vapor_pressure(t, p, t_freeze=t_freeze)
@@ -301,11 +305,14 @@ def specific_heat(t: Numeric) -> Numeric:
 
 
 def dry_adiabatic_lapse_rate(t: Numeric, g_lat: Numeric = g) -> Numeric:
-    """
+    """Adiabatic lapse rate of dry air.
 
     Parameters
     ----------
-    t
+    t : Numeric
+        Air temperature in Celcius
+    g_lat : Numeric, optional
+        Gravitational acceleration in m/s^2. Defaults to 9.81 if not provided
 
     Returns
     -------

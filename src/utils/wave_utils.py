@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.signal as sig
 from typing import Optional, Union
-from utils.constants import GRAVITATIONAL_ACCELERATION as g
+from utils.constants import GRAVITATIONAL_ACCELERATION as g, WATER_DENSITY as rho0
 from utils.spectral_utils import psd, csd
 
 
@@ -40,17 +40,20 @@ def get_wavenumber(
     return k.item() if k.ndim == 0 else k
 
 
-def get_cg(k, h):
-    """Returns the group velocity from the linear wave theory dispersion
-    relation.
+def get_cg(k: Union[float, np.ndarray], h: Union[float, np.ndaray]):
+    """Returns the group velocity from the linear wave theory dispersion relation.
 
     Parameters
     ----------
-    k
-    h
+    k : float or np.ndarray
+        Wavenumber (rad/m)
+    h : float or np.ndarray
+        Water depth (m)
 
     Returns
     -------
+    cg : float or np.ndarray
+        Group velocity (m/s)
     """
     cp = np.sqrt((g / k) * np.tanh(k * h))
     cg = 0.5 * cp * (1 + (k * h) * (1 - (np.tanh(k * h)) ** 2) / np.tanh(k * h))
@@ -95,9 +98,8 @@ def jones_monismith_correction(
 
     References
     ----------
-    Jones, N. L., & Monismith, S. G. (2008). The influence of whitecapping
-    on wave height and period statistics. Journal of Physical Oceanography,
-    38(7), 1473-1490.
+    Jones, N. L., & Monismith, S. G. (2008). The influence of whitecapping on wave height and period statistics. Journal
+        of Physical Oceanography, 38(7), 1473-1490.
     """
     # Finding peak and cutoff frequency
     S_out = S_etaeta.copy()
@@ -125,14 +127,15 @@ def wave_stats(
     p: np.ndarray,
     fs: float,
     mab: float,
-    rho: float,
+    rho: float = rho0,
     band_definitions: Optional[dict] = None,
-    sea_correction: Optional[bool] = True,
-    f_cutoff: Optional[float] = 1.0,
+    sea_correction: bool = True,
+    f_cutoff: float = 1.0,
     **kwargs,
 ) -> dict:
     """
     Helper function for calculating all directional wave statistics
+
     Parameters
     ----------
     u : np.ndarray
@@ -224,7 +227,11 @@ def wave_stats(
     # Getting sea surface elevation spectrum
     omega = 2 * np.pi * f
     k = get_wavenumber(omega, h)
-    attenuation_correction = 1e4 * np.cosh(k * h) / (rho * g * np.cosh(k * mab))
+    z = mab - h
+
+    # cosh(k(z+h))/cosh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1+e^{-2kh})
+    cosh_term = (1 + np.exp(-2 * k * h)) / (np.exp(k * z) + np.exp(-k * (z + 2 * h)))
+    attenuation_correction = (1e4 / (rho * g)) * cosh_term
     P_etaeta = P_pp * (attenuation_correction**2)
 
     if sea_correction:

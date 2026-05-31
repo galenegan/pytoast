@@ -2,9 +2,93 @@
 and turbulence ground truth, used by the ADV, Sonic, and ADCP test modules."""
 
 import numpy as np
-
+import scipy.signal as sig
 from utils.wave_utils import get_wavenumber
-from utils.constants import GRAVITATIONAL_ACCELERATION as g, VON_KARMAN as KAPPA
+from utils.constants import GRAVITATIONAL_ACCELERATION as g, VON_KARMAN as KAPPA, WATER_DENSITY as rho0
+
+
+def _timeseries_from_spectrum(P, N, fs, rng, phases=None, phase_offset=0.0):
+    """Build a real time series with PSD `P` via random-phase IFFT.
+
+    If `phases` (length N//2 - 1) is supplied, it is used in place of newly
+    drawn random phases — pass the same array to multiple calls to make the resulting
+    time series phase-coherent. `phase_offset` (radians) is added to every
+    positive-frequency phase, useful for generating a 90-deg-shifted channel
+    (e.g. vertical wave velocity vs. surface elevation) that remains
+    phase-coherent with the unshifted channels.
+    """
+    amp = np.sqrt(N * fs * P)
+    X = np.zeros(N, dtype=complex)
+    nh = N // 2
+    if phases is None:
+        phases = rng.uniform(0, 2 * np.pi, nh - 1)
+    X[1:nh] = amp[1:nh] * np.exp(1j * (phases + phase_offset))
+    X[nh + 1 :] = np.conj(X[1:nh][::-1])
+    if N % 2 == 0:
+        X[nh] = amp[nh] * (1.0 if rng.random() > 0.5 else -1.0)
+    return np.fft.ifft(X).real
+
+
+def pierson_moskowitz(Hs, fp, h=10, z=0, fs=32, duration_s=600, seed=0):
+    """Pierson-Moskowitz surface elevation and the associated linear-wave
+    kinematics at vertical coordinate z (z=0 at the free surface, z=-h at the
+    bed) in water depth h. u is the horizontal velocity along the direction
+    of wave propagation; p is the total (hydrostatic + wave-induced) pressure.
+
+    PSDs of u, w, and p are derived per-frequency from P_etaeta via linear-
+    wave transfer functions:
+        |H_u(f)|^2 = (omega * cosh(k(z+h)) / sinh(kh))^2
+        |H_w(f)|^2 = (omega * sinh(k(z+h)) / sinh(kh))^2
+        |H_p(f)|^2 = (rho*g * cosh(k(z+h)) / cosh(kh))^2
+    """
+    N = int(fs * duration_s)
+    f = np.fft.fftfreq(N, d=1.0 / fs)
+    rng = np.random.default_rng(seed)
+
+    pos = f > 0
+    P_etaeta = np.zeros_like(f)
+    P_etaeta[pos] = (5 / 16) * Hs**2 * fp**4 * f[pos] ** (-5) * np.exp(-5 / 4 * (f[pos] / fp) ** (-4))
+
+    omega = 2 * np.pi * f[pos]
+    k = get_wavenumber(omega, h)
+    ###########################################################
+    # Hyperbolic transfer-function ratios written so they stay
+    # finite at large kh (deep water). For z in [-h, 0]:
+    #   cosh(k(z+h))/sinh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1-e^{-2kh})
+    #   sinh(k(z+h))/sinh(kh) = (e^{kz}-e^{-k(z+2h)}) / (1-e^{-2kh})
+    #   cosh(k(z+h))/cosh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1+e^{-2kh})
+    ###########################################################
+    e_kz = np.exp(k * z)
+    e_neg = np.exp(-k * (z + 2 * h))
+    e_2kh = np.exp(-2 * k * h)
+    r_cs = (e_kz + e_neg) / (1 - e_2kh)  # cosh(k(z+h))/sinh(kh)
+    r_ss = (e_kz - e_neg) / (1 - e_2kh)  # sinh(k(z+h))/sinh(kh)
+    r_cc = (e_kz + e_neg) / (1 + e_2kh)  # cosh(k(z+h))/cosh(kh)
+
+    H_u2 = (omega * r_cs) ** 2
+    H_w2 = (omega * r_ss) ** 2
+    H_p2 = (rho0 * g * r_cc) ** 2
+
+    P_uu = np.zeros_like(f)
+    P_ww = np.zeros_like(f)
+    P_pp = np.zeros_like(f)
+    P_uu[pos] = P_etaeta[pos] * H_u2
+    P_ww[pos] = P_etaeta[pos] * H_w2
+    P_pp[pos] = P_etaeta[pos] * H_p2
+
+    # Share a single phase realization across channels so the
+    # four time series are phase-coherent. Each is divided by 2
+    # because the function takes a 2-sided spectrum
+    phases = rng.uniform(0, 2 * np.pi, N // 2 - 1)
+    eta = _timeseries_from_spectrum(P_etaeta / 2, N, fs, rng, phases=phases)
+    u = _timeseries_from_spectrum(P_uu / 2, N, fs, rng, phases=phases)
+    w = _timeseries_from_spectrum(P_ww / 2, N, fs, rng, phases=phases, phase_offset=np.pi / 2)
+    # Pressure, adding hydrostatic component and converting to dbar
+    p = _timeseries_from_spectrum(P_pp / 2, N, fs, rng, phases=phases)
+    p += rho0 * g * np.abs(z)
+    p /= 1e4
+    return P_etaeta, eta, u, w, p
+
 
 
 def generate_wave_turb_burst(
@@ -91,21 +175,9 @@ def generate_wave_turb_burst(
         P_uu_f[valid] = coef_uu * omega_abs[valid] ** (-5 / 3)
         P_ww_f[valid] = coef_ww * omega_abs[valid] ** (-5 / 3)
 
-        def _synth(P):
-            # Helper function to generate synthetic timeseries from power spectrum P
-            amp = np.sqrt(N * fs * P)
-            X = np.zeros(N, dtype=complex)
-            nh = N // 2
-            ph = rng.uniform(0, 2 * np.pi, nh - 1)
-            X[1:nh] = amp[1:nh] * np.exp(1j * ph)
-            X[nh + 1 :] = np.conj(X[1:nh][::-1])
-            if N % 2 == 0:
-                X[nh] = amp[nh] * (1.0 if rng.random() > 0.5 else -1.0)
-            return np.fft.ifft(X).real
-
-        u_turb = _synth(P_uu_f)
-        v_turb = _synth(P_ww_f)
-        w_turb = _synth(P_ww_f)
+        u_turb = _timeseries_from_spectrum(P_uu_f, N, fs, rng)
+        v_turb = _timeseries_from_spectrum(P_ww_f, N, fs, rng)
+        w_turb = _timeseries_from_spectrum(P_ww_f, N, fs, rng)
         df = fs / N
         sigma_uu_out = float(np.sum(P_uu_f) * df)
         sigma_ww_out = float(np.sum(P_ww_f) * df)
@@ -254,24 +326,13 @@ def generate_profile_burst(
         P_uu_f[valid] = coef_uu * omega_abs[valid] ** (-5 / 3)
         P_ww_f[valid] = coef_ww * omega_abs[valid] ** (-5 / 3)
 
-        def _synth(P):
-            amp = np.sqrt(N * fs * P)
-            X = np.zeros(N, dtype=complex)
-            nh = N // 2
-            ph = rng.uniform(0, 2 * np.pi, nh - 1)
-            X[1:nh] = amp[1:nh] * np.exp(1j * ph)
-            X[nh + 1 :] = np.conj(X[1:nh][::-1])
-            if N % 2 == 0:
-                X[nh] = amp[nh] * (1.0 if rng.random() > 0.5 else -1.0)
-            return np.fft.ifft(X).real
-
         u1 = np.empty((nz, N))
         u2 = np.empty((nz, N))
         u3 = np.empty((nz, N))
         for ii in range(nz):
-            u1[ii, :] = U + _synth(P_uu_f)
-            u2[ii, :] = _synth(P_ww_f)
-            u3[ii, :] = _synth(P_ww_f)
+            u1[ii, :] = U + _timeseries_from_spectrum(P_uu_f, N, fs, rng)
+            u2[ii, :] = _timeseries_from_spectrum(P_ww_f, N, fs, rng)
+            u3[ii, :] = _timeseries_from_spectrum(P_ww_f, N, fs, rng)
 
         df = fs / N
         sigma_uu_out = float(np.sum(P_uu_f) * df)

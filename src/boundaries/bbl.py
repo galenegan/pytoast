@@ -164,21 +164,43 @@ def _bstress2(ub_over_ustar_wc, ab_over_z0, zr_over_z0, ub_over_kappa_ur, theta,
 
 def madsen(ub_r, omega_r, uc_r, phi_c, phi_wr, z_r, kN, max_iter=10, tol=1e-4):
     """
+    Grant and Madsen (1979) combined wave-current bottom boundary layer model as implemented in Madsen (1994).
 
     Parameters
     ----------
-    ub_r
-    omega_r
-    uc_r
-    phi_c
-    phi_wr
-    z_r
-    kN
-    max_iter
-    tol
+    ub_r : float
+        Wave orbital velocity measured at height z_r  (m/s)
+    omega_r : float
+        Radian wave frequency measured at height z_r (rad/s)
+    uc_r : float
+        Mean current velocity measured at height z_r (m/s)
+    phi_c : float
+        Angle of propagation of the mean current (degrees)
+    phi_wr : float
+        Angle of propagation of the surface waves (degrees)
+    z_r : float
+        reference height for wave and current measurements (m)
+    kN : float
+        Sand grain (Nikuradse) roughness height (m)
+    max_iter : int, optional
+        Maximum number of iterations, by default 10
+    tol : float, optional
+        Convergence tolerance, by default 1e-4 relative
 
     Returns
     -------
+    dict
+        Dictionary containing current friction velocity `ustar_c`, maximum wave friction velocity `ustar_wm`,
+        combined wave-current friction velocity `ustar_wc`, and combined wave current friction factor `f_wc`
+
+    References
+    ----------
+    Grant, W. D., & Madsen, O. S. (1979). Combined wave and current interaction with a rough bottom. Journal of
+        Geophysical Research: Oceans, 84(C4), 1797-1808
+
+    Madsen, O. S. (1994). Spectral wave-current bottom boundary layer flows. In Coastal engineering 1994 (pp. 384-398).
+
+
 
     """
     phi_wc = np.deg2rad(min_angle(phi_c - phi_wr))
@@ -284,19 +306,24 @@ def styles(
     -------
     dict with keys:
 
-        Ro        - internal friction Rossby number (Ab / (z0 * ub / ustar_wc))
-        mu        - sqrt(ub_over_ustar_wc * phi); wave/combined stress ratio parameter
-        epsilon   - ustar_c / ustar_wc
-        z1_over_z0     - inner wave BBL height / hydraulic roughness
-        z2_over_z0     - outer wave BBL height / hydraulic roughness
-        zr_over_z1     - measurement height / inner BBL height
-        zr_over_z2     - measurement height / outer BBL height
-        kbs       - suspended sediment roughness (m)
-        kbr       - ripple roughness (m)
-        z0      - hydraulic roughness length (m)
-        ustar_wm  - maximum wave shear velocity (m/s)
-        ustar_c   - time-averaged current shear velocity (m/s)
-        ustar_wc  - combined wave-current shear velocity (m/s)
+        Ro              - internal friction Rossby number (Ab / (z0 * ub / ustar_wc))
+        mu              - sqrt(ub_over_ustar_wc * phi); wave/combined stress ratio parameter
+        epsilon         - ustar_c / ustar_wc
+        z1_over_z0      - inner wave BBL height / hydraulic roughness
+        z2_over_z0      - outer wave BBL height / hydraulic roughness
+        zr_over_z1      - measurement height / inner BBL height
+        zr_over_z2      - measurement height / outer BBL height
+        kbs             - suspended sediment roughness (m)
+        kbr             - ripple roughness (m)
+        z0              - hydraulic roughness length (m)
+        ustar_wm        - maximum wave shear velocity (m/s)
+        ustar_c         - time-averaged current shear velocity (m/s)
+        ustar_wc        - combined wave-current shear velocity (m/s)
+
+    References
+    ----------
+    Styles, R., Glenn, S. M., & Brown, M. E. (2017). An optimized combined wave and current bottom boundary layer model
+        for arbitrary bed roughness (No. ERDCCHLTR1711).
     """
     # Skin friction Shields parameter (Madsen formula)
     arg_ole = ab / d_median
