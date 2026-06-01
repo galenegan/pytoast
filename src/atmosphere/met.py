@@ -1,6 +1,6 @@
 import numpy as np
-from typing import Optional, Union, List, Dict, Any, TypeAlias
-from utils.base_instrument import BaseInstrument, ZConvention
+from typing import Optional, Union, List, Dict, Any
+from utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
 import utils.air_thermo as air_thermo
 from utils.constants import Numeric
 
@@ -65,8 +65,8 @@ class Met(BaseInstrument):
         z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
         burst_dim: Optional[str] = None,
-        **loader_kwargs,
-    ):
+        **loader_kwargs: Any,
+    ) -> None:
         """Initialize a Met object.
 
         Parameters
@@ -123,7 +123,7 @@ class Met(BaseInstrument):
         super().__init__(
             files,
             name_map,
-            deployment_type=deployment_type,
+            deployment_type=DeploymentType(deployment_type),
             fs=fs,
             z=z,
             z_convention=z_convention,
@@ -141,10 +141,11 @@ class Met(BaseInstrument):
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         z_convention: ZConvention = ZConvention.MAS,
         data_keys: Optional[Union[str, List[str]]] = None,
-    ):
+    ) -> None:
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+        files_list = [files] if isinstance(files, str) else files
+        BaseInstrument.validate_common_inputs(files_list, name_map, fs, z, data_keys)
 
         if deployment_type != "fixed":
             raise ValueError(f"Met.deployment_type must be 'fixed', not {deployment_type!r}")
@@ -152,7 +153,7 @@ class Met(BaseInstrument):
         if z_convention != ZConvention.MAS:
             raise ValueError(f"Met.z_convention must be {ZConvention.MAS}, not {z_convention}")
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]):
+    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads using the
         options defined in the input dictionary.
 
@@ -185,7 +186,7 @@ class Met(BaseInstrument):
         """
         super().set_preprocess_opts(opts)
 
-    def _apply_preprocessing(self, burst_data):
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
         burst_data = super()._apply_preprocessing(burst_data, keys_to_process=self._burst_var_keys)
         return burst_data
 
@@ -487,39 +488,35 @@ class Met(BaseInstrument):
         rh = burst_data.get("rh")
         sp = burst_data.get("sp")
 
-        has_t = t is not None
-        has_p = p is not None
-        has_rh = rh is not None
-
         # Temperature-only quantities
-        if has_t:
-            burst_data["cp"] = self.specific_heat(t)
-            burst_data["L_v"] = self.latent_heat_of_vaporization(t)
-            burst_data["nu"] = self.kinematic_viscosity(t)
+        if t is not None:
+            burst_data["cp"] = np.asarray(self.specific_heat(t))
+            burst_data["L_v"] = np.asarray(self.latent_heat_of_vaporization(t))
+            burst_data["nu"] = np.asarray(self.kinematic_viscosity(t))
             # self.z has shape (n_heights,); reshape to (n_heights, 1) to broadcast over time axis
-            burst_data["theta"] = self.potential_temperature(t, self.z.reshape(-1, 1))
+            burst_data["theta"] = np.asarray(self.potential_temperature(t, self.z.reshape(-1, 1)))
 
         # Temperature + pressure quantities
-        if has_t and has_p:
-            burst_data["e_s"] = self.saturation_vapor_pressure(t, p, sp)
-            burst_data["rho_air_dry"] = self.dry_air_density(t, p)
+        if t is not None and p is not None:
+            burst_data["e_s"] = np.asarray(self.saturation_vapor_pressure(t, p, sp))
+            burst_data["rho_air_dry"] = np.asarray(self.dry_air_density(t, p))
 
         # Temperature + pressure + relative humidity quantities
-        if has_t and has_p and has_rh:
-            burst_data["e"] = self.water_vapor_pressure(t, p, rh, sp)
-            burst_data["rho_v"] = self.water_vapor_density(t, p, rh, sp)
-            burst_data["w"] = self.mixing_ratio(t, p, rh, sp)
-            burst_data["q"] = self.specific_humidity(t, p, rh, sp)
-            burst_data["t_v"] = self.virtual_temperature(t, p, rh, sp)
-            burst_data["rho_air"] = self.air_density(t, p, rh)
+        if t is not None and p is not None and rh is not None:
+            burst_data["e"] = np.asarray(self.water_vapor_pressure(t, p, rh, sp))
+            burst_data["rho_v"] = np.asarray(self.water_vapor_density(t, p, rh, sp))
+            burst_data["w"] = np.asarray(self.mixing_ratio(t, p, rh, sp))
+            burst_data["q"] = np.asarray(self.specific_humidity(t, p, rh, sp))
+            burst_data["t_v"] = np.asarray(self.virtual_temperature(t, p, rh, sp))
+            burst_data["rho_air"] = np.asarray(self.air_density(t, p, rh))
 
         return burst_data
 
     @property
-    def _burst_var_keys(self):
+    def _burst_var_keys(self) -> List[str]:
         return [k for k in self.name_map if k != "time"]
 
-    def subsample(self, start_idx: int, end_idx: int):
+    def subsample(self, start_idx: int, end_idx: int) -> "Met":
         new_met = self.__class__(
             files=self.files[start_idx:end_idx],
             name_map=self.name_map,

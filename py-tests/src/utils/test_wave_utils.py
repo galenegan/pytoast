@@ -2,8 +2,9 @@ import numpy.testing as npt
 import numpy as np
 import pytest
 
-from utils.wave_utils import get_wavenumber, get_cg, wave_stats, jones_monismith_correction
-from testhelpers.synth_utils import generate_wave_turb_burst, pierson_moskowitz
+from utils.wave_utils import get_wavenumber, get_cg, wave_stats
+from testhelpers.synth_utils import pierson_moskowitz
+
 
 class TestDispersion:
     def test_dispersion_relation_deep_limit(self):
@@ -12,7 +13,6 @@ class TestDispersion:
         k = get_wavenumber(omega, h)
         k_deep_water = omega**2 / 9.81
         npt.assert_equal(k, k_deep_water)
-
 
     def test_dispersion_relation_shallow_limit(self):
         omega = 2 * np.pi / 2000
@@ -35,27 +35,18 @@ class TestDispersion:
         cg = get_cg(k, h)
         npt.assert_almost_equal(cg, 9.81 / omega / 2, decimal=4)
 
+
 class TestWaveStats:
     @pytest.fixture
     def wave_data(self):
-        P_etaeta, eta, u, w, p = pierson_moskowitz(
-            Hs=2,
-            fp=0.1,
-            h=10,
-            z=-1,
-            fs=16,
-            duration_s=600,
-            seed=0
-        )
+        P_etaeta, eta, u, w, p = pierson_moskowitz(Hs=2, fp=0.1, h=10, z=-1, fs=16, duration_s=600, seed=0)
         return P_etaeta, eta, u, w, p
 
     def test_wave_stats_bulk_params(self, wave_data):
         P_etaeta, eta, u, w, p = wave_data
         df = 16 / len(eta)
         v = np.zeros_like(u)
-        out = wave_stats(
-            u, v, p, fs=16, mab=9, sea_correction=True
-        )
+        out = wave_stats(u, v, p, fs=16, mab=9, sea_correction=True)
 
         # Consistency between all the Hsig parameters
         npt.assert_almost_equal(4 * np.sqrt(np.sum(P_etaeta * df)), out["Hsig_all"], decimal=2)
@@ -74,9 +65,7 @@ class TestWaveStats:
         P_etaeta, eta, u, w, p = wave_data
         df = 16 / len(eta)
         v = np.zeros_like(u)
-        out = wave_stats(
-            u, v, p, fs=16, mab=9, sea_correction=True
-        )
+        out = wave_stats(u, v, p, fs=16, mab=9, sea_correction=True)
 
         # Just verifying some shapes
         shape_f = out["f"].shape
@@ -89,13 +78,9 @@ class TestWaveStats:
         P_etaeta, eta, u, w, p = wave_data
         df = 16 / len(eta)
         v = np.zeros_like(u)
-        out_corrected = wave_stats(
-            u, v, p, fs=16, mab=2, sea_correction=True
-        )
+        out_corrected = wave_stats(u, v, p, fs=16, mab=2, sea_correction=True)
 
-        out_uncorrected = wave_stats(
-            u, v, p, fs=16, mab=2, sea_correction=False
-        )
+        out_uncorrected = wave_stats(u, v, p, fs=16, mab=2, sea_correction=False)
 
         # Bulk statistics integrated below cutoff should be similar
         npt.assert_almost_equal(out_corrected["Hsig_all"], out_uncorrected["Hsig_all"], decimal=2)

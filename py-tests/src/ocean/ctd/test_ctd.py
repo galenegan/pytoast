@@ -107,5 +107,3 @@ def test_load_and_derive_from_mat():
     data = ctd.derive(burst)
     assert all([key in data.keys() for key in ALL_DERIVED])
     assert burst["N2"].shape[0] == 1
-
-

@@ -26,7 +26,7 @@ def naninterp(x: np.ndarray) -> np.ndarray:
     x = np.asarray(x, dtype=float)
     if x.ndim != 1:
         raise ValueError(f"naninterp expects a 1-D array, got ndim={x.ndim}")
-    return pd.Series(x).interpolate(method="linear").ffill().bfill().to_numpy(copy=True)
+    return np.asarray(pd.Series(x).interpolate(method="linear").ffill().bfill().to_numpy(copy=True))
 
 
 def interp_rows(u: np.ndarray) -> np.ndarray:

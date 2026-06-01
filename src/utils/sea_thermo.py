@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Optional, TypeAlias
+from typing import Optional
 
 from utils.constants import GRAVITATIONAL_ACCELERATION as g, SSO, T0, CP0, Numeric
 
@@ -265,7 +265,7 @@ def _ct_from_pt(sa: Numeric, pt: Numeric) -> Numeric:
     return 2.505092880681252e-4 * pot_enthalpy  # = pot_enthalpy / CP0
 
 
-def _eos_vars(sa: Numeric, ct: Numeric, p: Numeric):
+def _eos_vars(sa: Numeric, ct: Numeric, p: Numeric) -> tuple[Numeric, Numeric, Numeric]:
     """
     Compute normalised coordinates for the 75-term EOS (Roquet et al., 2015).
 

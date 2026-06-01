@@ -1,5 +1,6 @@
 import numpy as np
 import warnings
+from typing import Any
 from scipy.special import jv, hankel1
 from scipy.optimize import brentq, newton
 from utils.constants import VON_KARMAN as kappa
@@ -380,7 +381,7 @@ def styles(
     upper_bound = _pwave(ab_over_z0, ub_over_ustar_wm, zeta_1, mp)
 
     # Wrapper function for the bisection with a cache for the extra variables we want
-    _cache = [None]
+    _cache: list[Any] = [None]
 
     def _brent_f(x):
         result = _bstress2(x, ab_over_z0, zr_over_z0, ub_over_kappa_ur, theta, alpha_loc, zeta_1, mp)

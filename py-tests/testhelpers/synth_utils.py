@@ -90,7 +90,6 @@ def pierson_moskowitz(Hs, fp, h=10, z=0, fs=32, duration_s=600, seed=0):
     return P_etaeta, eta, u, w, p
 
 
-
 def generate_wave_turb_burst(
     fs=32,
     duration_s=600,

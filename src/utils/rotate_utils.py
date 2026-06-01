@@ -7,9 +7,9 @@ def coord_transform_3_beam_nortek(
     u1: np.ndarray,
     u2: np.ndarray,
     u3: np.ndarray,
-    heading: Union[float, np.ndarray],
-    pitch: Union[float, np.ndarray],
-    roll: Union[float, np.ndarray],
+    heading: Optional[Union[float, np.ndarray]],
+    pitch: Optional[Union[float, np.ndarray]],
+    roll: Optional[Union[float, np.ndarray]],
     transformation_matrix: np.ndarray,
     declination: float = 0.0,
     orientation: str = "up",
@@ -68,6 +68,8 @@ def coord_transform_3_beam_nortek(
         T_flip[1, :] = -T_flip[1, :]
         T_flip[2, :] = -T_flip[2, :]
 
+    if heading is None or pitch is None or roll is None:
+        raise ValueError("heading, pitch, and roll must be provided for ENU coordinate transforms")
     heading_plus_dec = (heading + declination) % 360
     h_rad = circmean(np.radians(heading_plus_dec - 90))
     p_rad = circmean(np.radians(pitch))

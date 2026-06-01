@@ -3,7 +3,7 @@ from scipy.stats import median_abs_deviation, norm
 from utils.interp_utils import interp_rows, naninterp
 
 
-def _flatten_to_2d(u: np.ndarray):
+def _flatten_to_2d(u: np.ndarray) -> tuple[np.ndarray, tuple[int, ...]]:
     """Coerce `u` to a `float64` 2-D view shaped `(rows, n_time)` for despiking.
 
     The last axis of `u` is preserved as the time axis. All other axes are
@@ -182,7 +182,7 @@ def goring_nikora(
         # du vs du2
         bad_du_du2 = (du - du_bar) ** 2 / a3**2 + (du2 - du2_bar) ** 2 / b3**2 > 1
 
-        return bad_u_du | bad_u_du2 | bad_du_du2
+        return np.asarray(bad_u_du | bad_u_du2 | bad_du_du2)
 
     flat, orig_shape = _flatten_to_2d(u)
     bad_index = flag_bad_indices(flat)
@@ -238,4 +238,4 @@ def recursive_gaussian(
 
         flat[ii, :] = u_row
 
-    return flat.reshape(orig_shape)
+    return np.asarray(flat.reshape(orig_shape))

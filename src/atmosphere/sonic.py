@@ -32,8 +32,8 @@ class Sonic(BaseInstrument):
         source_coords: str = "xyz",
         path_length: float = 0.15,
         burst_dim: Optional[str] = None,
-        **loader_kwargs,
-    ):
+        **loader_kwargs: Any,
+    ) -> None:
         """Initialize a Sonic object.
 
         Parameters
@@ -121,10 +121,11 @@ class Sonic(BaseInstrument):
         data_keys: Optional[Union[str, List[str]]] = None,
         source_coords: str = "xyz",
         path_length: float = 0.15,
-    ):
+    ) -> None:
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+        files_list = [files] if isinstance(files, str) else files
+        BaseInstrument.validate_common_inputs(files_list, name_map, fs, z, data_keys)
 
         if deployment_type != "fixed":
             raise ValueError(f"Sonic.deployment_type must be 'fixed', not {deployment_type!r}")
@@ -148,7 +149,7 @@ class Sonic(BaseInstrument):
         if z_convention != ZConvention.MAS:
             raise ValueError("Sonic instruments use 'm_above_surface' convention for vertical coordinates")
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]):
+    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads using the
         options defined in the input dictionary.
 
@@ -195,7 +196,7 @@ class Sonic(BaseInstrument):
         super().set_preprocess_opts(opts)
         self._rotate = opts.get("rotate", {})
 
-    def _apply_preprocessing(self, burst_data):
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
         burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
             return burst_data
@@ -213,7 +214,7 @@ class Sonic(BaseInstrument):
         f_low: float,
         f_high: float,
         henjes_correction: bool,
-        **kwargs,
+        **kwargs: Any,
     ) -> np.ndarray:
         """Estimate the dissipation rate of TKE via spectral curve fit to the streamwise wavenumber spectrum.
 
@@ -253,8 +254,8 @@ class Sonic(BaseInstrument):
             f_low: float,
             f_high: float,
             henjes_correction: bool = True,
-            **kwargs,
-        ) -> np.ndarray:
+            **kwargs: Any,
+        ) -> float:
             c1 = 0.53
             u_prime = sig.detrend(u, type="linear")
             u_bar = np.nanmean(u)
@@ -315,8 +316,8 @@ class Sonic(BaseInstrument):
         method: str = "cov",
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> Dict[str, np.ndarray]:
         """Calculate components of the covariance matrix (i.e., the Reynolds
         stress)
 
@@ -421,9 +422,9 @@ class Sonic(BaseInstrument):
         tke_prime = 0.5 * (u_prime**2 + v_prime**2 + w_prime**2)
         tke_out = np.mean(tke_prime, axis=1)
 
-        return tke_out
+        return np.asarray(tke_out)
 
-    def buoyancy_flux(self, burst_data: Dict[str, np.ndarray]):
+    def buoyancy_flux(self, burst_data: Dict[str, np.ndarray]) -> np.ndarray:
         """Buoyancy flux from the sonic temperature/vertical velocity covariance (e.g., Liu et al., (2001)).
 
         Parameters
@@ -451,9 +452,9 @@ class Sonic(BaseInstrument):
         Ts_prime = burst_data["Ts"] - Ts_bar
         w_prime = w_full - w_bar
         B = g * np.mean(Ts_prime * w_prime, axis=1) / (Ts_bar + T0)
-        return B
+        return np.asarray(B)
 
-    def subsample(self, start_idx, end_idx):
+    def subsample(self, start_idx: int, end_idx: int) -> "Sonic":
         """Subsample the Sonic object between files[start_idx] and
         files[end_idx].
 

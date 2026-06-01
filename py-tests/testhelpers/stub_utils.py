@@ -4,6 +4,7 @@ import types
 from atmosphere.met import Met
 from ocean.adcp import ADCP
 from ocean.ctd import CTD
+from ocean.adv import ADV
 from testhelpers.rotate_utils import nortek_4beam_T
 
 
@@ -16,7 +17,9 @@ def eq_except(a, b, *skip):
 def make_adv(fs, n_heights=1):
     """Return a minimal namespace that satisfies ADV.covariance attribute
     requirements."""
-    return types.SimpleNamespace(fs=fs, n_heights=n_heights)
+    adv = types.SimpleNamespace(fs=fs, n_heights=n_heights)
+    adv._find_wave_band = ADV._find_wave_band
+    return adv
 
 
 def make_sonic(fs, n_heights=1):

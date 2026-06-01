@@ -1,13 +1,13 @@
 import numpy as np
 import scipy.signal as sig
-from typing import Optional, Union
+from typing import Any, Optional, Union
 from utils.constants import GRAVITATIONAL_ACCELERATION as g, WATER_DENSITY as rho0
 from utils.spectral_utils import psd, csd
 
 
 def get_wavenumber(
     omega: Union[float, np.ndarray], h: Union[float, np.ndarray], max_iter: int = 10, tol: float = 1e-10
-):
+) -> Union[float, np.ndarray]:
     """Calculate wavenumber from the surface gravity wave dispersion relation using Newton's method.
 
     Parameters
@@ -40,7 +40,7 @@ def get_wavenumber(
     return k.item() if k.ndim == 0 else k
 
 
-def get_cg(k: Union[float, np.ndarray], h: Union[float, np.ndarray]):
+def get_cg(k: Union[float, np.ndarray], h: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     """Returns the group velocity from the linear wave theory dispersion relation.
 
     Parameters
@@ -66,7 +66,7 @@ def jones_monismith_correction(
     S_pp: np.ndarray,
     f: np.ndarray,
     f_cutoff: Optional[float] = 0.5,
-):
+) -> np.ndarray:
     """Apply Jones & Monismith (2008) correction for high frequency noise
     introduced by the pressure attenuation.
 
@@ -131,7 +131,7 @@ def wave_stats(
     band_definitions: Optional[dict] = None,
     sea_correction: bool = True,
     f_cutoff: float = 1.0,
-    **kwargs,
+    **kwargs: Any,
 ) -> dict:
     """
     Helper function for calculating all directional wave statistics
@@ -226,7 +226,7 @@ def wave_stats(
 
     # Getting sea surface elevation spectrum
     omega = 2 * np.pi * f
-    k = get_wavenumber(omega, h)
+    k = np.asarray(get_wavenumber(omega, h))
     z = mab - h
 
     # cosh(k(z+h))/cosh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1+e^{-2kh})
@@ -250,7 +250,7 @@ def wave_stats(
 
     # Phase and group velocity
     cp = omega / k
-    cg = get_cg(k, h)
+    cg = np.asarray(get_cg(k, h))
 
     # Radiation stress -- Mei et al. Ch 11.3
     dir_rad = np.deg2rad(dir1)

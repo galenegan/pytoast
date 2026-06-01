@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Tuple, Optional, Dict, TypeAlias
+from typing import Tuple, Optional, Dict
 from utils.constants import (
     SSO,
     VON_KARMAN as KAPPA,
@@ -110,7 +110,7 @@ def sea_surface_albedo(
     julian_day: Numeric,
     lat: Numeric,
     lon: Numeric,
-) -> Tuple[Numeric, Numeric, Numeric, Numeric]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Sea-surface albedo from the Payne (1972) look-up table.
 
@@ -300,7 +300,7 @@ def coare36(
     u = np.atleast_1d(np.asarray(u, dtype=float)).ravel()
     N = u.size
 
-    def _to_array(x, length=N):
+    def _to_array(x: Numeric, length: int = N) -> np.ndarray:
         return np.broadcast_to(np.atleast_1d(np.asarray(x, dtype=float)), (length,)).copy()
 
     z_u = _to_array(z_u)
@@ -360,7 +360,7 @@ def coare36(
     L_e = at.latent_heat_of_vaporization(ts)
 
     # Air density at T/q measurement height [kg/m3]
-    rho_air = at.air_density(t, p_tq, rh)
+    rho_air = np.asarray(at.air_density(t, p_tq, rh))
 
     # Kinematic viscosity of air [m2/s]
     nu_air = at.kinematic_viscosity(t)
@@ -399,8 +399,8 @@ def coare36(
     delta_q = q_s - q_air  # air-sea specific humidity difference [kg/kg]
     t_kelvin = at.t_c2kelvin(t)  # air temperature [K]
 
-    dT_skin = 0.3  # first-guess cool-skin temperature depression [C]
-    gust = 0.5  # first-guess gustiness [m/s]
+    dT_skin = np.full(N, 0.3)  # first-guess cool-skin temperature depression [C]
+    gust = np.full(N, 0.5)  # first-guess gustiness [m/s]
     u_tot = np.sqrt(delta_u**2 + gust**2)  # total (gustiness-inclusive) wind speed
 
     # Estimate 10-m wind from log profile with smooth roughness
@@ -758,7 +758,7 @@ def coare36_warm_layer(
     pbl_height: Numeric,
     rain: np.ndarray,
     ts_depth: np.ndarray,
-    surface_salinity: np.ndarray = None,
+    surface_salinity: Optional[np.ndarray] = None,
     phase_speed: Optional[np.ndarray] = None,
     h_sig: Optional[np.ndarray] = None,
     zref_u: Numeric = 10.0,
@@ -812,7 +812,7 @@ def coare36_warm_layer(
     if surface_salinity is None:
         surface_salinity = np.full(N, SSO)
 
-    def _arr(x):
+    def _arr(x: Numeric) -> np.ndarray:
         return np.broadcast_to(np.atleast_1d(np.asarray(x, dtype=float)), (N,)).copy()
 
     t = _arr(t)

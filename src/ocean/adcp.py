@@ -43,8 +43,8 @@ class ADCP(BaseInstrument):
         beam_angle: float = 25.0,
         manufacturer: str = "nortek",
         burst_dim: Optional[str] = None,
-        **loader_kwargs,
-    ):
+        **loader_kwargs: Any,
+    ) -> None:
         """Initialize an ADCP object.
 
         Parameters
@@ -161,10 +161,11 @@ class ADCP(BaseInstrument):
         orientation: str = "up",
         beam_angle: float = 25.0,
         manufacturer: str = "nortek",
-    ):
+    ) -> None:
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+        files_list = [files] if isinstance(files, str) else files
+        BaseInstrument.validate_common_inputs(files_list, name_map, fs, z, data_keys)
 
         if deployment_type != "fixed":
             raise ValueError(f"ADCP.deployment_type must be 'fixed', not {deployment_type!r}")
@@ -195,7 +196,7 @@ class ADCP(BaseInstrument):
                 "are already in the desired coordinates"
             )
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]):
+    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
         """
         Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
 
@@ -255,7 +256,7 @@ class ADCP(BaseInstrument):
         super().set_preprocess_opts(opts)
         self._rotate = opts.get("rotate", {})
 
-    def _apply_preprocessing(self, burst_data):
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
         burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
             return burst_data
@@ -430,8 +431,8 @@ class ADCP(BaseInstrument):
         sigma_wave_ratio_max: Optional[float] = None,
         pitch: np.ndarray = np.array([0.0]),
         roll: np.ndarray = np.array([0.0]),
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> Dict[str, np.ndarray]:
         """Calculate Reynolds stress components for a given burst.
 
         Parameters
@@ -690,10 +691,10 @@ class ADCP(BaseInstrument):
         self,
         burst_data: Dict[str, np.ndarray],
         method: str = "4beam_spectral",
-        f_min: float = None,
-        f_max: float = None,
-        sf_kwargs: dict = None,
-        **kwargs,
+        f_min: Optional[float] = None,
+        f_max: Optional[float] = None,
+        sf_kwargs: Optional[dict] = None,
+        **kwargs: Any,
     ) -> np.ndarray:
         """Estimate the dissipation rate of TKE for a given burst.
 
@@ -817,6 +818,8 @@ class ADCP(BaseInstrument):
                 eps_out[height_idx] = slope ** (3 / 2)
 
         elif method == "structure_function":
+            if self.z is None:
+                raise ValueError("Structure-function dissipation requires `self.z` to be defined")
             sf_kwargs = sf_kwargs or {}
             z_start = sf_kwargs.get("z_start_idx", 0)
             z_end = sf_kwargs.get("z_end_idx", self.n_heights)
@@ -867,14 +870,14 @@ class ADCP(BaseInstrument):
         return eps_out
 
     @property
-    def beam_keys(self):
+    def beam_keys(self) -> List[str]:
         return [k for k in ["u1", "u2", "u3", "u4", "u5"] if k in self.name_map]
 
     @property
-    def num_beams(self):
+    def num_beams(self) -> int:
         return len(self.beam_keys)
 
-    def subsample(self, start_idx, end_idx):
+    def subsample(self, start_idx: int, end_idx: int) -> "ADCP":
         """Subsample the ADCP object between files[start_idx] and
         files[end_idx].
 

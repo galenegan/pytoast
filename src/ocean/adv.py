@@ -40,8 +40,8 @@ class ADV(BaseInstrument):
         orientation: str = "up",
         water_depth: Optional[float] = None,
         burst_dim: Optional[str] = None,
-        **loader_kwargs,
-    ):
+        **loader_kwargs: Any,
+    ) -> None:
         """Initialize an ADV object.
 
         Parameters
@@ -149,10 +149,11 @@ class ADV(BaseInstrument):
         source_coords: Optional[str] = "xyz",
         orientation: Optional[str] = "up",
         water_depth: Optional[float] = None,
-    ):
+    ) -> None:
 
         # General validation
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+        files_list = [files] if isinstance(files, str) else files
+        BaseInstrument.validate_common_inputs(files_list, name_map, fs, z, data_keys)
 
         if deployment_type != "fixed":
             raise ValueError(f"ADV.deployment_type must be 'fixed', not {deployment_type!r}")
@@ -181,7 +182,7 @@ class ADV(BaseInstrument):
             if not isinstance(water_depth, (float, int)):
                 raise ValueError(f"Invalid value for `water_depth`: {water_depth}. Must be a float or int")
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]):
+    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads using the
         options defined in the input dictionary.
 
@@ -243,7 +244,7 @@ class ADV(BaseInstrument):
         super().set_preprocess_opts(opts)
         self._rotate = opts.get("rotate", {})
 
-    def _apply_preprocessing(self, burst_data):
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
         """Applies preprocessing to a burst data dictionary during loading."""
         burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
@@ -266,7 +267,7 @@ class ADV(BaseInstrument):
 
         return burst_data
 
-    def _apply_coord_transform(self, burst_data, coords_out):
+    def _apply_coord_transform(self, burst_data: Dict[str, Any], coords_out: str) -> Dict[str, Any]:
         """Transform velocity components between coordinate systems.
 
         Uses configuration stored in self._rotate. Can be called from _apply_preprocessing during standard burst
@@ -345,7 +346,7 @@ class ADV(BaseInstrument):
         rho: float,
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, float]:
         """Benilov wave-turbulence decomposition to estimate wave and
         turbulence components of the Reynolds stress. (Benilov & Filyushkin,
@@ -516,8 +517,8 @@ class ADV(BaseInstrument):
         f_high: Optional[float] = None,
         f_wave_low: Optional[float] = None,
         f_wave_high: Optional[float] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> Dict[str, float]:
         """Bricker & Monismith (2007) phase method for wave-turbulence
         decomposition.
 
@@ -786,13 +787,13 @@ class ADV(BaseInstrument):
         method: str = "cov",
         f_low: Optional[float] = None,
         f_high: Optional[float] = None,
-        rho: Optional[float] = rho0,
+        rho: float = rho0,
         f_wave_low: Optional[float] = None,
         f_wave_high: Optional[float] = None,
         rank_truncation: Union[int, float] = 0.05,
         time_delay_size: Optional[int] = None,
         return_time_series: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict:
         """Calculate components of the covariance matrix (i.e., the Reynolds stress)
 
@@ -985,6 +986,8 @@ class ADV(BaseInstrument):
                 out["vw_wave"][height_idx] = p_out["vw_wave"]
                 out["uv_wave"][height_idx] = p_out["uv_wave"]
         elif method == "dmd":
+            if f_wave_low is None or f_wave_high is None:
+                raise ValueError("f_wave_low and f_wave_high are required for method='dmd'")
             out["uu_turb"] = np.empty((n_heights,))
             out["vv_turb"] = np.empty((n_heights,))
             out["ww_turb"] = np.empty((n_heights,))
@@ -1130,7 +1133,7 @@ class ADV(BaseInstrument):
         return J11, J22, J33
 
     def dissipation(
-        self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs
+        self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs: Any
     ) -> Dict[str, np.ndarray]:
         """
         Estimate the dissipation rate of TKE using the Gerbi et al. (2009) spectral curve fitting method. This is nearly
@@ -1253,16 +1256,16 @@ class ADV(BaseInstrument):
 
         tke_prime = 0.5 * (u1_prime**2 + u2_prime**2 + u3_prime**2)
         tke_out = np.mean(tke_prime, axis=1)
-        return tke_out
+        return np.asarray(tke_out)
 
     def directional_wave_statistics(
         self,
         burst_data: dict,
         band_definitions: Optional[dict] = None,
-        sea_correction: Optional[bool] = True,
-        f_cutoff: Optional[float] = 1.0,
-        rho: Optional[float] = rho0,
-        **kwargs,
+        sea_correction: bool = True,
+        f_cutoff: float = 1.0,
+        rho: float = rho0,
+        **kwargs: Any,
     ) -> dict:
         """Calculate directional wave statistics from velocity and pressure
         measurements.
@@ -1345,7 +1348,7 @@ class ADV(BaseInstrument):
 
         return {key: np.array([r[key] for r in results]) for key in results[0]}
 
-    def subsample(self, start_idx: int, end_idx: int):
+    def subsample(self, start_idx: int, end_idx: int) -> "ADV":
         """Subsample the ADV object between files[start_idx] and
         files[end_idx].
 

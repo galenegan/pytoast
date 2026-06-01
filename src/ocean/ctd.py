@@ -1,6 +1,6 @@
 import numpy as np
-from typing import Optional, Union, List, Dict, Any, TypeAlias
-from utils.base_instrument import BaseInstrument, ZConvention
+from typing import Optional, Union, List, Dict, Any
+from utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
 import utils.sea_thermo as sea_thermo
 from utils.constants import Numeric
 
@@ -65,8 +65,8 @@ class CTD(BaseInstrument):
         z_convention: ZConvention = ZConvention.DEPTH,
         data_keys: Optional[Union[str, List[str]]] = None,
         burst_dim: Optional[str] = None,
-        **loader_kwargs,
-    ):
+        **loader_kwargs: Any,
+    ) -> None:
         """Initialize a CTD object.
 
         Parameters
@@ -122,7 +122,7 @@ class CTD(BaseInstrument):
         super().__init__(
             files,
             name_map,
-            deployment_type=deployment_type,
+            deployment_type=DeploymentType(deployment_type),
             fs=fs,
             z=z,
             z_convention=z_convention,
@@ -139,15 +139,16 @@ class CTD(BaseInstrument):
         z: Optional[Union[float, int, List[Union[float, int]]]] = None,
         z_convention: ZConvention = ZConvention.DEPTH,
         data_keys: Optional[Union[str, List[str]]] = None,
-    ):
-        BaseInstrument.validate_common_inputs(files, name_map, fs, z, data_keys)
+    ) -> None:
+        files_list = [files] if isinstance(files, str) else files
+        BaseInstrument.validate_common_inputs(files_list, name_map, fs, z, data_keys)
 
         if z_convention not in [ZConvention.MAB, ZConvention.DEPTH]:
             raise ValueError(
                 f"Invalid value for `z_convention`: {z_convention}. Must be one of ['m_above_bed', 'depth']"
             )
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]):
+    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads.
 
         Parameters
@@ -177,7 +178,7 @@ class CTD(BaseInstrument):
         """
         super().set_preprocess_opts(opts)
 
-    def _apply_preprocessing(self, burst_data):
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
         burst_data = super()._apply_preprocessing(burst_data, keys_to_process=self._burst_var_keys)
         return burst_data
 
@@ -578,54 +579,50 @@ class CTD(BaseInstrument):
         p = burst_data.get("p")
         lat = burst_data.get("lat")
 
-        has_sp = sp is not None
-        has_t = t is not None
-        has_p = p is not None
-
-        sa = None
-        if has_sp:
-            sa = self.sa_from_sp(sp)
+        sa: Optional[np.ndarray] = None
+        if sp is not None:
+            sa = np.asarray(self.sa_from_sp(sp))
             burst_data["sa"] = sa
 
-        ct = None
-        if sa is not None and has_t and has_p:
-            ct = self.ct_from_t(sa, t, p)
+        ct: Optional[np.ndarray] = None
+        if sa is not None and t is not None and p is not None:
+            ct = np.asarray(self.ct_from_t(sa, t, p))
             burst_data["ct"] = ct
 
-        if sa is not None and ct is not None and has_p:
-            burst_data["rho"] = self.density(sa, ct, p)
-            burst_data["alpha"] = self.alpha(sa, ct, p)
-            burst_data["beta"] = self.beta(sa, ct, p)
-            burst_data["sound_speed"] = self.sound_speed(sa, ct, p)
+        if sa is not None and ct is not None and p is not None:
+            burst_data["rho"] = np.asarray(self.density(sa, ct, p))
+            burst_data["alpha"] = np.asarray(self.alpha(sa, ct, p))
+            burst_data["beta"] = np.asarray(self.beta(sa, ct, p))
+            burst_data["sound_speed"] = np.asarray(self.sound_speed(sa, ct, p))
 
         if sa is not None and ct is not None:
-            burst_data["sigma0"] = self.sigma0(sa, ct)
+            burst_data["sigma0"] = np.asarray(self.sigma0(sa, ct))
 
-        if sa is not None and has_p:
-            burst_data["t_freezing"] = self.freezing_temperature(sa, p)
+        if sa is not None and p is not None:
+            burst_data["t_freezing"] = np.asarray(self.freezing_temperature(sa, p))
 
-        if sa is not None and has_t and has_p:
-            burst_data["cp"] = self.heat_capacity(sa, t, p)
+        if sa is not None and t is not None and p is not None:
+            burst_data["cp"] = np.asarray(self.heat_capacity(sa, t, p))
 
-        if sa is not None and has_t:
-            burst_data["nu"] = self.kinematic_viscosity(t, sa)
+        if sa is not None and t is not None:
+            burst_data["nu"] = np.asarray(self.kinematic_viscosity(t, sa))
 
-        if sa is not None and ct is not None and has_p:
+        if sa is not None and ct is not None and p is not None:
             if self.z is not None and self.n_heights > 1:
                 burst_data["N2"] = self.buoyancy_frequency(sa, ct, p, axis=0)
             elif self.z is None:
                 burst_data["N2"] = self.buoyancy_frequency(sa, ct, p, axis=1)
 
-        if has_p:
-            burst_data["z"] = self.depth_from_pressure(p, lat)
+        if p is not None:
+            burst_data["z"] = np.asarray(self.depth_from_pressure(p, lat))
 
         return burst_data
 
     @property
-    def _burst_var_keys(self):
+    def _burst_var_keys(self) -> List[str]:
         return [k for k in self.name_map if k != "time"]
 
-    def subsample(self, start_idx: int, end_idx: int):
+    def subsample(self, start_idx: int, end_idx: int) -> "CTD":
         new_ctd = self.__class__(
             files=self.files[start_idx:end_idx],
             name_map=self.name_map,

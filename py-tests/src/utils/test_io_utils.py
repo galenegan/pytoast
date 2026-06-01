@@ -130,6 +130,7 @@ def test_unknown_1d_length_uses_keyed_dim(burst_times):
     assert ds["mode_amp"].dims == ("burst_time", "mode_amp_dim")
     assert ds["mode_amp"].shape == (N_BURSTS, 7)
 
+
 def test_time_detection():
     time = pd.Timestamp.now()
     time_format = BaseInstrument.detect_time_format(time)
@@ -146,4 +147,3 @@ def test_time_detection():
     time = pd.Timestamp.now().timestamp()
     time_format = BaseInstrument.detect_time_format(time)
     assert time_format == "epoch"
-

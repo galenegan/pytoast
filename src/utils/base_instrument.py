@@ -12,7 +12,7 @@ import xarray as xr
 from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
 from utils.io_utils import results_to_dataset
 
-DatetimeLike = datetime.datetime | np.datetime64 | pd.Timestamp
+type DatetimeLike = datetime.datetime | np.datetime64 | pd.Timestamp
 
 
 class DeploymentType(StrEnum):
@@ -113,8 +113,8 @@ class BaseInstrument(ABC):
                     raise ValueError(f"burst_dim {burst_dim!r} not found in dataset dims {tuple(ds.dims)}")
                 self._monolithic_n_bursts = int(ds.sizes[burst_dim])
         self.fs, self.z, self.file_type, self.num_samples_per_burst = self._inspect_first_file(fs, z, deployment_type)
-        self._cached_idx = None
-        self._cached_data = None
+        self._cached_idx: Optional[int] = None
+        self._cached_data: Optional[Dict[str, np.ndarray]] = None
         self._preprocess_enabled = False
 
     @staticmethod
@@ -124,7 +124,7 @@ class BaseInstrument(ABC):
         fs: Optional[float] = None,
         z: Optional[Union[float, List[float], np.ndarray]] = None,
         data_keys: Optional[Union[str, List[str]]] = None,
-    ):
+    ) -> None:
         """Validate common input parameters shared across all instruments.
 
         Parameters
@@ -197,7 +197,11 @@ class BaseInstrument(ABC):
             ds.close()
 
     @staticmethod
-    def _load_file(file_path, data_keys=None, loader_kwargs: Optional[Dict[str, Any]] = None) -> Tuple[Any, str]:
+    def _load_file(
+        file_path: str,
+        data_keys: Optional[Union[str, List[str]]] = None,
+        loader_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Any, str]:
         """Load a single file. Extra reader kwargs are forwarded to the
         underlying loader selected by extension.
 
@@ -406,7 +410,7 @@ class BaseInstrument(ABC):
         if burst_idx >= self.n_bursts:
             raise IndexError(f"Burst index {burst_idx} out of range")
 
-        if self._cached_idx == burst_idx:
+        if self._cached_idx == burst_idx and self._cached_data is not None:
             return self._cached_data
 
         if self.burst_dim is not None:
@@ -447,14 +451,14 @@ class BaseInstrument(ABC):
 
             burst_data[out_key] = var_data
 
-        burst_data_out = self._apply_preprocessing(burst_data)
+        burst_data_out: Dict[str, np.ndarray] = self._apply_preprocessing(burst_data)
 
         self._cached_idx = burst_idx
         self._cached_data = burst_data_out
 
         return burst_data_out
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]):
+    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads using the
         options defined in the input dictionary.
 
@@ -495,17 +499,19 @@ class BaseInstrument(ABC):
         self._cached_idx = None
         self._cached_data = None
 
-    def _apply_preprocessing(self, burst_data, keys_to_process: List[str] = []):
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
         """Applies preprocessing to a burst data dictionary during loading."""
         if not self._preprocess_enabled:
             return burst_data
+        keys_to_process = keys_to_process or []
 
         if self._despike:
-            despike_fn = {
+            despike_fns: Dict[str, Any] = {
                 "goring_nikora": goring_nikora,
                 "threshold": threshold,
                 "recursive_gaussian": recursive_gaussian,
-            }.get(self._despike_method)
+            }
+            despike_fn = despike_fns.get(self._despike_method)
             if despike_fn is None:
                 raise ValueError(f"Invalid despiking method '{self._despike_method}'")
             for key in keys_to_process:
@@ -513,7 +519,7 @@ class BaseInstrument(ABC):
 
         return burst_data
 
-    def subsample(self, start_idx: int, end_idx: int):
+    def subsample(self, start_idx: int, end_idx: int) -> "BaseInstrument":
         """Subsample the instrument file list from start_idx:end_idx.
 
         Must be implemented in derived classes to account for unique
@@ -583,7 +589,7 @@ class BaseInstrument(ABC):
         burst_times: np.ndarray,
         freq: Optional[np.ndarray] = None,
         attrs: Optional[dict] = None,
-        **nc_kwargs,
+        **nc_kwargs: Any,
     ) -> None:
         """Build a Dataset from per-burst results and write it to a NetCDF
         file.
