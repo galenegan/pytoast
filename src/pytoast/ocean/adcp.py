@@ -694,6 +694,7 @@ class ADCP(BaseInstrument):
         method: str = "4beam_spectral",
         f_min: float | None = None,
         f_max: float | None = None,
+        spectral_r2_min: float = 0.9,
         sf_kwargs: dict | None = None,
         **kwargs: Any,
     ) -> np.ndarray:
@@ -710,6 +711,10 @@ class ADCP(BaseInstrument):
             Lower bound of inertial subrange for the spectral fits
         f_max : float
             Upper bound of inertial subrange for the spectral fits.
+        spectral_r2_min : float
+            Minimum coefficient of determination (r^2) for the linear regression to the inertial subrange of the power
+            spectrum. Estimates with r^2 below this threshold are set to NaN. Applies to the `4beam_spectral` and
+            `5th_beam_spectral` methods only. Defaults to 0.9.
         sf_kwargs : dict
             Additional keyword arguments to pass to the structure function method. Keys allowed:
 
@@ -783,7 +788,7 @@ class ADCP(BaseInstrument):
             u2_prime = u2 - u2_bar
             u3_prime = u3 - u3_bar
             u4_prime = u4 - u4_bar
-            eps_out = np.empty((self.n_heights,))
+            eps_out = np.full((self.n_heights,), np.nan)
             for height_idx in range(self.n_heights):
                 f, P_11 = psd(u1_prime[height_idx, :], fs=self.fs, **kwargs)
                 f, P_22 = psd(u2_prime[height_idx, :], fs=self.fs, **kwargs)
@@ -799,13 +804,15 @@ class ADCP(BaseInstrument):
                     idx_fit &= k <= 2 * np.pi * f_max / u_bar[height_idx]
                 X = C * k ** (-5 / 3)
                 y = P_T_k
-                slope, *_ = linregress(X[idx_fit], y[idx_fit])
+                slope, _, rvalue, *_ = linregress(X[idx_fit], y[idx_fit])
+                if rvalue ** 2 < spectral_r2_min:
+                    continue
                 eps_out[height_idx] = slope ** (3 / 2)
         elif method == "5th_beam_spectral":
             u5 = burst_data["u5"]
             u5_bar = np.mean(u5, axis=1, keepdims=True)
             u5_prime = u5 - u5_bar
-            eps_out = np.empty((self.n_heights,))
+            eps_out = np.full((self.n_heights,), np.nan)
             for height_idx in range(self.n_heights):
                 f, P_55 = psd(u5_prime[height_idx, :], fs=self.fs, **kwargs)
                 P_55_k = P_55 * u_bar[height_idx] / (2 * np.pi)
@@ -817,7 +824,9 @@ class ADCP(BaseInstrument):
                     idx_fit &= k >= 2 * np.pi * f_min / u_bar[height_idx]
                 if f_max:
                     idx_fit &= k <= 2 * np.pi * f_max / u_bar[height_idx]
-                slope, *_ = linregress(X[idx_fit], y[idx_fit])
+                slope, _, rvalue, *_ = linregress(X[idx_fit], y[idx_fit])
+                if rvalue ** 2 < spectral_r2_min:
+                    continue
                 eps_out[height_idx] = slope ** (3 / 2)
 
         elif method == "structure_function":
