@@ -1,12 +1,15 @@
+from typing import Any
+
 import numpy as np
 import scipy.signal as sig
 from scipy.stats import linregress
-from typing import Optional, Union, List, Dict, Any
-from utils.spectral_utils import psd, csd, get_frequency_range
-from utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
-from utils.burst_utils import get_uvw
-from utils.constants import T0, GRAVITATIONAL_ACCELERATION as g
-from utils.rotate_utils import apply_flow_rotation
+
+from pytoast.utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
+from pytoast.utils.burst_utils import get_uvw
+from pytoast.utils.constants import GRAVITATIONAL_ACCELERATION as g
+from pytoast.utils.constants import T0
+from pytoast.utils.rotate_utils import apply_flow_rotation
+from pytoast.utils.spectral_utils import csd, get_frequency_range, psd
 
 
 class Sonic(BaseInstrument):
@@ -22,16 +25,16 @@ class Sonic(BaseInstrument):
 
     def __init__(
         self,
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
         deployment_type: DeploymentType = DeploymentType.FIXED,
-        fs: Optional[float] = None,
-        z: Optional[Union[float, List[float]]] = None,
+        fs: float | None = None,
+        z: float | list[float] | None = None,
         z_convention: ZConvention = ZConvention.MAS,
-        data_keys: Optional[Union[str, List[str]]] = None,
+        data_keys: str | list[str] | None = None,
         source_coords: str = "xyz",
         path_length: float = 0.15,
-        burst_dim: Optional[str] = None,
+        burst_dim: str | None = None,
         **loader_kwargs: Any,
     ) -> None:
         """Initialize a Sonic object.
@@ -112,13 +115,13 @@ class Sonic(BaseInstrument):
 
     @staticmethod
     def validate_inputs(
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
         deployment_type: str = "fixed",
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        fs: int | float | None = None,
+        z: float | int | list[float | int] | None = None,
         z_convention: ZConvention = ZConvention.MAS,
-        data_keys: Optional[Union[str, List[str]]] = None,
+        data_keys: str | list[str] | None = None,
         source_coords: str = "xyz",
         path_length: float = 0.15,
     ) -> None:
@@ -149,7 +152,7 @@ class Sonic(BaseInstrument):
         if z_convention != ZConvention.MAS:
             raise ValueError("Sonic instruments use 'm_above_surface' convention for vertical coordinates")
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
+    def set_preprocess_opts(self, opts: dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads using the
         options defined in the input dictionary.
 
@@ -196,7 +199,7 @@ class Sonic(BaseInstrument):
         super().set_preprocess_opts(opts)
         self._rotate = opts.get("rotate", {})
 
-    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: list[str] | None = None) -> Any:
         burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
             return burst_data
@@ -312,12 +315,12 @@ class Sonic(BaseInstrument):
 
     def covariance(
         self,
-        burst_data: Dict[str, np.ndarray],
+        burst_data: dict[str, np.ndarray],
         method: str = "cov",
-        f_low: Optional[float] = None,
-        f_high: Optional[float] = None,
+        f_low: float | None = None,
+        f_high: float | None = None,
         **kwargs: Any,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Calculate components of the covariance matrix (i.e., the Reynolds
         stress)
 
@@ -397,7 +400,7 @@ class Sonic(BaseInstrument):
 
         return out
 
-    def tke(self, burst_data: Dict[str, np.ndarray]) -> np.ndarray:
+    def tke(self, burst_data: dict[str, np.ndarray]) -> np.ndarray:
         """Calculates turbulent kinetic energy.
 
         Parameters
@@ -424,7 +427,7 @@ class Sonic(BaseInstrument):
 
         return np.asarray(tke_out)
 
-    def buoyancy_flux(self, burst_data: Dict[str, np.ndarray]) -> np.ndarray:
+    def buoyancy_flux(self, burst_data: dict[str, np.ndarray]) -> np.ndarray:
         """Buoyancy flux from the sonic temperature/vertical velocity covariance (e.g., Liu et al., (2001)).
 
         Parameters

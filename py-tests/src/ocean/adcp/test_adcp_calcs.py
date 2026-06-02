@@ -2,8 +2,8 @@ import numpy as np
 import numpy.testing as npt
 import pytest
 
-from ocean.adcp import ADCP
-from utils.rotate_utils import coord_transform_4_beam_nortek, coord_transform_4_beam_rdi
+from pytoast.ocean.adcp import ADCP
+from pytoast.utils.rotate_utils import coord_transform_4_beam_nortek, coord_transform_4_beam_rdi
 from testhelpers.rotate_utils import nortek_4beam_T, rdi_4beam_T
 from testhelpers.stub_utils import make_adcp
 from testhelpers.synth_utils import KAPPA, generate_profile_burst

@@ -10,7 +10,7 @@ import numpy.testing as npt
 import pytest
 from pathlib import Path
 
-from boundaries.coare import coare36, coare36_warm_layer, sea_surface_albedo
+from pytoast.boundaries.coare import coare36, coare36_warm_layer, sea_surface_albedo
 
 ########
 # Paths

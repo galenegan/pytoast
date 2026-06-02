@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from utils.burst_utils import get_beams, get_uvw
+from pytoast.utils.burst_utils import get_beams, get_uvw
 
 
 def _burst(coords, n=3):

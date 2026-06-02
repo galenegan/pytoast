@@ -1,2 +1,2 @@
 
-::: atmosphere.sonic.Sonic
+::: pytoast.atmosphere.sonic.Sonic

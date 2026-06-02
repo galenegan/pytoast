@@ -1,2 +1,2 @@
 
-::: utils.rotate_utils
+::: pytoast.utils.rotate_utils

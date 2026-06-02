@@ -1,9 +1,9 @@
 import numpy as np
 import numpy.testing as npt
 import pytest
-import utils.air_thermo as air_thermo
-from atmosphere.met import Met
-from utils.base_instrument import ZConvention
+import pytoast.utils.air_thermo as air_thermo
+from pytoast.atmosphere.met import Met
+from pytoast.utils.base_instrument import ZConvention
 from testhelpers.stub_utils import eq_except, make_met
 
 

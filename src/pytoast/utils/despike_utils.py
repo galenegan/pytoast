@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.stats import median_abs_deviation, norm
-from utils.interp_utils import interp_rows, naninterp
+
+from pytoast.utils.interp_utils import interp_rows, naninterp
 
 
 def _flatten_to_2d(u: np.ndarray) -> tuple[np.ndarray, tuple[int, ...]]:

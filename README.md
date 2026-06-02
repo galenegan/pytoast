@@ -1,48 +1,79 @@
 # pyTOAST: Python Toolkit for Ocean, Atmospheric, and Surface-wave Turbulence
 
-> A pure python toolkit for analyzing observations of ocean and atmospheric turbulence and related bulk variables.  
+> A pure-Python toolkit for analyzing observations of ocean and atmospheric
+> turbulence and related bulk variables.
 
 ---
 
 ## Overview
+
+`pytoast` provides instrument classes for common turbulence sensors --
+acoustic Doppler velocimeters (ADV), acoustic Doppler current profilers
+(ADCP), sonic anemometers, CTDs, and meteorological stations -- along with a
+shared preprocessing pipeline (despiking, coordinate rotations) and a suite
+of derived calculations: turbulent kinetic energy and dissipation, Reynolds
+stresses with wave-turbulence decomposition, directional wave statistics
+(Jones-Monismith-corrected), seawater and air thermodynamics (TEOS-10), and
+boundary-layer flux parameterizations (COARE 3.6, Madsen and Styles benthic
+boundary layer). The library is aimed at physical oceanographers and
+boundary-layer meteorologists processing field observations.
 
 ---
 
 ## Installation
 
 ```bash
-# Clone and install in editable mode (recommended for development)
+pip install pytoast
+```
+
+For development:
+
+```bash
 git clone git@github.com:galenegan/pytoast.git
 cd pytoast
 pip install -e ".[dev]"
 ```
 
-If you only need to *use* the package (not develop it):
-
-```bash
-git clone git@github.com:galenegan/pytoast.git
-```
-
 ### Requirements
 
-- Python $\ge$ 3.13
-- Core dependencies are installed automatically (see `pyproject.toml`).
+- Python >= 3.13
+- Core dependencies (numpy, scipy, pandas, xarray, matplotlib, h5py, netCDF4,
+  mat73) are installed automatically.
 
 ---
 
 ## Quick start
 
 ```python
-# Example code here that demonstrates using some core functionality
+from pytoast.ocean.adv import ADV
+
+name_map = {
+    "u1": "u", "u2": "v", "u3": "w",
+    "p": "pressure", "time": "time",
+}
+
+adv = ADV(files="burst.mat", name_map=name_map, fs=16, z=[1.0])
+
+adv.set_preprocess_opts({
+    "despike": {"method": "goring_nikora"},
+    "rotate":  {"flow_rotation": "align_streamwise"},
+})
+
+burst = adv.load_burst(0)
+diss  = adv.dissipation(burst, f_low=1.0, f_high=4.0)
+print(diss["eps"])     # TKE dissipation rate (m^2/s^3) at each height
 ```
+
+See the [documentation](https://galenegan.github.io/pytoast/) for the full
+API reference.
 
 ---
 
 ## Running tests
 
 ```bash
-pytest                    # run all tests
-pytest --cov=myproject    # with coverage report
+pytest
+pytest --cov=src    # with coverage report
 ```
 
 ---

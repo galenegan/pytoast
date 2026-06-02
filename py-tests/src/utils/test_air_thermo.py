@@ -1,7 +1,7 @@
 import numpy.testing as npt
 
-from utils.air_thermo import *
-from utils.constants import GRAVITATIONAL_ACCELERATION as g
+from pytoast.utils.air_thermo import *
+from pytoast.utils.constants import GRAVITATIONAL_ACCELERATION as g
 
 P_ATM = 1013.25
 T_AIR = 20.0

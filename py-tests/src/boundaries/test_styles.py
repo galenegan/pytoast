@@ -3,7 +3,7 @@ import numpy.testing as npt
 import scipy.io as sio
 from pathlib import Path
 
-from boundaries.bbl import styles
+from pytoast.boundaries.bbl import styles
 
 ####################
 # Reference data

@@ -1,13 +1,25 @@
-import numpy as np
-from typing import Optional
 
-from utils.constants import (
-    GRAVITATIONAL_ACCELERATION as g,
-    GAS_CONSTANT_UNIVERSAL as R,
+import numpy as np
+
+from pytoast.utils.constants import (
     GAS_CONSTANT_DRY_AIR as R_a,
+)
+from pytoast.utils.constants import (
+    GAS_CONSTANT_UNIVERSAL as R,
+)
+from pytoast.utils.constants import (
     GAS_CONSTANT_WATER_VAPOR as R_v,
+)
+from pytoast.utils.constants import (
+    GRAVITATIONAL_ACCELERATION as g,
+)
+from pytoast.utils.constants import (
     MOL_MASS_DRY_AIR as m_a,
+)
+from pytoast.utils.constants import (
     MOL_MASS_WATER_VAPOR as m_v,
+)
+from pytoast.utils.constants import (
     T0,
     Numeric,
 )
@@ -24,7 +36,7 @@ def p_mbar2pa(p: Numeric) -> Numeric:
 
 
 def saturation_vapor_pressure(
-    t: Numeric, p: Numeric, sp: Optional[Numeric] = None, t_freeze: Optional[Numeric] = None
+    t: Numeric, p: Numeric, sp: Numeric | None = None, t_freeze: Numeric | None = None
 ) -> Numeric:
     """Saturation vapor pressure given pressure, temperature, and (optionally)
     seawater salinity.
@@ -65,7 +77,7 @@ def saturation_vapor_pressure(
         return e_s
 
 
-def water_vapor_pressure(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+def water_vapor_pressure(t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
     """Water vapor pressure given temperature, pressure, relative humidity, and
     (optionally) seawater salinity.
 
@@ -90,7 +102,7 @@ def water_vapor_pressure(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numer
     return (rh / 100) * e_s
 
 
-def water_vapor_density(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+def water_vapor_density(t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
     """Water vapor density given temperature, pressure, relative humidity, and
     (optionally) seawater salinity.
 
@@ -115,7 +127,7 @@ def water_vapor_density(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeri
     return 100 * e / (R_v * t_c2kelvin(t))
 
 
-def mixing_ratio(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+def mixing_ratio(t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
     """Water vapor mixing ratio given temperature, pressure, relative humidity,
     and (optionally) seawater salinity.
 
@@ -140,7 +152,7 @@ def mixing_ratio(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = No
     return 0.622 * e / (p - e)
 
 
-def specific_humidity(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+def specific_humidity(t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
     """Specific humidity given temperature, pressure, relative humidity, and
     (optionally) seawater salinity.
 
@@ -167,7 +179,7 @@ def specific_humidity(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric]
 
 
 def saturation_specific_humidity(
-    t: Numeric, p: Numeric, sp: Optional[Numeric] = None, t_freeze: Optional[Numeric] = None
+    t: Numeric, p: Numeric, sp: Numeric | None = None, t_freeze: Numeric | None = None
 ) -> Numeric:
     """Specific humidity given temperature, pressure, relative humidity, and
     (optionally) seawater salinity.
@@ -195,7 +207,7 @@ def saturation_specific_humidity(
 
 
 def relative_humidity_from_specific_humidity(
-    t: Numeric, p: Numeric, q: Numeric, t_freeze: Optional[Numeric] = None
+    t: Numeric, p: Numeric, q: Numeric, t_freeze: Numeric | None = None
 ) -> Numeric:
     """Relative humidity (%) given temperature, pressure, specific humidity, and (optionally) freezing temperature
 
@@ -219,7 +231,7 @@ def relative_humidity_from_specific_humidity(
     return 100 * vapor_pressure / e_s
 
 
-def virtual_temperature(t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+def virtual_temperature(t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
     """Virtual temperature given temperature, pressure, relative humidity, and
     (optionally) seawater salinity.
 

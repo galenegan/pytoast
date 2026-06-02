@@ -4,7 +4,7 @@ import numpy.testing as npt
 import scipy.io as sio
 from pathlib import Path
 
-from ocean.adv import ADV
+from pytoast.ocean.adv import ADV
 
 TEST_DATA_DIR = f"{Path(__file__).parent}/testdata/dmd"
 SYNTH_DATA_PATH = f"{TEST_DATA_DIR}/SynthData.mat"

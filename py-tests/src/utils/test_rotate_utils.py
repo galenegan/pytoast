@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 import numpy.testing as npt
 
-from utils.rotate_utils import (
+from pytoast.utils.rotate_utils import (
     align_with_flow,
     align_with_principal_axis,
     apply_flow_rotation,

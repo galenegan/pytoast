@@ -1,8 +1,10 @@
+from typing import Any
+
 import numpy as np
-from typing import Optional, Union, List, Dict, Any
-from utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
-import utils.air_thermo as air_thermo
-from utils.constants import Numeric
+
+import pytoast.utils.air_thermo as air_thermo
+from pytoast.utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
+from pytoast.utils.constants import Numeric
 
 
 class Met(BaseInstrument):
@@ -57,14 +59,14 @@ class Met(BaseInstrument):
 
     def __init__(
         self,
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
         deployment_type: str = "fixed",
-        fs: Optional[float] = None,
-        z: Optional[Union[float, List[float]]] = None,
+        fs: float | None = None,
+        z: float | list[float] | None = None,
         z_convention: ZConvention = ZConvention.MAS,
-        data_keys: Optional[Union[str, List[str]]] = None,
-        burst_dim: Optional[str] = None,
+        data_keys: str | list[str] | None = None,
+        burst_dim: str | None = None,
         **loader_kwargs: Any,
     ) -> None:
         """Initialize a Met object.
@@ -134,13 +136,13 @@ class Met(BaseInstrument):
 
     @staticmethod
     def validate_inputs(
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
         deployment_type: str = "fixed",
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        fs: int | float | None = None,
+        z: float | int | list[float | int] | None = None,
         z_convention: ZConvention = ZConvention.MAS,
-        data_keys: Optional[Union[str, List[str]]] = None,
+        data_keys: str | list[str] | None = None,
     ) -> None:
 
         # General validation
@@ -153,7 +155,7 @@ class Met(BaseInstrument):
         if z_convention != ZConvention.MAS:
             raise ValueError(f"Met.z_convention must be {ZConvention.MAS}, not {z_convention}")
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
+    def set_preprocess_opts(self, opts: dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads using the
         options defined in the input dictionary.
 
@@ -186,7 +188,7 @@ class Met(BaseInstrument):
         """
         super().set_preprocess_opts(opts)
 
-    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: list[str] | None = None) -> Any:
         burst_data = super()._apply_preprocessing(burst_data, keys_to_process=self._burst_var_keys)
         return burst_data
 
@@ -198,7 +200,7 @@ class Met(BaseInstrument):
         """Convert pressure from millibar to Pascal."""
         return air_thermo.p_mbar2pa(p)
 
-    def saturation_vapor_pressure(self, t: Numeric, p: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+    def saturation_vapor_pressure(self, t: Numeric, p: Numeric, sp: Numeric | None = None) -> Numeric:
         """Saturation vapor pressure given pressure, temperature, and
         (optionally) seawater salinity.
 
@@ -219,7 +221,7 @@ class Met(BaseInstrument):
         """
         return air_thermo.saturation_vapor_pressure(t, p, sp)
 
-    def water_vapor_pressure(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+    def water_vapor_pressure(self, t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
         """Water vapor pressure given temperature, pressure, relative humidity,
         and (optionally) seawater salinity.
 
@@ -242,7 +244,7 @@ class Met(BaseInstrument):
         """
         return air_thermo.water_vapor_pressure(t, p, rh, sp)
 
-    def water_vapor_density(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+    def water_vapor_density(self, t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
         """Water vapor density given temperature, pressure, relative humidity,
         and (optionally) seawater salinity.
 
@@ -265,7 +267,7 @@ class Met(BaseInstrument):
         """
         return air_thermo.water_vapor_density(t, p, rh, sp)
 
-    def mixing_ratio(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+    def mixing_ratio(self, t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
         """Water vapor mixing ratio given temperature, pressure, relative
         humidity, and (optionally) seawater salinity.
 
@@ -288,7 +290,7 @@ class Met(BaseInstrument):
         """
         return air_thermo.mixing_ratio(t, p, rh, sp)
 
-    def specific_humidity(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+    def specific_humidity(self, t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
         """Specific humidity given temperature, pressure, relative humidity,
         and (optionally) seawater salinity.
 
@@ -311,7 +313,7 @@ class Met(BaseInstrument):
         """
         return air_thermo.specific_humidity(t, p, rh, sp)
 
-    def virtual_temperature(self, t: Numeric, p: Numeric, rh: Numeric, sp: Optional[Numeric] = None) -> Numeric:
+    def virtual_temperature(self, t: Numeric, p: Numeric, rh: Numeric, sp: Numeric | None = None) -> Numeric:
         """Virtual temperature given temperature, pressure, relative humidity,
         and (optionally) seawater salinity.
 
@@ -435,7 +437,7 @@ class Met(BaseInstrument):
         """
         return air_thermo.potential_temperature(t, z)
 
-    def derive(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    def derive(self, burst_data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """Compute all thermodynamic quantities derivable from the variables present in a burst dictionary, and return
         the burst dictionary augmented with those results.
 
@@ -513,7 +515,7 @@ class Met(BaseInstrument):
         return burst_data
 
     @property
-    def _burst_var_keys(self) -> List[str]:
+    def _burst_var_keys(self) -> list[str]:
         return [k for k in self.name_map if k != "time"]
 
     def subsample(self, start_idx: int, end_idx: int) -> "Met":

@@ -1,8 +1,10 @@
+from typing import Any
+
 import numpy as np
-from typing import Optional, Union, List, Dict, Any
-from utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
-import utils.sea_thermo as sea_thermo
-from utils.constants import Numeric
+
+import pytoast.utils.sea_thermo as sea_thermo
+from pytoast.utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
+from pytoast.utils.constants import Numeric
 
 
 class CTD(BaseInstrument):
@@ -57,14 +59,14 @@ class CTD(BaseInstrument):
 
     def __init__(
         self,
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
         deployment_type: str = "fixed",
-        fs: Optional[float] = None,
-        z: Optional[Union[float, List[float]]] = None,
+        fs: float | None = None,
+        z: float | list[float] | None = None,
         z_convention: ZConvention = ZConvention.DEPTH,
-        data_keys: Optional[Union[str, List[str]]] = None,
-        burst_dim: Optional[str] = None,
+        data_keys: str | list[str] | None = None,
+        burst_dim: str | None = None,
         **loader_kwargs: Any,
     ) -> None:
         """Initialize a CTD object.
@@ -133,12 +135,12 @@ class CTD(BaseInstrument):
 
     @staticmethod
     def validate_inputs(
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]]]] = None,
+        fs: int | float | None = None,
+        z: float | int | list[float | int] | None = None,
         z_convention: ZConvention = ZConvention.DEPTH,
-        data_keys: Optional[Union[str, List[str]]] = None,
+        data_keys: str | list[str] | None = None,
     ) -> None:
         files_list = [files] if isinstance(files, str) else files
         BaseInstrument.validate_common_inputs(files_list, name_map, fs, z, data_keys)
@@ -148,7 +150,7 @@ class CTD(BaseInstrument):
                 f"Invalid value for `z_convention`: {z_convention}. Must be one of ['m_above_bed', 'depth']"
             )
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
+    def set_preprocess_opts(self, opts: dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads.
 
         Parameters
@@ -178,7 +180,7 @@ class CTD(BaseInstrument):
         """
         super().set_preprocess_opts(opts)
 
-    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: list[str] | None = None) -> Any:
         burst_data = super()._apply_preprocessing(burst_data, keys_to_process=self._burst_var_keys)
         return burst_data
 
@@ -492,7 +494,7 @@ class CTD(BaseInstrument):
         """
         return sea_thermo.buoyancy_frequency(sa, ct, p, axis)
 
-    def depth_from_pressure(self, p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
+    def depth_from_pressure(self, p: Numeric, lat: Numeric | None = None) -> Numeric:
         """
         Depth from sea pressure using the UNESCO (1983) formula with optional latitude-dependent gravity. Depth is
         returned as a positive quantity (distance below surface).
@@ -511,7 +513,7 @@ class CTD(BaseInstrument):
         """
         return sea_thermo.depth_from_pressure(p, lat)
 
-    def pressure_from_depth(self, z: Numeric, lat: Optional[Numeric] = None) -> Numeric:
+    def pressure_from_depth(self, z: Numeric, lat: Numeric | None = None) -> Numeric:
         """
         Sea pressure from depth (positive downward) using a one-step Newton refinement of a hydrostatic initial guess.
 
@@ -529,7 +531,7 @@ class CTD(BaseInstrument):
         """
         return sea_thermo.pressure_from_depth(z, lat)
 
-    def derive(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    def derive(self, burst_data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """Compute all thermodynamic quantities derivable from the variables present in a burst dictionary, and return
         the burst dictionary augmented with those results.
 
@@ -579,12 +581,12 @@ class CTD(BaseInstrument):
         p = burst_data.get("p")
         lat = burst_data.get("lat")
 
-        sa: Optional[np.ndarray] = None
+        sa: np.ndarray | None = None
         if sp is not None:
             sa = np.asarray(self.sa_from_sp(sp))
             burst_data["sa"] = sa
 
-        ct: Optional[np.ndarray] = None
+        ct: np.ndarray | None = None
         if sa is not None and t is not None and p is not None:
             ct = np.asarray(self.ct_from_t(sa, t, p))
             burst_data["ct"] = ct
@@ -619,7 +621,7 @@ class CTD(BaseInstrument):
         return burst_data
 
     @property
-    def _burst_var_keys(self) -> List[str]:
+    def _burst_var_keys(self) -> list[str]:
         return [k for k in self.name_map if k != "time"]
 
     def subsample(self, start_idx: int, end_idx: int) -> "CTD":

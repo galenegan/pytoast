@@ -1,17 +1,19 @@
+from typing import Any
+
 import numpy as np
 import scipy.signal as sig
-from typing import Optional, Union, List, Dict, Any
-from utils.base_instrument import BaseInstrument, ZConvention, DeploymentType
-from utils.burst_utils import get_uvw
-from utils.wave_utils import get_wavenumber, wave_stats
 from scipy.stats import linregress
 
-from utils.spectral_utils import psd, csd, get_frequency_range
-from utils.constants import GRAVITATIONAL_ACCELERATION as g, WATER_DENSITY as rho0
-from utils.rotate_utils import (
-    coord_transform_3_beam_nortek,
+from pytoast.utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
+from pytoast.utils.burst_utils import get_uvw
+from pytoast.utils.constants import GRAVITATIONAL_ACCELERATION as g
+from pytoast.utils.constants import WATER_DENSITY as rho0
+from pytoast.utils.rotate_utils import (
     apply_flow_rotation,
+    coord_transform_3_beam_nortek,
 )
+from pytoast.utils.spectral_utils import csd, get_frequency_range, psd
+from pytoast.utils.wave_utils import get_wavenumber, wave_stats
 
 
 class ADV(BaseInstrument):
@@ -29,17 +31,17 @@ class ADV(BaseInstrument):
 
     def __init__(
         self,
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
         deployment_type: DeploymentType = DeploymentType.FIXED,
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
+        fs: int | float | None = None,
+        z: list[float | int] | np.ndarray | None = None,
         z_convention: ZConvention = ZConvention.MAB,
-        data_keys: Optional[Union[str, List[str]]] = None,
+        data_keys: str | list[str] | None = None,
         source_coords: str = "xyz",
         orientation: str = "up",
-        water_depth: Optional[float] = None,
-        burst_dim: Optional[str] = None,
+        water_depth: float | None = None,
+        burst_dim: str | None = None,
         **loader_kwargs: Any,
     ) -> None:
         """Initialize an ADV object.
@@ -139,16 +141,16 @@ class ADV(BaseInstrument):
 
     @staticmethod
     def validate_inputs(
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
         deployment_type: str = "fixed",
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[float, int, List[Union[float, int]], np.ndarray]] = None,
+        fs: int | float | None = None,
+        z: float | int | list[float | int] | np.ndarray | None = None,
         z_convention: ZConvention = ZConvention.MAB,
-        data_keys: Optional[Union[str, List[str]]] = None,
-        source_coords: Optional[str] = "xyz",
-        orientation: Optional[str] = "up",
-        water_depth: Optional[float] = None,
+        data_keys: str | list[str] | None = None,
+        source_coords: str | None = "xyz",
+        orientation: str | None = "up",
+        water_depth: float | None = None,
     ) -> None:
 
         # General validation
@@ -182,7 +184,7 @@ class ADV(BaseInstrument):
             if not isinstance(water_depth, (float, int)):
                 raise ValueError(f"Invalid value for `water_depth`: {water_depth}. Must be a float or int")
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
+    def set_preprocess_opts(self, opts: dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads using the
         options defined in the input dictionary.
 
@@ -232,7 +234,8 @@ class ADV(BaseInstrument):
                     and roll arrays in the burst. Length of the list must match ADV.n_heights
 
                 flow_rotation : str or Tuple[float], optional.
-                    One of {`align_principal`, `align_streamwise`, or (horizontal_angle_degrees, vertical_angle_degrees)}.
+                    One of {`align_principal`, `align_streamwise`,
+                    or (horizontal_angle_degrees, vertical_angle_degrees)}.
                     If `align_principal`, then the velocity will be rotated to align with the principal axes of the
                     flow. If `align_streamwise`, then the velocity will be rotated to align with the horizontal current
                     magnitude sqrt(u^2 + v^2). In both cases, the vertical velocity will be minimized. If float angles
@@ -244,7 +247,7 @@ class ADV(BaseInstrument):
         super().set_preprocess_opts(opts)
         self._rotate = opts.get("rotate", {})
 
-    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: list[str] | None = None) -> Any:
         """Applies preprocessing to a burst data dictionary during loading."""
         burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
@@ -267,7 +270,7 @@ class ADV(BaseInstrument):
 
         return burst_data
 
-    def _apply_coord_transform(self, burst_data: Dict[str, Any], coords_out: str) -> Dict[str, Any]:
+    def _apply_coord_transform(self, burst_data: dict[str, Any], coords_out: str) -> dict[str, Any]:
         """Transform velocity components between coordinate systems.
 
         Uses configuration stored in self._rotate. Can be called from _apply_preprocessing during standard burst
@@ -344,8 +347,8 @@ class ADV(BaseInstrument):
         p: np.ndarray,
         mab: float,
         rho: float,
-        f_low: Optional[float] = None,
-        f_high: Optional[float] = None,
+        f_low: float | None = None,
+        f_high: float | None = None,
         **kwargs: Any,
     ) -> dict[str, float]:
         """Benilov wave-turbulence decomposition to estimate wave and
@@ -398,7 +401,11 @@ class ADV(BaseInstrument):
         df = np.max(np.diff(f))
         omega = 2 * np.pi * f
         k = get_wavenumber(omega, h)
-        attenuation_correction = 1e4 * np.cosh(k * h) / (rho * g * np.cosh(k * mab))
+        z = mab - h
+
+        # cosh(k(z+h))/cosh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1+e^{-2kh})
+        cosh_term = (np.exp(k * z) + np.exp(-k * (z + 2 * h))) / (1 + np.exp(-2 * k * h))
+        attenuation_correction = (1e4 / (rho * g)) / cosh_term
         P_etaeta = P_pp * (attenuation_correction**2)
 
         # All the velocity components
@@ -513,12 +520,12 @@ class ADV(BaseInstrument):
         u: np.ndarray,
         v: np.ndarray,
         w: np.ndarray,
-        f_low: Optional[float] = None,
-        f_high: Optional[float] = None,
-        f_wave_low: Optional[float] = None,
-        f_wave_high: Optional[float] = None,
+        f_low: float | None = None,
+        f_high: float | None = None,
+        f_wave_low: float | None = None,
+        f_wave_high: float | None = None,
         **kwargs: Any,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Bricker & Monismith (2007) phase method for wave-turbulence
         decomposition.
 
@@ -635,8 +642,8 @@ class ADV(BaseInstrument):
         w: np.ndarray,
         f_wave_low: float,
         f_wave_high: float,
-        rank_truncation: Union[int, float] = 0.05,
-        time_delay_size: Optional[int] = None,
+        rank_truncation: int | float = 0.05,
+        time_delay_size: int | None = None,
         return_time_series: bool = False,
     ) -> dict:
         """Estimate Reynolds stresses with the DMD-based wave-turbulence
@@ -783,15 +790,15 @@ class ADV(BaseInstrument):
 
     def covariance(
         self,
-        burst_data: Dict[str, np.ndarray],
+        burst_data: dict[str, np.ndarray],
         method: str = "cov",
-        f_low: Optional[float] = None,
-        f_high: Optional[float] = None,
+        f_low: float | None = None,
+        f_high: float | None = None,
         rho: float = rho0,
-        f_wave_low: Optional[float] = None,
-        f_wave_high: Optional[float] = None,
-        rank_truncation: Union[int, float] = 0.05,
-        time_delay_size: Optional[int] = None,
+        f_wave_low: float | None = None,
+        f_wave_high: float | None = None,
+        rank_truncation: int | float = 0.05,
+        time_delay_size: int | None = None,
         return_time_series: bool = False,
         **kwargs: Any,
     ) -> dict:
@@ -1049,7 +1056,7 @@ class ADV(BaseInstrument):
                     out["v_wave"][height_idx, :] = d_out["v_wave"]
                     out["w_wave"][height_idx, :] = d_out["w_wave"]
         else:
-            raise IOError(f"Unrecognized method {method}")
+            raise OSError(f"Unrecognized method {method}")
 
         return out
 
@@ -1133,8 +1140,8 @@ class ADV(BaseInstrument):
         return J11, J22, J33
 
     def dissipation(
-        self, burst_data: Dict[str, np.ndarray], f_low: float, f_high: float, **kwargs: Any
-    ) -> Dict[str, np.ndarray]:
+        self, burst_data: dict[str, np.ndarray], f_low: float, f_high: float, **kwargs: Any
+    ) -> dict[str, np.ndarray]:
         """
         Estimate the dissipation rate of TKE using the Gerbi et al. (2009) spectral curve fitting method. This is nearly
         equivalent to the Feddersen et al. (2007) method, but it uses a more efficient numerical integration and
@@ -1231,7 +1238,7 @@ class ADV(BaseInstrument):
 
         return out
 
-    def tke(self, burst_data: Dict[str, np.ndarray]) -> np.ndarray:
+    def tke(self, burst_data: dict[str, np.ndarray]) -> np.ndarray:
         """Calculates turbulent kinetic energy.
 
         Parameters
@@ -1261,7 +1268,7 @@ class ADV(BaseInstrument):
     def directional_wave_statistics(
         self,
         burst_data: dict,
-        band_definitions: Optional[dict] = None,
+        band_definitions: dict | None = None,
         sea_correction: bool = True,
         f_cutoff: float = 1.0,
         rho: float = rho0,

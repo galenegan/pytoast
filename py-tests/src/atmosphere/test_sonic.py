@@ -5,8 +5,8 @@ import pytest
 from pathlib import Path
 from testhelpers.synth_utils import generate_wave_turb_burst
 from testhelpers.stub_utils import eq_except, make_sonic
-from atmosphere.sonic import Sonic
-from utils.base_instrument import ZConvention
+from pytoast.atmosphere.sonic import Sonic
+from pytoast.utils.base_instrument import ZConvention
 
 
 class TestCovariance:

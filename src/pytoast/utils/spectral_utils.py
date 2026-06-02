@@ -1,6 +1,6 @@
+
 import numpy as np
 import scipy.signal as sig
-from typing import Optional, Tuple
 
 
 def get_window_len(N: int, num_windows: int) -> int:
@@ -23,8 +23,8 @@ def get_window_len(N: int, num_windows: int) -> int:
 
 
 def get_frequency_range(
-    f: np.ndarray, f_low: Optional[float] = None, f_high: Optional[float] = None
-) -> Tuple[int, int]:
+    f: np.ndarray, f_low: float | None = None, f_high: float | None = None
+) -> tuple[int, int]:
     """
     Index range into ``f`` covering [f_low, f_high].
 
@@ -60,11 +60,11 @@ def psd(
     fs: float,
     num_windows: int = 8,
     window_type: str = "hamming",
-    window_len: Optional[int] = None,
-    nfft: Optional[int] = None,
+    window_len: int | None = None,
+    nfft: int | None = None,
     detrend: bool = False,
     onesided: bool = True,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Power spectral density via Welch's method.
 
@@ -119,11 +119,11 @@ def csd(
     fs: float,
     num_windows: int = 8,
     window_type: str = "hamming",
-    window_len: Optional[int] = None,
-    nfft: Optional[int] = None,
+    window_len: int | None = None,
+    nfft: int | None = None,
     detrend: bool = False,
     onesided: bool = True,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Cross spectral density via Welch's method.
 

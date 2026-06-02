@@ -1,2 +1,2 @@
 
-::: ocean.ctd.CTD
+::: pytoast.ocean.ctd.CTD

@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
 import numpy.testing as npt
-from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
-from utils.interp_utils import naninterp, interp_rows
+from pytoast.utils.despike_utils import threshold, goring_nikora, recursive_gaussian
+from pytoast.utils.interp_utils import naninterp, interp_rows
 
 
 @pytest.fixture

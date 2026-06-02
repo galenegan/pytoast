@@ -3,8 +3,8 @@ import pandas as pd
 import numpy.testing as npt
 import pytest
 
-from utils.io_utils import results_to_dataset
-from utils.base_instrument import BaseInstrument
+from pytoast.utils.io_utils import results_to_dataset
+from pytoast.utils.base_instrument import BaseInstrument
 
 
 N_BURSTS = 4

@@ -1,12 +1,11 @@
-from typing import Dict, Tuple
 
 import numpy as np
 
 
 def get_uvw(
-    burst_data: Dict[str, np.ndarray],
-    allowed_coords: Tuple[str, ...] = ("xyz", "enu"),
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    burst_data: dict[str, np.ndarray],
+    allowed_coords: tuple[str, ...] = ("xyz", "enu"),
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return (u1, u2, u3) from a burst after validating its coord state.
 
     Parameters
@@ -36,7 +35,7 @@ def get_uvw(
     return burst_data["u1"], burst_data["u2"], burst_data["u3"]
 
 
-def get_beams(burst_data: Dict[str, np.ndarray], n: int) -> Tuple[np.ndarray, ...]:
+def get_beams(burst_data: dict[str, np.ndarray], n: int) -> tuple[np.ndarray, ...]:
     """Return (u1, ..., un) from a burst after validating coords == 'beam'.
 
     Parameters

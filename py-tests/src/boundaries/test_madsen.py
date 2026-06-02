@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.testing as npt
 from pathlib import Path
-from boundaries.bbl import madsen
+from pytoast.boundaries.bbl import madsen
 
 # From Chris Sherwood/Dan Nowacki implementation
 test_path = f"{Path(__file__).parent}/testdata"

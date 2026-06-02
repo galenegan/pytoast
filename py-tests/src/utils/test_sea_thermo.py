@@ -4,7 +4,7 @@ import numpy.testing as npt
 import scipy.io as sio
 from pathlib import Path
 
-from utils.sea_thermo import *
+from pytoast.utils.sea_thermo import *
 ####################
 # Reference data
 ####################

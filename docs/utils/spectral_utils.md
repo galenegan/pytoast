@@ -1,2 +1,2 @@
 
-::: utils.spectral_utils
+::: pytoast.utils.spectral_utils

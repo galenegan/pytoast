@@ -1,7 +1,7 @@
 import numpy.testing as npt
 import pytest
 
-from utils.spectral_utils import *
+from pytoast.utils.spectral_utils import *
 
 def test_window_len():
     N = 1024

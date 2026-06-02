@@ -1,13 +1,16 @@
+from typing import Any
+
 import numpy as np
 import scipy.signal as sig
-from typing import Any, Optional, Union
-from utils.constants import GRAVITATIONAL_ACCELERATION as g, WATER_DENSITY as rho0
-from utils.spectral_utils import psd, csd
+
+from pytoast.utils.constants import GRAVITATIONAL_ACCELERATION as g
+from pytoast.utils.constants import WATER_DENSITY as rho0
+from pytoast.utils.spectral_utils import csd, psd
 
 
 def get_wavenumber(
-    omega: Union[float, np.ndarray], h: Union[float, np.ndarray], max_iter: int = 10, tol: float = 1e-10
-) -> Union[float, np.ndarray]:
+    omega: float | np.ndarray, h: float | np.ndarray, max_iter: int = 10, tol: float = 1e-10
+) -> float | np.ndarray:
     """Calculate wavenumber from the surface gravity wave dispersion relation using Newton's method.
 
     Parameters
@@ -35,37 +38,46 @@ def get_wavenumber(
         f = g * k * th - omega**2
         if np.max(np.abs(f[mask])) < tol:
             break
-        dfdk = g * h * k / np.cosh(k * h) ** 2 + g * th
+        # sech^2(k*h) computed in an overflow-safe form. For large k*h, cosh(k*h)
+        # overflows but sech^2 -> 0, so use the algebraically equivalent
+        # 4 * exp(-2*k*h) / (1 + exp(-2*k*h))**2.
+        e_neg = np.exp(-2 * np.abs(k * h))
+        sech2 = 4 * e_neg / (1 + e_neg) ** 2
+        dfdk = g * h * k * sech2 + g * th
         k = np.where(mask, k - f / np.where(mask, dfdk, 1.0), 0.0)
     return k.item() if k.ndim == 0 else k
 
 
-def get_cg(k: Union[float, np.ndarray], h: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+def get_cg(k: float | np.ndarray, h: float | np.ndarray) -> float | np.ndarray:
     """Returns the group velocity from the linear wave theory dispersion relation.
 
     Parameters
     ----------
     k : float or np.ndarray
-        Wavenumber (rad/m)
+        Wavenumber (rad/m). Entries with k <= 0 return cg = 0.
     h : float or np.ndarray
         Water depth (m)
 
     Returns
     -------
     cg : float or np.ndarray
-        Group velocity (m/s)
+        Group velocity (m/s). Zero at any k <= 0 entry.
     """
-    cp = np.sqrt((g / k) * np.tanh(k * h))
-    cg = 0.5 * cp * (1 + (k * h) * (1 - (np.tanh(k * h)) ** 2) / np.tanh(k * h))
-
-    return cg
+    k = np.asarray(k, dtype=float)
+    h = np.broadcast_to(np.asarray(h, dtype=float), k.shape)
+    mask = k > 0
+    safe_k = np.where(mask, k, 1.0)
+    safe_tanh = np.where(mask, np.tanh(safe_k * h), 1.0)
+    cp = np.where(mask, np.sqrt((g / safe_k) * safe_tanh), 0.0)
+    cg = np.where(mask, 0.5 * cp * (1 + (safe_k * h) * (1 - safe_tanh**2) / safe_tanh), 0.0)
+    return cg.item() if cg.ndim == 0 else cg
 
 
 def jones_monismith_correction(
     S_etaeta: np.ndarray,
     S_pp: np.ndarray,
     f: np.ndarray,
-    f_cutoff: Optional[float] = 0.5,
+    f_cutoff: float | None = 0.5,
 ) -> np.ndarray:
     """Apply Jones & Monismith (2008) correction for high frequency noise
     introduced by the pressure attenuation.
@@ -128,7 +140,7 @@ def wave_stats(
     fs: float,
     mab: float,
     rho: float = rho0,
-    band_definitions: Optional[dict] = None,
+    band_definitions: dict | None = None,
     sea_correction: bool = True,
     f_cutoff: float = 1.0,
     **kwargs: Any,
@@ -248,14 +260,15 @@ def wave_stats(
     dir2 = np.degrees(np.arctan2(b2, a2) / 2)
     spread2 = np.degrees(np.sqrt(0.5 * (1 - (a2 * np.cos(2 * np.radians(dir2)) + b2 * np.sin(2 * np.radians(dir2))))))
 
-    # Phase and group velocity
-    cp = omega / k
+    # Phase and group velocity. cp and cg are undefined at k = 0 (DC bin);
+    # set both to 0 there since the DC bin is excluded by the f > 0 band mask.
+    cp = np.where(k > 0, omega / np.where(k > 0, k, 1.0), 0.0)
     cg = np.asarray(get_cg(k, h))
 
     # Radiation stress -- Mei et al. Ch 11.3
     dir_rad = np.deg2rad(dir1)
     E = rho * g * P_etaeta
-    n = cg / cp
+    n = np.where(cp > 0, cg / np.where(cp > 0, cp, 1.0), 0.0)
     Sxx = (E / 2) * (2 * n * np.cos(dir_rad) ** 2 + (2 * n - 1))
     Syy = (E / 2) * (2 * n * np.sin(dir_rad) ** 2 + (2 * n - 1))
     Sxy = E * n * np.sin(dir_rad) * np.cos(dir_rad)
@@ -265,7 +278,7 @@ def wave_stats(
     # Time domain calculation
     u_prime = u - np.nanmean(u)
     v_prime = v - np.nanmean(v)
-    u_orb_var = np.sqrt((np.nanvar(u_prime) + np.nanvar(v_prime)))
+    u_orb_var = np.sqrt(np.nanvar(u_prime) + np.nanvar(v_prime))
 
     # Spectral calculation
     u_orb_spec = np.sqrt(np.sum((P_uu + P_vv) * df))

@@ -1,17 +1,23 @@
+
 import numpy as np
-from typing import Tuple, Optional, Dict
-from utils.constants import (
-    SSO,
-    VON_KARMAN as KAPPA,
-    STEFAN_BOLTZMANN as SB,
+
+import pytoast.utils.air_thermo as at
+import pytoast.utils.sea_thermo as st
+from pytoast.utils.constants import (
     _PAYNE_TABLE,
+    SSO,
     T0,
-    GAS_CONSTANT_DRY_AIR as R_AIR,
     Numeric,
 )
-import utils.air_thermo as at
-import utils.sea_thermo as st
-
+from pytoast.utils.constants import (
+    GAS_CONSTANT_DRY_AIR as R_AIR,
+)
+from pytoast.utils.constants import (
+    STEFAN_BOLTZMANN as SB,
+)
+from pytoast.utils.constants import (
+    VON_KARMAN as KAPPA,
+)
 
 # Gustiness scaling coefficient
 BETA = 1.2
@@ -110,7 +116,7 @@ def sea_surface_albedo(
     julian_day: Numeric,
     lat: Numeric,
     lon: Numeric,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Sea-surface albedo from the Payne (1972) look-up table.
 
@@ -213,13 +219,13 @@ def coare36(
     pbl_height: Numeric = 600.0,
     rain: Numeric = 0.0,
     surface_salinity: Numeric = SSO,
-    phase_speed: Optional[Numeric] = None,
-    h_sig: Optional[Numeric] = None,
+    phase_speed: Numeric | None = None,
+    h_sig: Numeric | None = None,
     u_surf: Numeric = 0.0,
     zref_u: Numeric = 10.0,
     zref_t: Numeric = 10.0,
     zref_rh: Numeric = 10.0,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     COARE 3.6 bulk air-sea flux algorithm (Fairall et al. 2003, Edson et al. 2013). Computes turbulent and radiative
     fluxes at the air-sea interface from mean meteorological measurements. Includes the COARE cool-skin
@@ -758,13 +764,13 @@ def coare36_warm_layer(
     pbl_height: Numeric,
     rain: np.ndarray,
     ts_depth: np.ndarray,
-    surface_salinity: Optional[np.ndarray] = None,
-    phase_speed: Optional[np.ndarray] = None,
-    h_sig: Optional[np.ndarray] = None,
+    surface_salinity: np.ndarray | None = None,
+    phase_speed: np.ndarray | None = None,
+    h_sig: np.ndarray | None = None,
     zref_u: Numeric = 10.0,
     zref_t: Numeric = 10.0,
     zref_rh: Numeric = 10.0,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     COARE 3.6 with diurnal warm-layer parameterization.
 

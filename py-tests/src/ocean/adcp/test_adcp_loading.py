@@ -4,8 +4,8 @@ import os
 import numpy as np
 import pytest
 
-from ocean.adcp import ADCP
-from utils.base_instrument import ZConvention
+from pytoast.ocean.adcp import ADCP
+from pytoast.utils.base_instrument import ZConvention
 from testhelpers.rotate_utils import nortek_4beam_T
 from testhelpers.stub_utils import eq_except
 

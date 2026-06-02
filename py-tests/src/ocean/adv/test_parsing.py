@@ -3,8 +3,8 @@ import os
 import numpy as np
 import pytest
 
-from ocean.adv import ADV
-from utils.base_instrument import ZConvention
+from pytoast.ocean.adv import ADV
+from pytoast.utils.base_instrument import ZConvention
 from testhelpers.stub_utils import eq_except
 
 

@@ -1,19 +1,20 @@
 import copy
+from typing import Any
+
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
 from scipy.optimize import curve_fit
 from scipy.stats import circmean, linregress
-from typing import Optional, Union, List, Dict, Any
-from utils.base_instrument import BaseInstrument, ZConvention, DeploymentType
-from utils.spectral_utils import psd
 
-from utils.rotate_utils import (
+from pytoast.utils.base_instrument import BaseInstrument, DeploymentType, ZConvention
+from pytoast.utils.rotate_utils import (
+    apply_flow_rotation,
     coord_transform_3_beam_nortek,
     coord_transform_4_beam_nortek,
     coord_transform_4_beam_rdi,
     min_angle,
-    apply_flow_rotation,
 )
+from pytoast.utils.spectral_utils import psd
 
 
 class ADCP(BaseInstrument):
@@ -31,18 +32,18 @@ class ADCP(BaseInstrument):
 
     def __init__(
         self,
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
         deployment_type: DeploymentType = DeploymentType.FIXED,
-        fs: Optional[float] = None,
-        z: Optional[Union[List[float], np.ndarray]] = None,
+        fs: float | None = None,
+        z: list[float] | np.ndarray | None = None,
         z_convention: ZConvention = ZConvention.MAB,
-        data_keys: Optional[Union[str, List[str]]] = None,
+        data_keys: str | list[str] | None = None,
         source_coords: str = "beam",
         orientation: str = "up",
         beam_angle: float = 25.0,
         manufacturer: str = "nortek",
-        burst_dim: Optional[str] = None,
+        burst_dim: str | None = None,
         **loader_kwargs: Any,
     ) -> None:
         """Initialize an ADCP object.
@@ -150,13 +151,13 @@ class ADCP(BaseInstrument):
 
     @staticmethod
     def validate_inputs(
-        files: Union[str, List],
+        files: str | list,
         name_map: dict,
         deployment_type: str = "fixed",
-        fs: Optional[Union[int, float]] = None,
-        z: Optional[Union[List[Union[float, int]], np.ndarray]] = None,
+        fs: int | float | None = None,
+        z: list[float | int] | np.ndarray | None = None,
         z_convention: ZConvention = ZConvention.MAB,
-        data_keys: Optional[Union[str, List[str]]] = None,
+        data_keys: str | list[str] | None = None,
         source_coords: str = "beam",
         orientation: str = "up",
         beam_angle: float = 25.0,
@@ -196,7 +197,7 @@ class ADCP(BaseInstrument):
                 "are already in the desired coordinates"
             )
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
+    def set_preprocess_opts(self, opts: dict[str, Any]) -> None:
         """
         Enable preprocessing for all subsequent burst loads using the options defined in the input dictionary.
 
@@ -256,7 +257,7 @@ class ADCP(BaseInstrument):
         super().set_preprocess_opts(opts)
         self._rotate = opts.get("rotate", {})
 
-    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: list[str] | None = None) -> Any:
         burst_data["coords"] = self.source_coords
         if not self._preprocess_enabled:
             return burst_data
@@ -391,7 +392,7 @@ class ADCP(BaseInstrument):
         burst_data["coords"] = coords_out
         return burst_data
 
-    def shear(self, burst_data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    def shear(self, burst_data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """Calculates the mean vertical shear of the 3 cartesian velocity
         components.
 
@@ -428,11 +429,11 @@ class ADCP(BaseInstrument):
         method: str = "variance",
         f_cutoff_ogive: float = 0.1,
         ogive_r2_min: float = 0.9,
-        sigma_wave_ratio_max: Optional[float] = None,
+        sigma_wave_ratio_max: float | None = None,
         pitch: np.ndarray = np.array([0.0]),
         roll: np.ndarray = np.array([0.0]),
         **kwargs: Any,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Calculate Reynolds stress components for a given burst.
 
         Parameters
@@ -689,11 +690,11 @@ class ADCP(BaseInstrument):
 
     def dissipation(
         self,
-        burst_data: Dict[str, np.ndarray],
+        burst_data: dict[str, np.ndarray],
         method: str = "4beam_spectral",
-        f_min: Optional[float] = None,
-        f_max: Optional[float] = None,
-        sf_kwargs: Optional[dict] = None,
+        f_min: float | None = None,
+        f_max: float | None = None,
+        sf_kwargs: dict | None = None,
         **kwargs: Any,
     ) -> np.ndarray:
         """Estimate the dissipation rate of TKE for a given burst.
@@ -715,7 +716,8 @@ class ADCP(BaseInstrument):
                 z_start_idx : int
                     Lower bound index of self.z to include in the structure function calculation. Defaults to 0.
                 z_end_idx : int
-                    Upper bound index of self.z to include in the structure function calculation. Defaults to self.n_heights.
+                    Upper bound index of self.z to include in the structure function calculation.
+                    Defaults to self.n_heights.
                 r_min : float
                     Minimum separation to include in the regression for epsilon. Default None
                 r_max : float
@@ -739,7 +741,8 @@ class ADCP(BaseInstrument):
             in a high Reynolds number tidal channel. Journal of Atmospheric and Oceanic Technology, 33(4), 817-837.
 
         McMillan, J. M., & Hay, A. E. (2017). Spectral and structure function estimates of turbulence dissipation rates
-            in a high-flow tidal channel using broadband ADCPs. Journal of Atmospheric and Oceanic Technology, 34(1), 5-20.
+            in a high-flow tidal channel using broadband ADCPs. Journal of Atmospheric and Oceanic Technology,
+            34(1), 5-20.
         """
         if burst_data["coords"] != "beam":
             u_bar = np.mean(np.sqrt(burst_data["u1"] ** 2 + burst_data["u2"] ** 2), axis=1)
@@ -870,7 +873,7 @@ class ADCP(BaseInstrument):
         return eps_out
 
     @property
-    def beam_keys(self) -> List[str]:
+    def beam_keys(self) -> list[str]:
         return [k for k in ["u1", "u2", "u3", "u4", "u5"] if k in self.name_map]
 
     @property

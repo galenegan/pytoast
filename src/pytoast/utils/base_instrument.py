@@ -1,16 +1,17 @@
+import datetime
+import os
 from abc import ABC
 from contextlib import contextmanager
-import datetime
 from enum import StrEnum
+from typing import Any
+
 import numpy as np
-import os
-from typing import Any, List, Union, Optional, Dict, Tuple
-import scipy.io as sio
 import pandas as pd
+import scipy.io as sio
 import xarray as xr
 
-from utils.despike_utils import threshold, goring_nikora, recursive_gaussian
-from utils.io_utils import results_to_dataset
+from pytoast.utils.despike_utils import goring_nikora, recursive_gaussian, threshold
+from pytoast.utils.io_utils import results_to_dataset
 
 type DatetimeLike = datetime.datetime | np.datetime64 | pd.Timestamp
 
@@ -52,14 +53,14 @@ class BaseInstrument(ABC):
 
     def __init__(
         self,
-        files: Union[str, List[str]],
+        files: str | list[str],
         name_map: dict,
         deployment_type: DeploymentType = DeploymentType.FIXED,
-        fs: Optional[float] = None,
-        z: Optional[Union[float, List[float], np.ndarray]] = None,
+        fs: float | None = None,
+        z: float | list[float] | np.ndarray | None = None,
         z_convention: ZConvention = ZConvention.MAB,
-        data_keys: Optional[Union[str, List[str]]] = None,
-        burst_dim: Optional[str] = None,
+        data_keys: str | list[str] | None = None,
+        burst_dim: str | None = None,
         **loader_kwargs: Any,
     ):
         """Base class initialization.
@@ -104,7 +105,7 @@ class BaseInstrument(ABC):
         self.z_convention = ZConvention(z_convention)
         self.data_keys = [data_keys] if isinstance(data_keys, str) else (list(data_keys) if data_keys else [])
         self.burst_dim = burst_dim
-        self._monolithic_n_bursts: Optional[int] = None
+        self._monolithic_n_bursts: int | None = None
         if burst_dim is not None:
             if len(files) != 1 or not files[0].lower().endswith(".nc"):
                 raise ValueError("`burst_dim` requires `files` to be a single .nc path")
@@ -113,17 +114,17 @@ class BaseInstrument(ABC):
                     raise ValueError(f"burst_dim {burst_dim!r} not found in dataset dims {tuple(ds.dims)}")
                 self._monolithic_n_bursts = int(ds.sizes[burst_dim])
         self.fs, self.z, self.file_type, self.num_samples_per_burst = self._inspect_first_file(fs, z, deployment_type)
-        self._cached_idx: Optional[int] = None
-        self._cached_data: Optional[Dict[str, np.ndarray]] = None
+        self._cached_idx: int | None = None
+        self._cached_data: dict[str, np.ndarray] | None = None
         self._preprocess_enabled = False
 
     @staticmethod
     def validate_common_inputs(
-        files: List[str],
+        files: list[str],
         name_map: dict,
-        fs: Optional[float] = None,
-        z: Optional[Union[float, List[float], np.ndarray]] = None,
-        data_keys: Optional[Union[str, List[str]]] = None,
+        fs: float | None = None,
+        z: float | list[float] | np.ndarray | None = None,
+        data_keys: str | list[str] | None = None,
     ) -> None:
         """Validate common input parameters shared across all instruments.
 
@@ -199,9 +200,9 @@ class BaseInstrument(ABC):
     @staticmethod
     def _load_file(
         file_path: str,
-        data_keys: Optional[Union[str, List[str]]] = None,
-        loader_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Any, str]:
+        data_keys: str | list[str] | None = None,
+        loader_kwargs: dict[str, Any] | None = None,
+    ) -> tuple[Any, str]:
         """Load a single file. Extra reader kwargs are forwarded to the
         underlying loader selected by extension.
 
@@ -369,7 +370,7 @@ class BaseInstrument(ABC):
         return datetime_array.reshape(time_array.shape)
 
     @staticmethod
-    def detect_time_format(time_input: Union[float, int, str, DatetimeLike]) -> str:
+    def detect_time_format(time_input: float | int | str | DatetimeLike) -> str:
         """Detect if a time input represents Unix epoch time, MATLAB datenum,
         or a datestring.
 
@@ -392,9 +393,9 @@ class BaseInstrument(ABC):
         elif 7e5 < time_input < 8.5e5:
             return "matlab"
         else:
-            raise IOError(f"Unrecognized time input {time_input} with type {type(time_input)}")
+            raise OSError(f"Unrecognized time input {time_input} with type {type(time_input)}")
 
-    def load_burst(self, burst_idx: int) -> Dict[str, np.ndarray]:
+    def load_burst(self, burst_idx: int) -> dict[str, np.ndarray]:
         """Load data for a single burst.
 
         Parameters
@@ -422,7 +423,7 @@ class BaseInstrument(ABC):
             try:
                 data, file_type = self._load_file(file_path, self.data_keys, self.loader_kwargs)
             except Exception as e:
-                raise IOError(f"Failed to load {file_path}: {e}")
+                raise OSError(f"Failed to load {file_path}: {e}")
 
         # Extract and organize data
         burst_data = {}
@@ -451,14 +452,14 @@ class BaseInstrument(ABC):
 
             burst_data[out_key] = var_data
 
-        burst_data_out: Dict[str, np.ndarray] = self._apply_preprocessing(burst_data)
+        burst_data_out: dict[str, np.ndarray] = self._apply_preprocessing(burst_data)
 
         self._cached_idx = burst_idx
         self._cached_data = burst_data_out
 
         return burst_data_out
 
-    def set_preprocess_opts(self, opts: Dict[str, Any]) -> None:
+    def set_preprocess_opts(self, opts: dict[str, Any]) -> None:
         """Enable preprocessing for all subsequent burst loads using the
         options defined in the input dictionary.
 
@@ -499,14 +500,14 @@ class BaseInstrument(ABC):
         self._cached_idx = None
         self._cached_data = None
 
-    def _apply_preprocessing(self, burst_data: Any, keys_to_process: Optional[List[str]] = None) -> Any:
+    def _apply_preprocessing(self, burst_data: Any, keys_to_process: list[str] | None = None) -> Any:
         """Applies preprocessing to a burst data dictionary during loading."""
         if not self._preprocess_enabled:
             return burst_data
         keys_to_process = keys_to_process or []
 
         if self._despike:
-            despike_fns: Dict[str, Any] = {
+            despike_fns: dict[str, Any] = {
                 "goring_nikora": goring_nikora,
                 "threshold": threshold,
                 "recursive_gaussian": recursive_gaussian,
@@ -541,10 +542,10 @@ class BaseInstrument(ABC):
 
     def to_dataset(
         self,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         burst_times: np.ndarray,
-        freq: Optional[np.ndarray] = None,
-        attrs: Optional[dict] = None,
+        freq: np.ndarray | None = None,
+        attrs: dict | None = None,
     ) -> xr.Dataset:
         """Concatenate per-burst result dictionaries into an xarray Dataset.
 
@@ -585,10 +586,10 @@ class BaseInstrument(ABC):
     def to_netcdf(
         self,
         path: str,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         burst_times: np.ndarray,
-        freq: Optional[np.ndarray] = None,
-        attrs: Optional[dict] = None,
+        freq: np.ndarray | None = None,
+        attrs: dict | None = None,
         **nc_kwargs: Any,
     ) -> None:
         """Build a Dataset from per-burst results and write it to a NetCDF

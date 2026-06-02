@@ -1,10 +1,10 @@
 import numpy as np
 import types
 
-from atmosphere.met import Met
-from ocean.adcp import ADCP
-from ocean.ctd import CTD
-from ocean.adv import ADV
+from pytoast.atmosphere.met import Met
+from pytoast.ocean.adcp import ADCP
+from pytoast.ocean.ctd import CTD
+from pytoast.ocean.adv import ADV
 from testhelpers.rotate_utils import nortek_4beam_T
 
 

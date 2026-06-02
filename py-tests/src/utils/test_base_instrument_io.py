@@ -3,7 +3,7 @@ import numpy.testing as npt
 import pytest
 import xarray as xr
 
-from utils.base_instrument import BaseInstrument
+from pytoast.utils.base_instrument import BaseInstrument
 
 
 FS = 16.0

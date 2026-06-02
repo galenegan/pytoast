@@ -1,8 +1,8 @@
+
 import numpy as np
-from typing import Optional
 
-from utils.constants import GRAVITATIONAL_ACCELERATION as g, SSO, T0, CP0, Numeric
-
+from pytoast.utils.constants import CP0, SSO, T0, Numeric
+from pytoast.utils.constants import GRAVITATIONAL_ACCELERATION as g
 
 # =============================================================================
 # Private helper functions for Conservative Temperature (ct)
@@ -1030,7 +1030,7 @@ def heat_capacity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
 
     H = -2.9558e-6 + t * (1.17054e-7 + t * (-2.3905e-9 + t * 1.8448e-11))
 
-    I = 9.971e-8
+    I = 9.971e-8  # noqa: E741  # name matches TEOS-10 reference polynomial coefficients
 
     J = -5.422e-8 + t * (2.6380e-9 + t * (-6.5637e-11 + t * 6.136e-13))
 
@@ -1116,7 +1116,7 @@ def buoyancy_frequency(
     sa: np.ndarray,
     ct: np.ndarray,
     p: np.ndarray,
-    lat: Optional[Numeric] = None,
+    lat: Numeric | None = None,
     axis: int = 0,
 ) -> np.ndarray:
     """
@@ -1188,7 +1188,7 @@ def gravity_at_lat(lat: Numeric) -> Numeric:
     return g
 
 
-def depth_from_pressure(p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
+def depth_from_pressure(p: Numeric, lat: Numeric | None = None) -> Numeric:
     """
     Depth from sea pressure using the UNESCO (1983) formula with optional
     latitude-dependent gravity. Depth is returned as a positive quantity (distance below surface).
@@ -1215,7 +1215,7 @@ def depth_from_pressure(p: Numeric, lat: Optional[Numeric] = None) -> Numeric:
     return depth
 
 
-def pressure_from_depth(z: Numeric, lat: Optional[Numeric] = None) -> Numeric:
+def pressure_from_depth(z: Numeric, lat: Numeric | None = None) -> Numeric:
     """
     Sea pressure from depth (positive downward) using a one-step Newton
     refinement of a hydrostatic initial guess.

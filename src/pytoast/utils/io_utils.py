@@ -1,18 +1,19 @@
+from typing import Any
+
 import numpy as np
 import xarray as xr
-from typing import Any, Dict, List, Optional, Tuple, Union
 
-Numeric = Union[float, int, np.ndarray]
+Numeric = float | int | np.ndarray
 
 COORD_KEYS = {"time", "z", "freq"}
 
 
 def results_to_dataset(
-    results: List[Dict[str, Any]],
+    results: list[dict[str, Any]],
     burst_times: np.ndarray,
-    z: Optional[np.ndarray] = None,
-    freq: Optional[np.ndarray] = None,
-    attrs: Optional[dict] = None,
+    z: np.ndarray | None = None,
+    freq: np.ndarray | None = None,
+    attrs: dict | None = None,
 ) -> xr.Dataset:
     """Concatenate a list of per-burst result dictionaries into an xarray
     Dataset.
@@ -70,7 +71,7 @@ def results_to_dataset(
     n_freq = int(len(freq)) if freq is not None else None
 
     # Union of variable keys across all bursts, excluding coord-reserved names.
-    var_keys: List[str] = []
+    var_keys: list[str] = []
     seen = set()
     for r in results:
         for k in r.keys():
@@ -79,7 +80,7 @@ def results_to_dataset(
             seen.add(k)
             var_keys.append(k)
 
-    coords: Dict[str, Any] = {"burst_time": ("burst_time", burst_times)}
+    coords: dict[str, Any] = {"burst_time": ("burst_time", burst_times)}
     if z is not None:
         z_arr = np.asarray(z)
         coords["z"] = ("z", z_arr)
@@ -88,7 +89,7 @@ def results_to_dataset(
     if freq is not None:
         coords["freq"] = ("freq", np.asarray(freq))
 
-    data_vars: Dict[str, Tuple[Tuple[str, ...], np.ndarray]] = {}
+    data_vars: dict[str, tuple[tuple[str, ...], np.ndarray]] = {}
     for key in var_keys:
         canonical = _first_non_none_value(results, key)
         if canonical is None:
@@ -115,7 +116,7 @@ def results_to_dataset(
     return ds
 
 
-def _first_non_none_value(results: List[Dict[str, Any]], key: str) -> Optional[Any]:
+def _first_non_none_value(results: list[dict[str, Any]], key: str) -> Any | None:
     for r in results:
         v = r.get(key, None)
         if v is not None:
@@ -126,9 +127,9 @@ def _first_non_none_value(results: List[Dict[str, Any]], key: str) -> Optional[A
 def _infer_dims(
     value: Any,
     key: str,
-    n_heights: Optional[int],
-    n_freq: Optional[int],
-) -> Tuple[Tuple[str, ...], Tuple[int, ...]]:
+    n_heights: int | None,
+    n_freq: int | None,
+) -> tuple[tuple[str, ...], tuple[int, ...]]:
     """Return (inner_dim_names, inner_shape) for a per-burst value."""
     arr = np.asarray(value)
     shape = arr.shape
@@ -138,7 +139,7 @@ def _infer_dims(
 
     if arr.ndim == 1:
         n = shape[0]
-        candidates: List[str] = []
+        candidates: list[str] = []
         if n_heights is not None and n == n_heights:
             candidates.append("z")
         if n_heights is not None and n_heights > 1 and n == n_heights - 1:

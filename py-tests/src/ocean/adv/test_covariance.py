@@ -2,7 +2,7 @@ import types
 import numpy as np
 import numpy.testing as npt
 import scipy.signal as sig
-from ocean.adv import ADV
+from pytoast.ocean.adv import ADV
 from testhelpers.synth_utils import generate_wave_turb_burst
 from testhelpers.stub_utils import make_adv
 

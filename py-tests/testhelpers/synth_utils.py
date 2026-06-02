@@ -3,8 +3,8 @@ and turbulence ground truth, used by the ADV, Sonic, and ADCP test modules."""
 
 import numpy as np
 import scipy.signal as sig
-from utils.wave_utils import get_wavenumber
-from utils.constants import GRAVITATIONAL_ACCELERATION as g, VON_KARMAN as KAPPA, WATER_DENSITY as rho0
+from pytoast.utils.wave_utils import get_wavenumber
+from pytoast.utils.constants import GRAVITATIONAL_ACCELERATION as g, VON_KARMAN as KAPPA, WATER_DENSITY as rho0
 
 
 def _timeseries_from_spectrum(P, N, fs, rng, phases=None, phase_offset=0.0):

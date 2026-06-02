@@ -1,5 +1,5 @@
+
 import numpy as np
-from typing import Tuple, Optional, Union
 from scipy.stats import circmean
 
 
@@ -7,15 +7,15 @@ def coord_transform_3_beam_nortek(
     u1: np.ndarray,
     u2: np.ndarray,
     u3: np.ndarray,
-    heading: Optional[Union[float, np.ndarray]],
-    pitch: Optional[Union[float, np.ndarray]],
-    roll: Optional[Union[float, np.ndarray]],
+    heading: float | np.ndarray | None,
+    pitch: float | np.ndarray | None,
+    roll: float | np.ndarray | None,
     transformation_matrix: np.ndarray,
     declination: float = 0.0,
     orientation: str = "up",
     coords_in: str = "beam",
     coords_out: str = "xyz",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Implementation of Nortek's coordinate transformation for 3-beam instruments.
     https://support.nortekgroup.com/hc/en-us/articles/26828129966876-How-do-I-transform-a-coordinate-system-manually
@@ -126,15 +126,15 @@ def coord_transform_4_beam_nortek(
     u2: np.ndarray,
     u3: np.ndarray,
     u4: np.ndarray,
-    heading: Union[float, np.ndarray],
-    pitch: Union[float, np.ndarray],
-    roll: Union[float, np.ndarray],
+    heading: float | np.ndarray,
+    pitch: float | np.ndarray,
+    roll: float | np.ndarray,
     transformation_matrix: np.ndarray,
     declination: float = 0.0,
     orientation: str = "up",
     coords_in: str = "beam",
     coords_out: str = "xyz",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Implementation of Nortek's coordinate transformation for the 4-beam
     Signature instrument. Supports all combinations of beam, xyz, and enu
     coordinates.
@@ -236,16 +236,16 @@ def coord_transform_4_beam_rdi(
     u2: np.ndarray,
     u3: np.ndarray,
     u4: np.ndarray,
-    heading: Union[float, np.ndarray],
-    pitch: Union[float, np.ndarray],
-    roll: Union[float, np.ndarray],
+    heading: float | np.ndarray,
+    pitch: float | np.ndarray,
+    roll: float | np.ndarray,
     beam_angle: float = 25.0,
-    transformation_matrix: Optional[np.ndarray] = None,
+    transformation_matrix: np.ndarray | None = None,
     declination: float = 0.0,
     orientation: str = "up",
     coords_in: str = "beam",
     coords_out: str = "xyz",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Coordinate transformation for Teledyne RDI 4-beam ADCPs.
 
     Supports all combinations of beam, xyz, and enu coordinates.
@@ -351,7 +351,7 @@ def coord_transform_4_beam_rdi(
     raise ValueError(f"Invalid coordinate transformation: {coords_in!r} -> {coords_out!r}")
 
 
-def align_with_principal_axis(u1: np.ndarray, u2: np.ndarray, u3: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def align_with_principal_axis(u1: np.ndarray, u2: np.ndarray, u3: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     Calculates the direction of maximum variance from the u and v velocities (Thomson & Emery, 4.52b).
 
@@ -391,7 +391,7 @@ def align_with_principal_axis(u1: np.ndarray, u2: np.ndarray, u3: np.ndarray) ->
     return out
 
 
-def align_with_flow(u1: np.ndarray, u2: np.ndarray, u3: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def align_with_flow(u1: np.ndarray, u2: np.ndarray, u3: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Computes the rotation angles that minimize the burst-averaged v and w velocities.
 
     Parameters
@@ -421,9 +421,9 @@ def rotate_velocity_by_theta(
     u1: np.ndarray,
     u2: np.ndarray,
     u3: np.ndarray,
-    theta_h: Union[float, np.ndarray],
-    theta_v: Union[float, np.ndarray],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    theta_h: float | np.ndarray,
+    theta_v: float | np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Rotates u, v, w velocities by directions defined by theta_h and theta_v.
 
     Parameters
@@ -454,7 +454,7 @@ def rotate_velocity_by_theta(
     return u_rot, v_rot, w_rot
 
 
-def min_angle(alpha: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+def min_angle(alpha: float | np.ndarray) -> float | np.ndarray:
     """Wraps angle(s) to the range [-180, 180) degrees.
 
     Parameters
@@ -470,7 +470,7 @@ def min_angle(alpha: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     return (alpha + 180) % 360 - 180
 
 
-def apply_flow_rotation(burst_data: dict, flow_rotation: Union[str, tuple]) -> dict:
+def apply_flow_rotation(burst_data: dict, flow_rotation: str | tuple) -> dict:
     """Rotate u1/u2/u3 to align with a particular flow direction.
 
     Parameters

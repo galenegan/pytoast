@@ -32,7 +32,8 @@ dependencies = [
     "matplotlib>=3.5.0",
     "h5py>=3.7.0",
     "netCDF4>=1.6",
-    "mat73>=0.65"
+    "mat73>=0.65",
+    "notebook>=7.5.6"
 ]
 
 [project.optional-dependencies]
@@ -62,20 +63,33 @@ jupyter = [
     "matplotlib>=3.5.0",
 ]
 
-# All optional dependencies
+# All optional dependencies (literal union so it resolves from a fresh checkout
+# before the package is on an index).
 all = [
-    "pytoast[dev,docs,jupyter]",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff >= 0.4",
+    "isort>=5.10.0",
+    "mypy>=1.0.0",
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.0",
+    "mkdocstrings[python]>=0.25",
+    "mkdocs-jupyter>=0.24",
+    "jupyter>=1.0.0",
+    "ipython>=8.0.0",
+    "nbconvert>=7.0.0",
+    "matplotlib>=3.5.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/pytoast"
-Documentation = "https://pytoast.readthedocs.io"
-Repository = "https://github.com/your-username/pytoast.git"
-"Bug Tracker" = "https://github.com/your-username/pytoast/issues"
+Homepage = "https://github.com/galenegan/pytoast"
+Documentation = "https://galenegan.github.io/pytoast/"
+Repository = "https://github.com/galenegan/pytoast.git"
+"Bug Tracker" = "https://github.com/galenegan/pytoast/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["*"]
+include = ["pytoast*"]
 
 [tool.setuptools.package-dir]
 "" = "src"

@@ -3,9 +3,9 @@ import numpy.testing as npt
 import pytest
 from pathlib import Path
 import glob
-import utils.sea_thermo as sea_thermo
-from ocean.ctd import CTD
-from utils.base_instrument import ZConvention
+import pytoast.utils.sea_thermo as sea_thermo
+from pytoast.ocean.ctd import CTD
+from pytoast.utils.base_instrument import ZConvention
 from testhelpers.stub_utils import eq_except, make_ctd
 
 NAME_MAP = {"sp": "PSAL", "t": "TEMP", "p": "PRES", "time": "TIME"}

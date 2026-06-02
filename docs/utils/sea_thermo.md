@@ -1,2 +1,2 @@
 
-::: utils.sea_thermo
+::: pytoast.utils.sea_thermo

@@ -1,8 +1,10 @@
+import warnings
+
 import numpy.testing as npt
 import numpy as np
 import pytest
 
-from utils.wave_utils import get_wavenumber, get_cg, wave_stats
+from pytoast.utils.wave_utils import get_wavenumber, get_cg, jones_monismith_correction, wave_stats
 from testhelpers.synth_utils import pierson_moskowitz
 
 
@@ -34,6 +36,25 @@ class TestDispersion:
         k = get_wavenumber(omega, h)
         cg = get_cg(k, h)
         npt.assert_almost_equal(cg, 9.81 / omega / 2, decimal=4)
+
+    def test_get_cg_zero_wavenumber_returns_zero_no_warning(self):
+        k = np.array([0.0, 0.5, 1.0, 2.0])
+        h = 10.0
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            cg = get_cg(k, h)
+        assert cg[0] == 0.0
+        cg_ref = get_cg(k[1:], h)
+        npt.assert_allclose(cg[1:], cg_ref, rtol=1e-12)
+
+    def test_get_wavenumber_no_overflow_at_high_frequency(self):
+        omega = np.array([0.0, 2 * np.pi * 5.0, 2 * np.pi * 10.0])
+        h = 1000.0
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            k = get_wavenumber(omega, h)
+        assert k[0] == 0.0
+        npt.assert_allclose(k[1:], omega[1:] ** 2 / 9.81, rtol=1e-6)
 
 
 class TestWaveStats:
@@ -89,3 +110,58 @@ class TestWaveStats:
         # Corrected P_etaeta should not blow up
         assert all(out_corrected["P_etaeta"] < 10)
         assert np.max(out_corrected["P_etaeta"]) < np.max(out_uncorrected["P_etaeta"])
+
+
+class TestJonesMonismithCorrection:
+    @staticmethod
+    def _build_pressure_spectrum(f, fp, noise_floor):
+        """Synthetic pressure spectrum: Gaussian peak at fp on a flat noise floor."""
+        peak = np.exp(-((f - fp) ** 2) / (2 * (0.02**2)))
+        return peak + noise_floor
+
+    def test_below_cutoff_unchanged(self):
+        f = np.linspace(0, 1.0, 501)
+        fp = 0.12
+        S_pp = self._build_pressure_spectrum(f, fp=fp, noise_floor=1e-3)
+        S_etaeta = S_pp * 4.0
+
+        S_corrected = jones_monismith_correction(S_etaeta, S_pp, f, f_cutoff=0.5)
+
+        # The replacement is m * f^-4 above some cutoff index. At and below that
+        # index, the output must equal the input.
+        diff = np.where(S_corrected != S_etaeta)[0]
+        assert diff.size > 0, "expected replacement above some cutoff"
+        cutoff_idx = diff[0]
+        assert f[cutoff_idx] >= 1.1 * fp - 1e-9
+        npt.assert_array_equal(S_corrected[:cutoff_idx], S_etaeta[:cutoff_idx])
+
+    def test_high_frequency_tail_follows_f_minus_4(self):
+        f = np.linspace(0, 1.0, 501)
+        fp = 0.12
+        S_pp = self._build_pressure_spectrum(f, fp=fp, noise_floor=1e-3)
+        S_etaeta = S_pp * 4.0
+
+        S_corrected = jones_monismith_correction(S_etaeta, S_pp, f, f_cutoff=0.5)
+
+        # Identify the cutoff index (first index where output differs from input).
+        cutoff_idx = int(np.where(S_corrected != S_etaeta)[0][0])
+        m = S_corrected[cutoff_idx] * f[cutoff_idx] ** 4
+
+        # Above the cutoff, S_corrected must equal m * f^-4 exactly (skip f=0).
+        expected_tail = m * f[cutoff_idx:] ** (-4)
+        npt.assert_allclose(S_corrected[cutoff_idx:], expected_tail, rtol=1e-12)
+
+        # Tail must be monotonically non-increasing.
+        assert np.all(np.diff(S_corrected[cutoff_idx:]) <= 0)
+
+    def test_shape_preserved_and_input_not_mutated(self):
+        f = np.linspace(0, 1.0, 257)
+        fp = 0.15
+        S_pp = self._build_pressure_spectrum(f, fp=fp, noise_floor=1e-3)
+        S_etaeta = S_pp * 2.0
+        S_etaeta_orig = S_etaeta.copy()
+
+        S_corrected = jones_monismith_correction(S_etaeta, S_pp, f)
+
+        assert S_corrected.shape == S_etaeta.shape
+        npt.assert_array_equal(S_etaeta, S_etaeta_orig)  # input not mutated

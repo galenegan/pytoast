@@ -1,2 +1,2 @@
 
-::: ocean.adcp.ADCP
+::: pytoast.ocean.adcp.ADCP
