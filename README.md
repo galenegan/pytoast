@@ -7,16 +7,12 @@
 
 ## Overview
 
-`pytoast` provides instrument classes for common turbulence sensors --
-acoustic Doppler velocimeters (ADV), acoustic Doppler current profilers
-(ADCP), sonic anemometers, CTDs, and meteorological stations -- along with a
-shared preprocessing pipeline (despiking, coordinate rotations) and a suite
-of derived calculations: turbulent kinetic energy and dissipation, Reynolds
-stresses with wave-turbulence decomposition, directional wave statistics
-(Jones-Monismith-corrected), seawater and air thermodynamics (TEOS-10), and
-boundary-layer flux parameterizations (COARE 3.6, Madsen and Styles benthic
-boundary layer). The library is aimed at physical oceanographers and
-boundary-layer meteorologists processing field observations.
+`pytoast` is a library for physical oceanographers and meteorologists processing field observations, with a focus on
+turbulence statistics. It provides classes for common ocean and atmospheric sensors -- Acoustic Doppler Velocimeters
+(ADV), Acoustic Doppler Current Profilers (ADCP), sonic anemometers, CTDs, and bulk meteorological instruments -- along
+with a shared preprocessing pipeline (despiking, coordinate rotations) and derived calculations. These include TKE
+dissipation, Reynolds stresses with wave-turbulence decomposition, directional wave statistics, seawater and air
+thermodynamics (TEOS-10), and boundary-layer flux parameterizations (both air-sea and bottom boundary layer).
 
 ---
 
