@@ -403,39 +403,43 @@ class ADV(BaseInstrument):
         k = get_wavenumber(omega, h)
         z = mab - h
 
-        # cosh(k(z+h))/cosh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1+e^{-2kh})
-        cosh_term = (np.exp(k * z) + np.exp(-k * (z + 2 * h))) / (1 + np.exp(-2 * k * h))
-        attenuation_correction = (1e4 / (rho * g)) / cosh_term
-        P_etaeta = P_pp * (attenuation_correction**2)
+        # cosh(k(z+h))/cosh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1+e^{-2kh}).
+        # At f -> 0 (k -> 0) cosh_term -> 0 and the attenuation factor
+        # diverges; the DC/low-f bins are masked out downstream by
+        # `get_frequency_range`, so suppress the warnings here.
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            cosh_term = (np.exp(k * z) + np.exp(-k * (z + 2 * h))) / (1 + np.exp(-2 * k * h))
+            attenuation_correction = (1e4 / (rho * g)) / cosh_term
+            P_etaeta = P_pp * (attenuation_correction**2)
 
-        # All the velocity components
-        _, P_uu = psd(u, self.fs, **kwargs)
-        _, P_up = csd(u, p, self.fs, **kwargs)
-        P_ueta = P_up * attenuation_correction
+            # All the velocity components
+            _, P_uu = psd(u, self.fs, **kwargs)
+            _, P_up = csd(u, p, self.fs, **kwargs)
+            P_ueta = P_up * attenuation_correction
 
-        _, P_vv = psd(v, self.fs, **kwargs)
-        _, P_vp = csd(v, p, self.fs, **kwargs)
-        P_veta = P_vp * attenuation_correction
+            _, P_vv = psd(v, self.fs, **kwargs)
+            _, P_vp = csd(v, p, self.fs, **kwargs)
+            P_veta = P_vp * attenuation_correction
 
-        _, P_ww = psd(w, self.fs, **kwargs)
-        _, P_wp = csd(w, p, self.fs, **kwargs)
-        P_weta = P_wp * attenuation_correction
+            _, P_ww = psd(w, self.fs, **kwargs)
+            _, P_wp = csd(w, p, self.fs, **kwargs)
+            P_weta = P_wp * attenuation_correction
 
-        # Velocity cross spectra
-        _, P_uw = csd(u, w, self.fs, **kwargs)
-        _, P_vw = csd(v, w, self.fs, **kwargs)
-        _, P_uv = csd(u, v, self.fs, **kwargs)
+            # Velocity cross spectra
+            _, P_uw = csd(u, w, self.fs, **kwargs)
+            _, P_vw = csd(v, w, self.fs, **kwargs)
+            _, P_uv = csd(u, v, self.fs, **kwargs)
 
-        # Defining frequency range
-        start_index, end_index = get_frequency_range(f, f_low, f_high)
+            # Defining frequency range
+            start_index, end_index = get_frequency_range(f, f_low, f_high)
 
-        # Calculating wave spectra
-        P_uwave_uwave = P_ueta * np.conj(P_ueta) / P_etaeta
-        P_vwave_vwave = P_veta * np.conj(P_veta) / P_etaeta
-        P_wwave_wwave = P_weta * np.conj(P_weta) / P_etaeta
-        P_uwave_wwave = P_ueta * np.conj(P_weta) / P_etaeta
-        P_uwave_vwave = P_ueta * np.conj(P_veta) / P_etaeta
-        P_vwave_wwave = P_veta * np.conj(P_weta) / P_etaeta
+            # Calculating wave spectra
+            P_uwave_uwave = P_ueta * np.conj(P_ueta) / P_etaeta
+            P_vwave_vwave = P_veta * np.conj(P_veta) / P_etaeta
+            P_wwave_wwave = P_weta * np.conj(P_weta) / P_etaeta
+            P_uwave_wwave = P_ueta * np.conj(P_weta) / P_etaeta
+            P_uwave_vwave = P_ueta * np.conj(P_veta) / P_etaeta
+            P_vwave_wwave = P_veta * np.conj(P_weta) / P_etaeta
 
         # Calculating turbulent spectra
         P_ut_ut = P_uu - P_uwave_uwave
@@ -476,7 +480,7 @@ class ADV(BaseInstrument):
                         f"With z_convention = {ZConvention.DEPTH}, `water_depth` must be specified during initialization to calculate meters above bed."
                     )
                 if "p" in burst_data:
-                    water_depth_above_sensor = np.mean(burst_data["p"], axis=1, keepdims=True)
+                    water_depth_above_sensor = np.mean(burst_data["p"], axis=1)
                     mab = self.water_depth - water_depth_above_sensor
                 else:
                     mab = self.water_depth - self.z
@@ -490,7 +494,7 @@ class ADV(BaseInstrument):
                 raise ValueError(
                     f"With deployment_type = {DeploymentType.CAST}, `water_depth` must be specified during initialization to calculate meters above bed."
                 )
-            water_depth_above_sensor = np.mean(burst_data["p"], axis=1, keepdims=True)
+            water_depth_above_sensor = np.mean(burst_data["p"], axis=1)
             mab = self.water_depth - water_depth_above_sensor
         else:
             raise ValueError(f"Invalid deployment_type: {self.deployment_type}")
@@ -1225,16 +1229,16 @@ class ADV(BaseInstrument):
         out = {}
         n_heights = self.n_heights
         out["eps"] = np.empty((n_heights,))
-        out["noise"] = np.empty((n_heights,))
-        out["quality_flag"] = np.empty((n_heights,), dtype=int)
+        out["eps_noise"] = np.empty((n_heights,))
+        out["eps_quality_flag"] = np.empty((n_heights,), dtype=int)
         for height_idx in range(n_heights):
             u = u_full[height_idx, :]
             v = v_full[height_idx, :]
             w = w_full[height_idx, :]
             (eps, noise, quality_flag) = spectral_fit(u, v, w, f_low, f_high, **kwargs)
             out["eps"][height_idx] = eps
-            out["noise"][height_idx] = noise
-            out["quality_flag"][height_idx] = quality_flag
+            out["eps_noise"][height_idx] = noise
+            out["eps_quality_flag"][height_idx] = quality_flag
 
         return out
 

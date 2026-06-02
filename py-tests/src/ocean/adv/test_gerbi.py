@@ -51,4 +51,4 @@ def test_dissipation_recovers_prescribed_eps():
     }
     out = ADV.dissipation(adv, burst, f_low=0.3, f_high=3.0)
     npt.assert_allclose(out["eps"][0], eps_true, rtol=0.1)
-    assert out["quality_flag"][0] == 1
+    assert out["eps_quality_flag"][0] == 1

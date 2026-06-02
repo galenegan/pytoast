@@ -450,7 +450,10 @@ class BaseInstrument(ABC):
             # Enforcing byte order in case there is a mismatch
             var_data = var_data.astype(var_data.dtype.newbyteorder("="))
 
-            burst_data[out_key] = var_data
+            if out_key == "time":
+                burst_data[out_key] = self.process_time(var_data)
+            else:
+                burst_data[out_key] = var_data
 
         burst_data_out: dict[str, np.ndarray] = self._apply_preprocessing(burst_data)
 

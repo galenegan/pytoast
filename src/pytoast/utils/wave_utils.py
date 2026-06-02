@@ -29,8 +29,7 @@ def get_wavenumber(
     k : float or np.ndarray
         Wavenumber (rad/m)
     """
-    omega = np.asarray(omega, dtype=float)
-    h = np.broadcast_to(np.asarray(h, dtype=float), omega.shape)
+    omega, h = np.broadcast_arrays(np.asarray(omega, dtype=float), np.asarray(h, dtype=float))
     k = np.where(omega == 0, 0.0, omega / np.sqrt(g * h))
     mask = omega != 0
     for _ in range(max_iter):
@@ -63,8 +62,7 @@ def get_cg(k: float | np.ndarray, h: float | np.ndarray) -> float | np.ndarray:
     cg : float or np.ndarray
         Group velocity (m/s). Zero at any k <= 0 entry.
     """
-    k = np.asarray(k, dtype=float)
-    h = np.broadcast_to(np.asarray(h, dtype=float), k.shape)
+    k, h = np.broadcast_arrays(np.asarray(k, dtype=float), np.asarray(h, dtype=float))
     mask = k > 0
     safe_k = np.where(mask, k, 1.0)
     safe_tanh = np.where(mask, np.tanh(safe_k * h), 1.0)
@@ -241,10 +239,13 @@ def wave_stats(
     k = np.asarray(get_wavenumber(omega, h))
     z = mab - h
 
-    # cosh(k(z+h))/cosh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1+e^{-2kh})
-    cosh_term = (np.exp(k * z) + np.exp(-k * (z + 2 * h))) / (1 + np.exp(-2 * k * h))
-    attenuation_correction = (1e4 / (rho * g)) / cosh_term
-    P_etaeta = P_pp * (attenuation_correction**2)
+    # cosh(k(z+h))/cosh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1+e^{-2kh}).
+    # At f -> 0 (k -> 0) cosh_term -> 0 and the attenuation factor diverges;
+    # the DC/low-f bins are excluded by the f_bands masks downstream.
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        cosh_term = (np.exp(k * z) + np.exp(-k * (z + 2 * h))) / (1 + np.exp(-2 * k * h))
+        attenuation_correction = (1e4 / (rho * g)) / cosh_term
+        P_etaeta = P_pp * (attenuation_correction**2)
 
     if sea_correction:
         P_etaeta = jones_monismith_correction(P_etaeta, P_pp, f)
@@ -286,7 +287,6 @@ def wave_stats(
     # Setting up output dictionary and storing the spectral output
     out = {}
     out["f"] = f
-    out["df"] = df
     out["P_uu"] = P_uu
     out["P_vv"] = P_vv
     out["P_pp"] = P_pp
@@ -312,6 +312,8 @@ def wave_stats(
 
     # Looping over the frequency bands and adding bulk (integrated) parameters
     for band_name, band_indices in f_bands.items():
+        if sum(band_indices) == 0:
+            continue
         # Significant and rms wave height
         out[f"Hsig_{band_name}"] = 4 * np.sqrt(np.sum(P_etaeta[band_indices] * df))
         out[f"Hrms_{band_name}"] = np.sqrt(8 * np.sum(P_etaeta[band_indices] * df))
