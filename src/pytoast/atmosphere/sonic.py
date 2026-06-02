@@ -438,7 +438,7 @@ class Sonic(BaseInstrument):
         Returns
         -------
         B : np.ndarray
-            Buoyancy flux at each measurement height
+            Buoyancy flux at each measurement height (m^2 / s^3)
 
         References
         ----------
