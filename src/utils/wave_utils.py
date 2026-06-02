@@ -230,8 +230,8 @@ def wave_stats(
     z = mab - h
 
     # cosh(k(z+h))/cosh(kh) = (e^{kz}+e^{-k(z+2h)}) / (1+e^{-2kh})
-    cosh_term = (1 + np.exp(-2 * k * h)) / (np.exp(k * z) + np.exp(-k * (z + 2 * h)))
-    attenuation_correction = (1e4 / (rho * g)) * cosh_term
+    cosh_term = (np.exp(k * z) + np.exp(-k * (z + 2 * h))) / (1 + np.exp(-2 * k * h))
+    attenuation_correction = (1e4 / (rho * g)) / cosh_term
     P_etaeta = P_pp * (attenuation_correction**2)
 
     if sea_correction:

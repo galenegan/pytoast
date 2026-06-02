@@ -1,9 +1,11 @@
 import numpy as np
 import numpy.testing as npt
+import pytest
 from pathlib import Path
 import glob
 import utils.sea_thermo as sea_thermo
 from ocean.ctd import CTD
+from utils.base_instrument import ZConvention
 from testhelpers.stub_utils import eq_except, make_ctd
 
 NAME_MAP = {"sp": "PSAL", "t": "TEMP", "p": "PRES", "time": "TIME"}
@@ -107,3 +109,97 @@ def test_load_and_derive_from_mat():
     data = ctd.derive(burst)
     assert all([key in data.keys() for key in ALL_DERIVED])
     assert burst["N2"].shape[0] == 1
+
+
+###############################
+# CTD.validate_inputs
+###############################
+
+
+def _ctd_valid_kwargs(tmp_path):
+    f = tmp_path / "fake.mat"
+    f.write_bytes(b"")
+    return {
+        "files": [str(f)],
+        "name_map": {"sp": "PSAL", "t": "TEMP", "p": "PRES"},
+        "fs": 1.0,
+        "z": [1.0],
+        "z_convention": ZConvention.DEPTH,
+    }
+
+
+def test_ctd_validate_inputs_happy_path(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    assert CTD.validate_inputs(**kw) is None
+
+
+def test_ctd_validate_inputs_files_not_list_raises(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["files"] = (kw["files"][0],)
+    with pytest.raises(TypeError):
+        CTD.validate_inputs(**kw)
+
+
+def test_ctd_validate_inputs_bad_extension_raises(tmp_path):
+    f = tmp_path / "fake.zip"
+    f.write_bytes(b"")
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["files"] = [str(f)]
+    with pytest.raises(ValueError):
+        CTD.validate_inputs(**kw)
+
+
+def test_ctd_validate_inputs_missing_file_raises(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["files"] = [str(tmp_path / "missing.mat")]
+    with pytest.raises(FileNotFoundError):
+        CTD.validate_inputs(**kw)
+
+
+def test_ctd_validate_inputs_name_map_not_dict_raises(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["name_map"] = "not a dict"
+    with pytest.raises(TypeError):
+        CTD.validate_inputs(**kw)
+
+
+def test_ctd_validate_inputs_no_time_and_no_fs_raises(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["fs"] = None
+    with pytest.raises(ValueError):
+        CTD.validate_inputs(**kw)
+
+
+def test_ctd_validate_inputs_z_wrong_type_raises(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["z"] = "bad"
+    with pytest.raises(TypeError):
+        CTD.validate_inputs(**kw)
+
+
+def test_ctd_validate_inputs_z_list_non_numeric_raises(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["z"] = [1.0, None]
+    with pytest.raises(TypeError):
+        CTD.validate_inputs(**kw)
+
+
+def test_ctd_validate_inputs_fs_wrong_type_raises(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["fs"] = "1"
+    with pytest.raises(TypeError):
+        CTD.validate_inputs(**kw)
+
+
+def test_ctd_validate_inputs_data_keys_wrong_type_raises(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["data_keys"] = 3
+    with pytest.raises(TypeError):
+        CTD.validate_inputs(**kw)
+
+
+def test_ctd_validate_inputs_bad_z_convention_raises(tmp_path):
+    kw = _ctd_valid_kwargs(tmp_path)
+    kw["z_convention"] = ZConvention.MAS
+    with pytest.raises(ValueError):
+        CTD.validate_inputs(**kw)

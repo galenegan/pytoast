@@ -1,8 +1,10 @@
 import glob
 import os
 import numpy as np
+import pytest
 
 from ocean.adv import ADV
+from utils.base_instrument import ZConvention
 from testhelpers.stub_utils import eq_except
 
 
@@ -103,3 +105,129 @@ def test_npy_list():
     assert "time" in burst.keys()
     assert burst["coords"] == "xyz"
     assert burst["u1"].shape[0] == adv.n_heights
+###############################
+# ADV.validate_inputs
+###############################
+
+
+def _adv_valid_kwargs(tmp_path):
+    f = tmp_path / "fake.mat"
+    f.write_bytes(b"")
+    return {
+        "files": [str(f)],
+        "name_map": {"u1": "U", "u2": "V", "u3": "W"},
+        "deployment_type": "fixed",
+        "fs": 32.0,
+        "z": [1.0],
+        "z_convention": ZConvention.MAB,
+    }
+
+
+def test_adv_validate_inputs_happy_path(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    assert ADV.validate_inputs(**kw) is None
+
+
+def test_adv_validate_inputs_files_not_list_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["files"] = (kw["files"][0],)  # tuple, not list or str
+    with pytest.raises(TypeError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_bad_extension_raises(tmp_path):
+    f = tmp_path / "fake.txt"
+    f.write_bytes(b"")
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["files"] = [str(f)]
+    with pytest.raises(ValueError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_missing_file_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["files"] = [str(tmp_path / "does_not_exist.mat")]
+    with pytest.raises(FileNotFoundError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_name_map_not_dict_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["name_map"] = [("u1", "U")]
+    with pytest.raises(TypeError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_no_time_and_no_fs_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["fs"] = None
+    # name_map has no "time" key in the baseline
+    with pytest.raises(ValueError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_z_wrong_type_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["z"] = "not a number"
+    with pytest.raises(TypeError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_z_list_non_numeric_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["z"] = [1.0, "two", 3.0]
+    with pytest.raises(TypeError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_fs_wrong_type_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["fs"] = "32"
+    with pytest.raises(TypeError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_data_keys_wrong_type_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["data_keys"] = 7
+    with pytest.raises(TypeError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_bad_deployment_type_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["deployment_type"] = "cast"
+    with pytest.raises(ValueError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_missing_required_name_map_key_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["name_map"] = {"u1": "U", "u2": "V"}  # missing "u3"
+    with pytest.raises(ValueError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_bad_source_coords_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    with pytest.raises(ValueError):
+        ADV.validate_inputs(source_coords="polar", **kw)
+
+
+def test_adv_validate_inputs_bad_orientation_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    with pytest.raises(ValueError):
+        ADV.validate_inputs(orientation="sideways", **kw)
+
+
+def test_adv_validate_inputs_bad_z_convention_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    kw["z_convention"] = ZConvention.MAS
+    with pytest.raises(ValueError):
+        ADV.validate_inputs(**kw)
+
+
+def test_adv_validate_inputs_bad_water_depth_raises(tmp_path):
+    kw = _adv_valid_kwargs(tmp_path)
+    with pytest.raises(ValueError):
+        ADV.validate_inputs(water_depth="deep", **kw)

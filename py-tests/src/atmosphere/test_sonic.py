@@ -1,10 +1,12 @@
 import glob
 import numpy as np
 import numpy.testing as npt
+import pytest
 from pathlib import Path
 from testhelpers.synth_utils import generate_wave_turb_burst
 from testhelpers.stub_utils import eq_except, make_sonic
 from atmosphere.sonic import Sonic
+from utils.base_instrument import ZConvention
 
 
 class TestCovariance:
@@ -150,3 +152,130 @@ def test_subsample(tmp_path):
     assert len(sonic_full.files) == 3
     assert len(sonic_subsampled.files) == 2
     assert eq_except(sonic_subsampled, sonic_full, "files")
+
+
+###############################
+# Sonic.validate_inputs
+###############################
+
+
+def _sonic_valid_kwargs(tmp_path):
+    f = tmp_path / "fake.mat"
+    f.write_bytes(b"")
+    return {
+        "files": [str(f)],
+        "name_map": {"u1": "U", "u2": "V", "u3": "W"},
+        "deployment_type": "fixed",
+        "fs": 20.0,
+        "z": [10.0],
+        "z_convention": ZConvention.MAS,
+    }
+
+
+def test_sonic_validate_inputs_happy_path(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    assert Sonic.validate_inputs(**kw) is None
+
+
+def test_sonic_validate_inputs_files_not_list_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["files"] = (kw["files"][0],)
+    with pytest.raises(TypeError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_bad_extension_raises(tmp_path):
+    f = tmp_path / "fake.log"
+    f.write_bytes(b"")
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["files"] = [str(f)]
+    with pytest.raises(ValueError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_missing_file_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["files"] = [str(tmp_path / "missing.mat")]
+    with pytest.raises(FileNotFoundError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_name_map_not_dict_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["name_map"] = ["u1", "U"]
+    with pytest.raises(TypeError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_no_time_and_no_fs_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["fs"] = None
+    with pytest.raises(ValueError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_z_wrong_type_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["z"] = "ten meters"
+    with pytest.raises(TypeError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_z_list_non_numeric_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["z"] = [10.0, "twenty"]
+    with pytest.raises(TypeError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_fs_wrong_type_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["fs"] = "20"
+    with pytest.raises(TypeError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_data_keys_wrong_type_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["data_keys"] = 9
+    with pytest.raises(TypeError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_bad_deployment_type_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["deployment_type"] = "cast"
+    with pytest.raises(ValueError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_missing_required_name_map_key_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["name_map"] = {"u1": "U", "u2": "V"}  # missing u3
+    with pytest.raises(ValueError):
+        Sonic.validate_inputs(**kw)
+
+
+def test_sonic_validate_inputs_bad_path_length_type_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    with pytest.raises(TypeError):
+        Sonic.validate_inputs(path_length=15, **kw)  # int, not float
+
+
+def test_sonic_validate_inputs_source_coords_not_string_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    with pytest.raises(TypeError):
+        Sonic.validate_inputs(source_coords=123, **kw)
+
+
+def test_sonic_validate_inputs_bad_source_coords_value_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    with pytest.raises(ValueError):
+        Sonic.validate_inputs(source_coords="beam", **kw)
+
+
+def test_sonic_validate_inputs_bad_z_convention_raises(tmp_path):
+    kw = _sonic_valid_kwargs(tmp_path)
+    kw["z_convention"] = ZConvention.MAB
+    with pytest.raises(ValueError):
+        Sonic.validate_inputs(**kw)

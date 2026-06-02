@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from ocean.adcp import ADCP
+from utils.base_instrument import ZConvention
 from testhelpers.rotate_utils import nortek_4beam_T
 from testhelpers.stub_utils import eq_except
 
@@ -159,3 +160,136 @@ def test_subsample():
     assert len(original_files) == 3
     assert len(subsampled_files) == 2
     assert eq_except(adcp_subsampled, adcp, "files")
+
+
+###############################
+# ADCP.validate_inputs
+###############################
+
+
+def _adcp_valid_kwargs(tmp_path):
+    f = tmp_path / "fake.mat"
+    f.write_bytes(b"")
+    return {
+        "files": [str(f)],
+        "name_map": {"u1": "U", "u2": "V", "u3": "W"},
+        "deployment_type": "fixed",
+        "fs": 16.0,
+        "z": [1.0, 2.0, 3.0],
+        "z_convention": ZConvention.MAB,
+    }
+
+
+def test_adcp_validate_inputs_happy_path(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    assert ADCP.validate_inputs(**kw) is None
+
+
+def test_adcp_validate_inputs_files_not_list_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["files"] = (kw["files"][0],)
+    with pytest.raises(TypeError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_bad_extension_raises(tmp_path):
+    f = tmp_path / "fake.xyz"
+    f.write_bytes(b"")
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["files"] = [str(f)]
+    with pytest.raises(ValueError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_missing_file_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["files"] = [str(tmp_path / "missing.mat")]
+    with pytest.raises(FileNotFoundError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_name_map_not_dict_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["name_map"] = ("u1", "U")
+    with pytest.raises(TypeError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_no_time_and_no_fs_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["fs"] = None
+    with pytest.raises(ValueError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_z_wrong_type_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["z"] = "bad"
+    with pytest.raises(TypeError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_z_list_non_numeric_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["z"] = [1.0, "two"]
+    with pytest.raises(TypeError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_fs_wrong_type_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["fs"] = "16"
+    with pytest.raises(TypeError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_data_keys_wrong_type_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["data_keys"] = 5
+    with pytest.raises(TypeError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_bad_deployment_type_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["deployment_type"] = "cast"
+    with pytest.raises(ValueError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_missing_required_name_map_key_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["name_map"] = {"u1": "U", "u3": "W"}  # missing u2
+    with pytest.raises(ValueError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_bad_source_coords_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    with pytest.raises(ValueError):
+        ADCP.validate_inputs(source_coords="polar", **kw)
+
+
+def test_adcp_validate_inputs_bad_orientation_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    with pytest.raises(ValueError):
+        ADCP.validate_inputs(orientation="sideways", **kw)
+
+
+def test_adcp_validate_inputs_bad_beam_angle_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    with pytest.raises(ValueError):
+        ADCP.validate_inputs(beam_angle="twenty", **kw)
+
+
+def test_adcp_validate_inputs_bad_z_convention_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    kw["z_convention"] = ZConvention.MAS
+    with pytest.raises(ValueError):
+        ADCP.validate_inputs(**kw)
+
+
+def test_adcp_validate_inputs_bad_manufacturer_raises(tmp_path):
+    kw = _adcp_valid_kwargs(tmp_path)
+    with pytest.raises(ValueError):
+        ADCP.validate_inputs(manufacturer="acme", **kw)

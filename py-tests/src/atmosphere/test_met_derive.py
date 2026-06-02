@@ -1,7 +1,9 @@
 import numpy as np
 import numpy.testing as npt
+import pytest
 import utils.air_thermo as air_thermo
 from atmosphere.met import Met
+from utils.base_instrument import ZConvention
 from testhelpers.stub_utils import eq_except, make_met
 
 
@@ -95,3 +97,105 @@ def test_subsample(tmp_path):
     assert len(met_full.files) == 3
     assert len(met_subsampled.files) == 2
     assert eq_except(met_subsampled, met_full, "files")
+
+
+###############################
+# Met.validate_inputs
+###############################
+
+
+def _met_valid_kwargs(tmp_path):
+    f = tmp_path / "fake.mat"
+    f.write_bytes(b"")
+    return {
+        "files": [str(f)],
+        "name_map": {"t": "TEMP", "p": "PRES", "rh": "RH"},
+        "deployment_type": "fixed",
+        "fs": 1.0,
+        "z": [10.0],
+        "z_convention": ZConvention.MAS,
+    }
+
+
+def test_met_validate_inputs_happy_path(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    assert Met.validate_inputs(**kw) is None
+
+
+def test_met_validate_inputs_files_not_list_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["files"] = (kw["files"][0],)
+    with pytest.raises(TypeError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_bad_extension_raises(tmp_path):
+    f = tmp_path / "fake.txt"
+    f.write_bytes(b"")
+    kw = _met_valid_kwargs(tmp_path)
+    kw["files"] = [str(f)]
+    with pytest.raises(ValueError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_missing_file_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["files"] = [str(tmp_path / "missing.mat")]
+    with pytest.raises(FileNotFoundError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_name_map_not_dict_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["name_map"] = "TEMP"
+    with pytest.raises(TypeError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_no_time_and_no_fs_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["fs"] = None
+    with pytest.raises(ValueError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_z_wrong_type_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["z"] = "ten"
+    with pytest.raises(TypeError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_z_list_non_numeric_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["z"] = [10.0, "twenty"]
+    with pytest.raises(TypeError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_fs_wrong_type_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["fs"] = "1"
+    with pytest.raises(TypeError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_data_keys_wrong_type_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["data_keys"] = 11
+    with pytest.raises(TypeError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_bad_deployment_type_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["deployment_type"] = "cast"
+    with pytest.raises(ValueError):
+        Met.validate_inputs(**kw)
+
+
+def test_met_validate_inputs_bad_z_convention_raises(tmp_path):
+    kw = _met_valid_kwargs(tmp_path)
+    kw["z_convention"] = ZConvention.MAB
+    with pytest.raises(ValueError):
+        Met.validate_inputs(**kw)
