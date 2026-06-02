@@ -1167,8 +1167,8 @@ class ADV(BaseInstrument):
             Dictionary with the following keys/values at each height:
 
             * `eps` (float) : dissipation rate of TKE (m^2/s^3)
-            * `noise` (float) : intercept from dissipation linear regression
-            * `quality_flag` (int) : 1 for good eps estimate, 0 for bad eps estimate. Defined based on Gerbi Eq. 11
+            * `eps_noise` (float) : intercept from dissipation linear regression
+            * `eps_quality_flag` (int) : 1 for good eps estimate, 0 for bad eps estimate. Defined based on Gerbi Eq. 11
 
         References
         ----------

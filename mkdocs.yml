@@ -30,3 +30,7 @@ plugins:
           paths: [src]
           options:
             docstring_style: numpy
+            separate_signature: true
+            show_signature_annotations: false
+            signature_crossrefs: true
+            line_length: 60
