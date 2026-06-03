@@ -25,9 +25,11 @@ class Met(BaseInstrument):
     corresponds to instrument heights (length `self.n_heights`) and the second axis is time. The individual
     thermodynamic methods accept any Numeric type and broadcast over these arrays without modification.
 
-    This class requires `deployment_type="fixed"`. Height information is taken from `self.z` (shape (n_heights,),
-    meters above the sea surface, since Met locks `z_convention` to `ZConvention.MAS`) rather than from burst dict keys,
-    so that `self.z` remains the single source of truth.
+    This class requires `deployment_type="fixed"`. Height information is taken from `self.z` (meters above the sea
+    surface, since Met locks `z_convention` to `ZConvention.MAS`) rather than from burst dict keys, so that `self.z`
+    remains the single source of truth. `self.z` has shape (n_heights,) when `z` is passed to the initializer (a
+    constant height per sensor), or (n_heights, n_samples) when `z` is supplied as a time-varying `name_map` data
+    variable (e.g. a height referenced to a fluctuating mean sea surface).
 
     Standard burst dict input keys recognized by `Met.derive`:
 
@@ -446,9 +448,10 @@ class Met(BaseInstrument):
         as optional throughout; when the ``"sp"`` key is present its value is forwarded to the vapor-pressure
         calculations.
 
-        Height is always taken from ``self.z`` (shape (n_heights,)) and is not read from ``burst_data``. When computing
-        potential temperature, ``self.z`` is reshaped to (n_heights, 1) so that it broadcasts correctly against
-        (n_heights, n_samples) arrays.
+        Height is always taken from ``self.z`` and is not read from ``burst_data``. When computing potential
+        temperature, a 1-D ``self.z`` of shape (n_heights,) is reshaped to (n_heights, 1) so that it broadcasts
+        correctly against (n_heights, n_samples) arrays; a time-varying ``self.z`` of shape (n_heights, n_samples) is
+        used as-is.
 
         Input keys recognized
         ----------------------
@@ -495,8 +498,10 @@ class Met(BaseInstrument):
             burst_data["cp"] = np.asarray(self.specific_heat(t))
             burst_data["L_v"] = np.asarray(self.latent_heat_of_vaporization(t))
             burst_data["nu"] = np.asarray(self.kinematic_viscosity(t))
-            # self.z has shape (n_heights,); reshape to (n_heights, 1) to broadcast over time axis
-            burst_data["theta"] = np.asarray(self.potential_temperature(t, self.z.reshape(-1, 1)))
+            # A 1-D self.z (n_heights,) is reshaped to (n_heights, 1) to broadcast over the time axis; a time-varying
+            # self.z (n_heights, n_samples) is used as-is.
+            z = self.z if self.z.ndim == 2 else self.z.reshape(-1, 1)
+            burst_data["theta"] = np.asarray(self.potential_temperature(t, z))
 
         # Temperature + pressure quantities
         if t is not None and p is not None:

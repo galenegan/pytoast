@@ -301,11 +301,22 @@ class BaseInstrument(ABC):
                     z = np.array(z)
             elif "z" in self.name_map:
                 self._physical_z = True
-                arr = self._as_array(data, self.name_map["z"], file_type)
-                if arr.ndim == 0:
-                    z = np.array([float(arr)])
+                z_key = self.name_map["z"]
+                if isinstance(z_key, list):
+                    # One z variable per measurement height. Stack to (n_heights, n_samples), preserving any
+                    # time variation in the height coordinate (e.g. a fluctuating mean sea surface).
+                    z = np.array([self._as_array(data, k, file_type) for k in z_key])
                 else:
-                    z = np.asarray(arr)
+                    arr = self._as_array(data, z_key, file_type)
+                    if arr.ndim == 0:
+                        z = np.array([float(arr)])
+                    elif arr.ndim == 1:
+                        z = np.asarray(arr)
+                    else:
+                        # 2-D time-varying z. Orient to (n_heights, n_samples) with the shorter (vertical) axis
+                        # first, consistent with the time-as-longer-dimension convention used elsewhere.
+                        arr = np.asarray(arr)
+                        z = arr if arr.shape[0] <= arr.shape[1] else arr.T
             else:
                 non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
                 if isinstance(non_time_key, str):
@@ -578,10 +589,13 @@ class BaseInstrument(ABC):
         }
         if attrs:
             merged_attrs.update(attrs)
+        # results_to_dataset expects a 1-D z coordinate. When self.z is time-varying (n_heights, n_samples),
+        # collapse to a per-height representative value for the dataset coordinate only.
+        z = self.z if (self.z is None or np.ndim(self.z) == 1) else np.mean(self.z, axis=1)
         return results_to_dataset(
             results=results,
             burst_times=burst_times,
-            z=self.z,
+            z=z,
             freq=freq,
             attrs=merged_attrs,
         )

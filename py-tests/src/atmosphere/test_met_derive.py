@@ -1,3 +1,6 @@
+import glob
+from pathlib import Path
+
 import numpy as np
 import numpy.testing as npt
 import pytest
@@ -97,6 +100,47 @@ def test_subsample(tmp_path):
     assert len(met_full.files) == 3
     assert len(met_subsampled.files) == 2
     assert eq_except(met_subsampled, met_full, "files")
+
+
+def test_time_varying_z_from_name_map():
+    folder = f"{Path(__file__).parent}/testdata"
+    files = glob.glob(f"{folder}/*.csv")
+    name_map = {
+        "time": "time",
+        "p": ["atmospheric_pressure_0", "atmospheric_pressure_1"],
+        "t": ["air_temperature_0", "air_temperature_1"],
+        "rh": ["relative_humidity_0", "relative_humidity_1"],
+        "z": ["z_met_0", "z_met_1"],
+    }
+    met = Met(files=files, name_map=name_map, fs=1.0 / (20 * 60))
+
+    # z is supplied per-height as a name_map data variable, so it stays time-varying
+    assert met.n_heights == 2
+    assert met.z.shape == (2, 1000)
+    assert np.all(met.z[0] == 0)
+    assert met.z[1].std() > 0  # genuinely fluctuating height
+
+    burst = met.load_burst(0)
+    data = met.derive(burst)
+    assert data["theta"].shape == burst["t"].shape == (2, 1000)
+    assert T_P_RH <= data.keys()
+
+
+def test_passed_z_stays_constant_1d():
+    folder = f"{Path(__file__).parent}/testdata"
+    files = glob.glob(f"{folder}/*.csv")
+    name_map = {
+        "time": "time",
+        "p": ["atmospheric_pressure_0", "atmospheric_pressure_1"],
+        "t": ["air_temperature_0", "air_temperature_1"],
+        "rh": ["relative_humidity_0", "relative_humidity_1"],
+    }
+    met = Met(files=files, name_map=name_map, fs=1.0 / (20 * 60), z=[2.0, 3.0])
+
+    # z passed to the initializer is a constant 1-D coordinate of length n_heights
+    assert met.z.shape == (2,)
+    assert met.n_heights == 2
+    npt.assert_array_equal(met.z, [2.0, 3.0])
 
 
 ###############################
