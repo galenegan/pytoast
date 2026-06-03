@@ -3,7 +3,7 @@ import os
 from abc import ABC
 from contextlib import contextmanager
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -13,7 +13,7 @@ import xarray as xr
 from pytoast.utils.despike_utils import goring_nikora, recursive_gaussian, threshold
 from pytoast.utils.io_utils import results_to_dataset
 
-type DatetimeLike = datetime.datetime | np.datetime64 | pd.Timestamp
+DatetimeLike: TypeAlias = datetime.datetime | np.datetime64 | pd.Timestamp
 
 
 class DeploymentType(StrEnum):

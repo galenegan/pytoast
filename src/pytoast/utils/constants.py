@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 import numpy as np
 
 GRAVITATIONAL_ACCELERATION = 9.81  # m/s^2
@@ -17,7 +19,7 @@ T0 = 273.15  # Celsius to Kelvin offset (K)
 CP0 = 3991.86795711963  # specific heat of seawater at (SSO, 0 degC, 0 dbar) (J/(kg K))
 
 # Type aliases
-type Numeric = float | int | np.ndarray
+Numeric: TypeAlias = float | int | np.ndarray
 
 # Payne (1972) sea-surface albedo look-up table.
 # Rows correspond to atmospheric transmission T = 0.00, 0.05, ..., 1.00 (21 rows).
