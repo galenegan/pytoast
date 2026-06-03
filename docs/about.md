@@ -25,5 +25,5 @@ After initializing the appropriate instrument class, some of the things you can 
 Standard methods for loading, despiking, and rotating raw observations are also included. Some other nice features of the code base:
 
 - Documentation (see menu to the left)
-- Example Jupyter notebooks (see `notebooks/`) demonstrating core functionality on test data
-- An extensive test suite (see `py-tests/`) verifying correctness wherever possible
+- Example Jupyter notebooks demonstrating core functionality on test data (see `notebooks/`)
+- An extensive test suite verifying correctness wherever possible (see `py-tests/`)
