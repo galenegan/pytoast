@@ -40,6 +40,10 @@ pip install -e ".[dev]"
 
 ## Quick start
 
+The `notebooks/` folder contains Jupyter notebooks demonstrating
+initialization of each main instrument class, along with example calculations.
+Each of those looks something like:
+
 ```python
 from pytoast.ocean.adv import ADV
 

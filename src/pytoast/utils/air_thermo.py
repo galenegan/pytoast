@@ -327,7 +327,8 @@ def dry_adiabatic_lapse_rate(t: Numeric, g_lat: Numeric = g) -> Numeric:
 
     Returns
     -------
-
+    Numeric
+        Lapse rate in K / m
     """
     cp = specific_heat(t)
     return g_lat / cp
