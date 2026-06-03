@@ -19,7 +19,7 @@ thermodynamics (TEOS-10), and boundary-layer flux parameterizations (both air-se
 ## Installation
 
 ```bash
-pip install pytoast
+pip install pytoast-core
 ```
 
 For development:
@@ -32,7 +32,7 @@ pip install -e ".[dev]"
 
 ### Requirements
 
-- Python >= 3.13
+- Python >= 3.11
 - Core dependencies (numpy, scipy, pandas, xarray, matplotlib, h5py, netCDF4,
   mat73) are installed automatically.
 

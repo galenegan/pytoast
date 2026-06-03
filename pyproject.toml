@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pytoast"
+name = "pytoast-core"
 dynamic = ["version"]
 description = "Python Toolkit for Ocean, Atmospheric, and Surface-wave Turbulence"
 readme = "README.md"
