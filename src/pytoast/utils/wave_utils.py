@@ -77,7 +77,7 @@ def jones_monismith_correction(
     f: np.ndarray,
     f_cutoff: float | None = 0.5,
 ) -> np.ndarray:
-    """Apply Jones & Monismith (2008) correction for high frequency noise
+    """Apply Jones & Monismith (2007) correction for high frequency noise
     introduced by the pressure attenuation.
 
     Parameters
@@ -108,8 +108,8 @@ def jones_monismith_correction(
 
     References
     ----------
-    Jones, N. L., & Monismith, S. G. (2008). The influence of whitecapping on wave height and period statistics. Journal
-        of Physical Oceanography, 38(7), 1473-1490.
+    Jones, N. L., & Monismith, S. G. (2007). Measuring short‐period wind waves in a tidally forced environment with a
+        subsurface pressure gauge. Limnology and Oceanography: Methods, 5(10), 317-327.
     """
     # Finding peak and cutoff frequency
     S_out = S_etaeta.copy()

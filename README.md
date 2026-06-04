@@ -42,7 +42,25 @@ pip install -e ".[dev]"
 
 The `notebooks/` folder contains Jupyter notebooks demonstrating
 initialization of each main instrument class, along with example calculations.
-Each of those looks something like:
+Each notebook shows slight variations on initialization and processing
+procedures:
+
+- `adcp.ipynb`: Traversing nested keys in source files, coordinate
+  transformations, plotting output of two different stress estimation methods
+- `adv.ipynb`: Specifying instrument deployment depths, rotating and despiking
+  during preprocessing, adding turbulent stresses, directional wave
+  statistics, and dissipation to an `xarray` dataset for `netCDF` export
+- `ctd.ipynb`: Loading a single data file with (multidimensional) data from
+  two deployment depths, calling `CTD.derive` for seawater thermodynamics
+  calculations
+- `met.ipynb`: Loading a single data file with instruments at different
+  heights stored under different keys, calling `Met.derive` for atmospheric
+  thermodynamics calculations
+- `sonic.ipynb`: Forwarding arguments to `pd.read_csv` for non-standard data
+  loading, alternate despiking method, calculation of dissipation and buoyancy
+  flux.
+
+In the simplest cases, these will look something like:
 
 ```python
 from pytoast.ocean.adv import ADV

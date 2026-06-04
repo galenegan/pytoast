@@ -1091,9 +1091,8 @@ def kinematic_viscosity(t: Numeric, sa: Numeric) -> Numeric:
 
 
 def thermal_conductivity(sa: Numeric, t: Numeric, p: Numeric) -> Numeric:
-    """Thermal conductivity of seawater (Sharqawy et al., 2010, Eq.
+    """Thermal conductivity of seawater (Sharqawy et al., 2010, Eq. 14, with typo 6.53e-3 -> 6.53e-4 corrected).
 
-    14, with typo 6.53e-3 -> 6.53e-4 corrected).
         Parameters
         ----------
         sa : Numeric

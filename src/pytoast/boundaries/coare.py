@@ -123,8 +123,8 @@ def sea_surface_albedo(
     Computes solar geometry from position and time, estimates atmospheric
     transmission from the ratio of measured to clear-sky irradiance, then
     interpolates the Payne (1972) table to obtain albedo. Equivalent to
-    ``albedo_vector`` in the COARE 3.6 reference code, rewritten as a fully
-    vectorised, idiomatic function.
+    ``albedo_vector`` in the COARE 3.6 reference code, rewritten as a
+    vectorized function.
 
     Parameters
     ----------
@@ -801,14 +801,14 @@ def coare36_warm_layer(
     Dict[str, np.ndarray]
         All outputs from ``coare36`` plus:
 
-        ``dT_warm``
+        - `dT_warm`
             Temperature anomaly across the full warm layer (C).
-        ``dz_warm``
+        - `dz_warm`
             Warm layer depth (m).
-        ``dT_warm_to_skin``
+        - `dT_warm_to_skin`
             Temperature anomaly between sensor depth and skin (C).
             Use ``T_skin = ts + dT_warm_to_skin - dT_skin`` to get skin T.
-        ``du_warm``
+        - `du_warm`
             Current accumulation in the warm layer (m/s).
     """
     julian_day = np.atleast_1d(np.asarray(julian_day, dtype=float)).ravel()

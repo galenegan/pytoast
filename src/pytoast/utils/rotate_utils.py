@@ -368,6 +368,10 @@ def align_with_principal_axis(u1: np.ndarray, u2: np.ndarray, u3: np.ndarray) ->
         Direction of maximum variance in degrees, CCW positive from east, shape (M,)
     theta_v : np.ndarray
         Vertical rotation angle in degrees, shape (M,)
+
+    References
+    ----------
+    Thomson, R. E., & Emery, W. J. (2024). Data analysis methods in physical oceanography. Elsevier.
     """
     # (Co)variances
     u1_bar = np.mean(u1, axis=1, keepdims=True)

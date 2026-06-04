@@ -309,19 +309,19 @@ def styles(
     -------
     dict with keys:
 
-        Ro              - internal friction Rossby number (Ab / (z0 * ub / ustar_wc))
-        mu              - sqrt(ub_over_ustar_wc * phi); wave/combined stress ratio parameter
-        epsilon         - ustar_c / ustar_wc
-        z1_over_z0      - inner wave BBL height / hydraulic roughness
-        z2_over_z0      - outer wave BBL height / hydraulic roughness
-        zr_over_z1      - measurement height / inner BBL height
-        zr_over_z2      - measurement height / outer BBL height
-        kbs             - suspended sediment roughness (m)
-        kbr             - ripple roughness (m)
-        z0              - hydraulic roughness length (m)
-        ustar_wm        - maximum wave shear velocity (m/s)
-        ustar_c         - time-averaged current shear velocity (m/s)
-        ustar_wc        - combined wave-current shear velocity (m/s)
+        * `Ro` : internal friction Rossby number (Ab / (z0 * ub / ustar_wc))
+        * `mu` : sqrt(ub_over_ustar_wc * phi); wave/combined stress ratio parameter
+        * `epsilon` : ustar_c / ustar_wc
+        * `z1_over_z0` : inner wave BBL height / hydraulic roughness
+        * `z2_over_z0` : outer wave BBL height / hydraulic roughness
+        * `zr_over_z1` : measurement height / inner BBL height
+        * `zr_over_z2` : measurement height / outer BBL height
+        * `kbs`        : suspended sediment roughness (m)
+        * `kbr`        : ripple roughness (m)
+        * `z0`         : hydraulic roughness length (m)
+        * `ustar_wm`   : maximum wave friction velocity (m/s)
+        * `ustar_c`    : time-averaged current friction velocity (m/s)
+        * `ustar_wc`   : combined wave-current friction velocity (m/s)
 
     References
     ----------
