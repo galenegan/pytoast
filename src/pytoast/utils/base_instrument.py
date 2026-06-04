@@ -385,11 +385,15 @@ class BaseInstrument(ABC):
         """Detect if a time input represents Unix epoch time, MATLAB datenum,
         or a datestring.
 
-        Args:
-            time_input (float): The input float to test.
+        Parameters
+        ----------
+        time_input : float
+            The input float to test.
 
-        Returns:
-            str: `"datetime"`, `"datestring"`, `"epoch"`, `"matlab"`. Raises an exception if there is no match
+        Returns
+        -------
+        str
+            "datetime"`, `"datestring"`, `"epoch"`, `"matlab"`. Raises an exception if there is no match
         """
         # Rough numeric ranges as of 2020s:
         # Epoch: ~1.5e9 (1970-2020s)
