@@ -16,6 +16,7 @@ nav:
       - utils/air_thermo.md
       - utils/sea_thermo.md
       - utils/base_instrument.md
+      - utils/io_utils.md
       - utils/despike_utils.md
       - utils/rotate_utils.md
       - utils/spectral_utils.md

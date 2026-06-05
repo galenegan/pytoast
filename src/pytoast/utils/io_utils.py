@@ -22,6 +22,7 @@ def results_to_dataset(
     each output variable is always ``burst_time`` (length ``len(results)``).
     Inner axes are matched against ``z`` and ``freq`` when provided:
 
+    ```
     =================================  ============================
     First non-None value shape         Output dims
     =================================  ============================
@@ -32,6 +33,7 @@ def results_to_dataset(
     (len(z), len(freq))                (burst_time, z, freq)
     (len(z) - 1, len(freq))            (burst_time, z_mid, freq)
     =================================  ============================
+    ```
 
     Keys ``"time"``, ``"z"``, and ``"freq"`` inside the per-burst dicts are
     treated as coordinates and are not written as data variables.
