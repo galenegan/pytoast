@@ -50,9 +50,10 @@ class ADV(BaseInstrument):
         ----------
         files : str or List[str]
             Path(s) to data files. If a list, each element is treated as a file containing data from an individual burst
-            period. Supported formats: `.npy` (saved as a dict), `.mat` (saved as a MATLAB struct), `.csv` (variables in
-            columns). If variables are two-dimensional, the larger dimension is assumed to be time and the shorter
-            dimension is assumed to be a vertical coordinate.
+            period. Supported formats: .npy (saved as a dict), .mat (saved as a MATLAB struct), .csv (variables in
+            columns), or .nc (must specify `burst_dim` argument if this is a single file containing multiple bursts). If
+            variables are two-dimensional, the larger dimension is assumed to be time and the shorter dimension a
+            vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
 
