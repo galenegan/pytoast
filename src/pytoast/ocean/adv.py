@@ -67,6 +67,7 @@ class ADV(BaseInstrument):
                 "heading": "heading variable name" or ["var 1", "var 2", ...],
                 "pitch": "pitch variable name" or ["var 1", "var 2", ...],
                 "roll": "roll variable name" or ["var 1", "var 2", ...],
+                "transformation_matrix": "transformation matrix variable name" or ["var 1", "var 2", ...]
             }
             ```
 
@@ -225,7 +226,10 @@ class ADV(BaseInstrument):
                     Coordinates for burst data to be transformed to. One of {`beam`, `xyz`, `enu`}.
 
                 transformation_matrices : List[np.ndarray], optional
-                    Transformation matrices for the instruments. Length must match ADV.n_heights.
+                    Transformation matrices for the instruments. Length must match ADV.n_heights. If the matrices are
+                    stored in the source data files, then string keys corresponding to the matrices can be specified
+                    in `name_map` upon initialization of the ADV object. In that case, the matrices will be stored in
+                    each burst and need not be specified here.
 
                 declination : float, optional
                     Magnetic declination in degrees. Added to heading for coordinate transformations.
@@ -294,7 +298,7 @@ class ADV(BaseInstrument):
         coords_in = burst_data["coords"]
         n_heights = self.n_heights
 
-        transformation_matrices = self._rotate.get("transformation_matrices")
+        transformation_matrices = self._rotate.get("transformation_matrices", burst_data.get("transformation_matrices", None))
         if transformation_matrices is None:
             raise ValueError("A transformation matrix must be provided for each instrument")
         if len(transformation_matrices) != n_heights:

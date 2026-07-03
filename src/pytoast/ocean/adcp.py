@@ -72,6 +72,7 @@ class ADCP(BaseInstrument):
                 "z": "height variable name",  # optional
                 "p": "pressure variable name",  # optional
                 "time": "time variable name",  # optional
+                "transformation_matrix": "transformation matrix variable name",  # optional
             }
             ```
 
@@ -239,7 +240,9 @@ class ADCP(BaseInstrument):
                 transformation_matrix : np.ndarray, optional
                     Transformation matrix for the instrument. Must be specified for coordinate transformation if
                     manufacturer = 'nortek'. May be excluded if manufacturer = 'rdi' in which case ADCP.beam_angle
-                    is used to compute the transformation matrix.
+                    is used to compute the transformation matrix. If the matrix is stored in the source data files,
+                    the corresponding key can be specified in `name_map`. In that case, the matrices will be stored in
+                    each burst and need not be specified here.
                 declination : float, optional
                     Magnetic declination in degrees. Added to heading for coordinate transformations.
                 constant_hpr : Tuple[float], optional
@@ -300,7 +303,7 @@ class ADCP(BaseInstrument):
             `burst_data["coords"]` updated to `coords_out`.
         """
         coords_in = burst_data["coords"]
-        transformation_matrix = self._rotate.get("transformation_matrix")
+        transformation_matrix = self._rotate.get("transformation_matrix", burst_data.get("transformation_matrix", None))
         declination = self._rotate.get("declination", 0.0)
 
         if transformation_matrix is None and self.manufacturer == "nortek":

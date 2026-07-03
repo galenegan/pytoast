@@ -1,5 +1,6 @@
 import datetime
 import os
+import types
 from abc import ABC
 from contextlib import contextmanager
 from enum import StrEnum
@@ -239,14 +240,18 @@ class BaseInstrument(ABC):
         return data, file_type
 
     @staticmethod
-    def _as_array(data: Any, key: str, file_type: str) -> np.ndarray:
+    def _as_array(data: Any, key: str | types.FunctionType, file_type: str) -> np.ndarray:
         """Extract variable `key` from `data` as a numpy array.
 
         Centralizes extraction across dict (mat/npy), pandas DataFrame
         (csv), and xarray Dataset (nc). For xarray-backed data,
         accessing `.values` triggers a load of the sliced bytes.
         """
-        value = data[key]
+
+        if isinstance(key, types.FunctionType):
+            value = key(data)
+        else:
+            value = data[key]
         if file_type == "nc":
             return np.asarray(value.values)
         if file_type == "csv":
@@ -377,6 +382,10 @@ class BaseInstrument(ABC):
             datetime_array = pd.to_datetime(flattened_time - 719529, unit="D").values
         elif time_format == "epoch":
             datetime_array = pd.to_datetime(flattened_time, unit="s").values
+        elif time_format == "true_julian":
+            datetime_array = pd.to_datetime(flattened_time, unit="D", origin="julian").values
+        elif time_format == "modified_julian":
+            datetime_array = pd.to_datetime(np.asarray(flattened_time) + 2400000.5, unit="D", origin="julian").values
 
         return datetime_array.reshape(time_array.shape)
 
@@ -398,6 +407,8 @@ class BaseInstrument(ABC):
         # Rough numeric ranges as of 2020s:
         # Epoch: ~1.5e9 (1970-2020s)
         # MATLAB: ~7.3e5 (year ~2000), currently ~7.4e5 to ~7.5e5 in the 2020s
+        # True Julian: ~2.5e6
+
 
         if isinstance(time_input, datetime.datetime | np.datetime64 | pd.Timestamp):
             return "datetime"
@@ -405,10 +416,14 @@ class BaseInstrument(ABC):
             return "datestring"
         elif 1e9 < time_input < 2e9:
             return "epoch"
+        elif 2.4e6 < time_input < 2.6e6:
+            return "true_julian"
         elif 7e5 < time_input < 8.5e5:
             return "matlab"
+        elif 4e4 < time_input < 1e5:
+            return "modified_julian"
         else:
-            raise OSError(f"Unrecognized time input {time_input} with type {type(time_input)}")
+            raise ValueError(f"Unrecognized time input {time_input} with type {type(time_input)}")
 
     def load_burst(self, burst_idx: int) -> dict[str, np.ndarray]:
         """Load data for a single burst.
@@ -446,6 +461,9 @@ class BaseInstrument(ABC):
             if isinstance(in_key, list):
                 # Multiple variables (e.g., from different instruments)
                 var_data = np.array([self._as_array(data, k, file_type) for k in in_key])
+            elif isinstance(in_key, types.FunctionType):
+                # Custom lambda, usually when combining different variables from input
+                var_data = np.array(in_key(data))
             else:
                 # Single variable
                 var_data = self._as_array(data, in_key, file_type)
