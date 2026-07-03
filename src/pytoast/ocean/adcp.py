@@ -72,6 +72,7 @@ class ADCP(BaseInstrument):
                 "z": "height variable name",  # optional
                 "p": "pressure variable name",  # optional
                 "time": "time variable name",  # optional
+                "transformation_matrix": "transformation matrix variable name",  # optional
             }
             ```
 
@@ -79,6 +80,14 @@ class ADCP(BaseInstrument):
             the `z` argument is not specified directly. `heading`, `pitch`, and `roll` are required for any coordinate
             transformation involving ENU coordinates. "u4" and "u5" can be optionally specified for instruments with
             4 or 5 beams.
+
+            Each value in the mapping may take one of three forms:
+
+            - **str**: name of a single variable in the data file.
+            - **list of str**: multiple variable names, used when data from multiple instruments are stored in
+              separate variables rather than a 2-D array.
+            - **callable**: a function applied to the loaded data object. Useful for unit conversions or combining
+              source variables, e.g. `"time": lambda data: data["doy"] + data["hour"] / 24`.
         deployment_type : str, optional
             Must be "fixed" (the only supported value). self.z will be converted to a constant numpy array of
             instrument deployment depths or measurement cell heights.
@@ -239,7 +248,9 @@ class ADCP(BaseInstrument):
                 transformation_matrix : np.ndarray, optional
                     Transformation matrix for the instrument. Must be specified for coordinate transformation if
                     manufacturer = 'nortek'. May be excluded if manufacturer = 'rdi' in which case ADCP.beam_angle
-                    is used to compute the transformation matrix.
+                    is used to compute the transformation matrix. If the matrix is stored in the source data files,
+                    the corresponding key can be specified in `name_map`. In that case, the matrices will be stored in
+                    each burst and need not be specified here.
                 declination : float, optional
                     Magnetic declination in degrees. Added to heading for coordinate transformations.
                 constant_hpr : Tuple[float], optional
@@ -300,7 +311,7 @@ class ADCP(BaseInstrument):
             `burst_data["coords"]` updated to `coords_out`.
         """
         coords_in = burst_data["coords"]
-        transformation_matrix = self._rotate.get("transformation_matrix")
+        transformation_matrix = self._rotate.get("transformation_matrix", burst_data.get("transformation_matrix", None))
         declination = self._rotate.get("declination", 0.0)
 
         if transformation_matrix is None and self.manufacturer == "nortek":

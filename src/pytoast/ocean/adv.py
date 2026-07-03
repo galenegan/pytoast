@@ -59,20 +59,28 @@ class ADV(BaseInstrument):
 
             ```
             {
-                "u1": "first velocity variable name" or ["var 1", "var 2", ...],
-                "u2": "second velocity variable name" or ["var 1", "var 2", ...],
-                "u3": "third velocity variable name" or ["var 1", "var 2", ...],
-                "p": "pressure variable name" or ["var 1", "var 2", ...],
-                "time": "time variable name" or ["var 1", "var 2", ...],
-                "heading": "heading variable name" or ["var 1", "var 2", ...],
-                "pitch": "pitch variable name" or ["var 1", "var 2", ...],
-                "roll": "roll variable name" or ["var 1", "var 2", ...],
+                "u1": "first velocity variable name",
+                "u2": "second velocity variable name",
+                "u3": "third velocity variable name",
+                "p": "pressure variable name",  # optional
+                "time": "time variable name",  # optional
+                "heading": "heading variable name",  # optional
+                "pitch": "pitch variable name",  # optional
+                "roll": "roll variable name",  # optional
+                "transformation_matrices": "transformation matrices variable name",  # optional
             }
             ```
 
             `p` and `time` are optional, but an error is raised if `time` is absent and `fs` is also not provided.
-            `heading`, `pitch`, and `roll` are also optional but required for ENU coordinate transformations. Lists are
-            used when data from multiple instruments are stored in separate variables rather than a 2-D array.
+            `heading`, `pitch`, and `roll` are also optional but required for ENU coordinate transformations.
+
+            Each value in the mapping may take one of three forms:
+
+            - **str**: name of a single variable in the data file.
+            - **list of str**: multiple variable names, used when data from multiple instruments are stored in
+              separate variables rather than a 2-D array.
+            - **callable**: a function applied to the loaded data object. Useful for unit conversions or combining
+              source variables, e.g. `"time": lambda data: data["doy"] + data["hour"] / 24`.
         deployment_type : str, optional
             Must be "fixed" (the only supported value). self.z will be converted to a constant numpy array of
             instrument deployment depths or measurement cell heights.
@@ -225,7 +233,10 @@ class ADV(BaseInstrument):
                     Coordinates for burst data to be transformed to. One of {`beam`, `xyz`, `enu`}.
 
                 transformation_matrices : List[np.ndarray], optional
-                    Transformation matrices for the instruments. Length must match ADV.n_heights.
+                    Transformation matrices for the instruments. Length must match ADV.n_heights. If the matrices are
+                    stored in the source data files, then string keys corresponding to the matrices can be specified
+                    in `name_map` upon initialization of the ADV object. In that case, the matrices will be stored in
+                    each burst and need not be specified here.
 
                 declination : float, optional
                     Magnetic declination in degrees. Added to heading for coordinate transformations.
@@ -294,7 +305,9 @@ class ADV(BaseInstrument):
         coords_in = burst_data["coords"]
         n_heights = self.n_heights
 
-        transformation_matrices = self._rotate.get("transformation_matrices")
+        transformation_matrices = self._rotate.get(
+            "transformation_matrices", burst_data.get("transformation_matrices", None)
+        )
         if transformation_matrices is None:
             raise ValueError("A transformation matrix must be provided for each instrument")
         if len(transformation_matrices) != n_heights:
@@ -1061,7 +1074,7 @@ class ADV(BaseInstrument):
                     out["v_wave"][height_idx, :] = d_out["v_wave"]
                     out["w_wave"][height_idx, :] = d_out["w_wave"]
         else:
-            raise OSError(f"Unrecognized method {method}")
+            raise ValueError(f"Unrecognized method {method}")
 
         return out
 

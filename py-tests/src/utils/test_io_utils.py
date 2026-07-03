@@ -147,3 +147,30 @@ def test_time_detection():
     time = pd.Timestamp.now().timestamp()
     time_format = BaseInstrument.detect_time_format(time)
     assert time_format == "epoch"
+
+    time = 2460000.5  # Julian date for 2023-02-25
+    time_format = BaseInstrument.detect_time_format(time)
+    assert time_format == "true_julian"
+
+    time = 60000.0  # Modified Julian date for 2023-02-25
+    time_format = BaseInstrument.detect_time_format(time)
+    assert time_format == "modified_julian"
+
+    with pytest.raises(ValueError, match="Unrecognized time input"):
+        BaseInstrument.detect_time_format(3e6)
+
+
+def test_process_time_julian():
+    import types
+
+    # process_time only touches self through detect_time_format, so a stub instance suffices
+    stub = types.SimpleNamespace(detect_time_format=BaseInstrument.detect_time_format)
+    expected = np.datetime64("2023-02-25T00:00:00")
+
+    julian_days = np.array([2460000.5, 2460001.5])
+    parsed = BaseInstrument.process_time(stub, julian_days)
+    npt.assert_array_equal(parsed, np.array([expected, expected + np.timedelta64(1, "D")]))
+
+    modified_julian_days = np.array([60000.0, 60001.0])
+    parsed = BaseInstrument.process_time(stub, modified_julian_days)
+    npt.assert_array_equal(parsed, np.array([expected, expected + np.timedelta64(1, "D")]))
