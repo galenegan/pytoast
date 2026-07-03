@@ -1,7 +1,7 @@
 import datetime
 import os
-import types
 from abc import ABC
+from collections.abc import Callable
 from contextlib import contextmanager
 from enum import StrEnum
 from typing import Any, TypeAlias
@@ -15,6 +15,10 @@ from pytoast.utils.despike_utils import goring_nikora, recursive_gaussian, thres
 from pytoast.utils.io_utils import results_to_dataset
 
 DatetimeLike: TypeAlias = datetime.datetime | np.datetime64 | pd.Timestamp
+
+# name_map keys whose values are not time series and should be exempt from the
+# transpose/expand-to-2D shape normalization applied to burst variables
+_NON_TIMESERIES_KEYS = {"transformation_matrix", "transformation_matrices"}
 
 
 class DeploymentType(StrEnum):
@@ -71,7 +75,14 @@ class BaseInstrument(ABC):
         files : str or List[str]
             Path(s) to data file(s)
         name_map : dict
-            Mapping of variable names
+            Mapping of standard variable names to names in the data files. Each value in the mapping may take one of
+            three forms:
+
+            - **str**: name of a single variable in the data file.
+            - **list of str**: multiple variable names, used when data from multiple instruments are stored in
+              separate variables rather than a 2-D array.
+            - **callable**: a function applied to the loaded data object. Useful for unit conversions or combining
+              source variables, e.g. `"time": lambda data: data["doy"] + data["hour"] / 24`.
         deployment_type : DeploymentType, optional
             One of `{"fixed", "cast"}` depending on how the instrument is deployed. Default is "fixed", in which case
             self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell
@@ -240,21 +251,21 @@ class BaseInstrument(ABC):
         return data, file_type
 
     @staticmethod
-    def _as_array(data: Any, key: str | types.FunctionType, file_type: str) -> np.ndarray:
+    def _as_array(data: Any, key: str | Callable[[Any], Any], file_type: str) -> np.ndarray:
         """Extract variable `key` from `data` as a numpy array.
 
         Centralizes extraction across dict (mat/npy), pandas DataFrame
         (csv), and xarray Dataset (nc). For xarray-backed data,
         accessing `.values` triggers a load of the sliced bytes.
+        If `key` is a callable, it is applied to `data` and the result is
+        converted to an array; callables may return either a raw container
+        (e.g. DataArray, Series) or a plain numpy array.
         """
-
-        if isinstance(key, types.FunctionType):
+        if callable(key):
             value = key(data)
         else:
             value = data[key]
-        if file_type == "nc":
-            return np.asarray(value.values)
-        if file_type == "csv":
+        if file_type in ("nc", "csv"):
             return np.asarray(value.values if hasattr(value, "values") else value)
         return np.asarray(value)
 
@@ -323,7 +334,9 @@ class BaseInstrument(ABC):
                         arr = np.asarray(arr)
                         z = arr if arr.shape[0] <= arr.shape[1] else arr.T
             else:
-                non_time_key = [key for key in self.name_map.keys() if key != "time"][0]
+                non_time_key = [
+                    key for key in self.name_map if key != "time" and key not in _NON_TIMESERIES_KEYS
+                ][0]
                 if isinstance(non_time_key, str):
                     data_var = self._as_array(data, self.name_map[non_time_key], file_type)
                     if data_var.ndim > 1:
@@ -342,7 +355,7 @@ class BaseInstrument(ABC):
 
         # Determine num_samples and infer fs if needed
         if "time" not in self.name_map:
-            first_out_key = list(self.name_map.keys())[0]
+            first_out_key = [key for key in self.name_map if key not in _NON_TIMESERIES_KEYS][0]
             data_var = self._as_array(data, self.name_map[first_out_key], file_type)
             if data_var.ndim > 1:
                 num_rows, num_cols = data_var.shape
@@ -365,7 +378,7 @@ class BaseInstrument(ABC):
         Parameters
         ----------
         time_array : np.ndarray
-            Array of time values (datestrings, MATLAB datenums, or Unix epoch)
+            Array of time values (datestrings, MATLAB datenums, Unix epoch, Julian dates, or Modified Julian dates)
 
         Returns
         -------
@@ -392,7 +405,7 @@ class BaseInstrument(ABC):
     @staticmethod
     def detect_time_format(time_input: float | int | str | DatetimeLike) -> str:
         """Detect if a time input represents Unix epoch time, MATLAB datenum,
-        or a datestring.
+        a Julian or Modified Julian date, or a datestring.
 
         Parameters
         ----------
@@ -402,13 +415,14 @@ class BaseInstrument(ABC):
         Returns
         -------
         str
-            `"datetime"`, `"datestring"`, `"epoch"`, `"matlab"`. Raises an exception if there is no match
+            One of `"datetime"`, `"datestring"`, `"epoch"`, `"true_julian"`, `"matlab"`, or `"modified_julian"`.
+            Raises a ValueError if there is no match.
         """
         # Rough numeric ranges as of 2020s:
         # Epoch: ~1.5e9 (1970-2020s)
+        # True Julian: ~2.46e6 (days since 4713 BC)
         # MATLAB: ~7.3e5 (year ~2000), currently ~7.4e5 to ~7.5e5 in the 2020s
-        # True Julian: ~2.5e6
-
+        # Modified Julian: ~6.1e4 (days since 1858-11-17)
 
         if isinstance(time_input, datetime.datetime | np.datetime64 | pd.Timestamp):
             return "datetime"
@@ -461,24 +475,22 @@ class BaseInstrument(ABC):
             if isinstance(in_key, list):
                 # Multiple variables (e.g., from different instruments)
                 var_data = np.array([self._as_array(data, k, file_type) for k in in_key])
-            elif isinstance(in_key, types.FunctionType):
-                # Custom lambda, usually when combining different variables from input
-                var_data = np.array(in_key(data))
             else:
-                # Single variable
+                # Single variable name, or a callable applied to the loaded data
                 var_data = self._as_array(data, in_key, file_type)
-                if var_data.ndim > 1:
-                    # Transpose if needed (time should be last dimension)
-                    if self.n_heights is None:
-                        # For deployment_type == "cast", and multiple data streams within var_data, assume that
-                        # time is the longer dimension
-                        n_rows, n_cols = var_data.shape
-                        if n_rows > n_cols:
+                if out_key not in _NON_TIMESERIES_KEYS:
+                    if var_data.ndim > 1:
+                        # Transpose if needed (time should be last dimension)
+                        if self.n_heights is None:
+                            # For deployment_type == "cast", and multiple data streams within var_data, assume that
+                            # time is the longer dimension
+                            n_rows, n_cols = var_data.shape
+                            if n_rows > n_cols:
+                                var_data = var_data.T
+                        if var_data.shape[1] == self.n_heights:
                             var_data = var_data.T
-                    if var_data.shape[1] == self.n_heights:
-                        var_data = var_data.T
-                else:
-                    var_data = np.expand_dims(var_data, axis=0)  # 2D even if only 1D input
+                    else:
+                        var_data = np.expand_dims(var_data, axis=0)  # 2D even if only 1D input
 
             # Enforcing byte order in case there is a mismatch
             var_data = var_data.astype(var_data.dtype.newbyteorder("="))

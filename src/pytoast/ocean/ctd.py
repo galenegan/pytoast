@@ -81,14 +81,23 @@ class CTD(BaseInstrument):
             vertical coordinate.
         name_map : dict
             Mapping of standard variable names to names in the data files, e.g.:
+
+            ```
             {
                 "sp": "salinity variable name",
                 "t":  "temperature variable name",
                 "p":  "pressure variable name",
                 "time": "time variable name",
             }
-            Lists are used when data from multiple instruments are stored in
-            separate variables rather than a 2-D array.
+            ```
+
+            Each value in the mapping may take one of three forms:
+
+            - **str**: name of a single variable in the data file.
+            - **list of str**: multiple variable names, used when data from multiple instruments are stored in
+              separate variables rather than a 2-D array.
+            - **callable**: a function applied to the loaded data object. Useful for unit conversions or combining
+              source variables, e.g. `"time": lambda data: data["doy"] + data["hour"] / 24`.
         deployment_type : str, optional
             One of {"fixed", "cast"} depending on how the instrument is deployed. Default is "fixed", in which case
             self.z will be converted to a constant numpy array of instrument deployment depths or measurement cell

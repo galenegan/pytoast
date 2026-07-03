@@ -56,6 +56,17 @@ def _make_single_burst_nc(path, i):
     return u1, u2, p
 
 
+def _make_npy_burst(path, seed=0, n_heights=N_HEIGHTS, extra=None):
+    rng = np.random.default_rng(seed)
+    u1 = rng.normal(size=(n_heights, N_SAMPLES))
+    time = 1.7e9 + np.arange(N_SAMPLES) / FS
+    data = {"u1": u1, "u1_cm": u1 * 100.0, "t": time}
+    if extra:
+        data.update(extra)
+    np.save(path, data)
+    return u1
+
+
 NAME_MAP = {"u1": "u1", "u2": "u2", "p": "p", "time": "t", "z": "z"}
 
 
@@ -135,6 +146,69 @@ def test_to_dataset_round_trip(tmp_path):
     assert loaded.attrs["instrument"] == "BaseInstrument"
     assert loaded.attrs["fs"] == FS
     loaded.close()
+
+
+def test_lambda_name_map_npy(tmp_path):
+    path = str(tmp_path / "burst_0.npy")
+    _make_npy_burst(path)
+
+    inst_str = BaseInstrument(files=[path], name_map={"u1": "u1", "time": "t"}, fs=FS)
+    inst_lam = BaseInstrument(files=[path], name_map={"u1": lambda d: d["u1_cm"] / 100.0, "time": "t"}, fs=FS)
+
+    burst_str = inst_str.load_burst(0)
+    burst_lam = inst_lam.load_burst(0)
+
+    # Lambda-extracted variables get the same 2-D shape normalization as string-keyed ones
+    assert burst_lam["u1"].ndim == 2
+    npt.assert_allclose(burst_lam["u1"], burst_str["u1"])
+    npt.assert_array_equal(burst_lam["time"], burst_str["time"])
+
+
+def test_lambda_name_map_nc_plain_array(tmp_path):
+    path = str(tmp_path / "burst_0.nc")
+    u1, _, _ = _make_single_burst_nc(path, 0)
+
+    # A lambda returning a plain numpy array (not a DataArray) must work for .nc files,
+    # including during __init__ when z is inferred from the first non-time variable
+    name_map = {"u1": lambda ds: ds["u1"].values * 2.0, "time": "t"}
+    inst = BaseInstrument(files=[path], name_map=name_map, fs=FS)
+
+    burst = inst.load_burst(0)
+    assert burst["u1"].ndim == 2
+    npt.assert_allclose(burst["u1"], u1 * 2.0)
+
+
+def test_transformation_matrix_not_transposed(tmp_path):
+    path = str(tmp_path / "burst_0.npy")
+    matrix = np.array([[1.0, 2.0, 3.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    _make_npy_burst(path, n_heights=3, extra={"tm": matrix})
+
+    # Matrix key listed first: z and num_samples inference must skip it
+    name_map = {"transformation_matrix": "tm", "u1": "u1", "time": "t"}
+    inst = BaseInstrument(files=[path], name_map=name_map, fs=FS)
+    assert inst.n_heights == 3
+    assert inst.num_samples_per_burst == N_SAMPLES
+
+    # Square (3, 3) matrix with n_heights == 3 must not be transposed by the time-last heuristic
+    burst = inst.load_burst(0)
+    npt.assert_array_equal(burst["transformation_matrix"], matrix)
+
+    # Same key selection when "time" is absent and fs is given
+    inst_no_time = BaseInstrument(files=[path], name_map={"transformation_matrix": "tm", "u1": "u1"}, fs=FS)
+    assert inst_no_time.num_samples_per_burst == N_SAMPLES
+
+
+def test_transformation_matrices_3d_shape_preserved(tmp_path):
+    path = str(tmp_path / "burst_0.npy")
+    rng = np.random.default_rng(7)
+    matrices = rng.normal(size=(3, 3, 3))  # one (3, 3) matrix per instrument in the stack
+    _make_npy_burst(path, n_heights=3, extra={"tms": matrices})
+
+    name_map = {"u1": "u1", "time": "t", "transformation_matrices": "tms"}
+    inst = BaseInstrument(files=[path], name_map=name_map, fs=FS)
+
+    burst = inst.load_burst(0)
+    npt.assert_array_equal(burst["transformation_matrices"], matrices)
 
 
 def test_to_dataset_with_freq(tmp_path):

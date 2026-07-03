@@ -52,17 +52,24 @@ class Sonic(BaseInstrument):
 
             ```
             {
-                "u1": "x-velocity variable name" or ["var 1", "var 2", ...],
-                "u2": "y-velocity variable name" or ["var 1", "var 2", ...],
-                "u3": "z-velocity variable name" or ["var 1", "var 2", ...],
-                "Ts": "sonic temperature variable name" or ["var 1", "var 2", ...],
-                "time": "time variable name" or ["var 1", "var 2", ...],
+                "u1": "x-velocity variable name",
+                "u2": "y-velocity variable name",
+                "u3": "z-velocity variable name",
+                "Ts": "sonic temperature variable name",  # optional
+                "time": "time variable name",  # optional
             }
             ```
 
             "Ts" and "time" are optional, but an error is raised if "time" is absent and `fs` is
-            also not provided. Lists are used when data from multiple instruments are stored in
-            separate variables rather than a 2-D array.
+            also not provided.
+
+            Each value in the mapping may take one of three forms:
+
+            - **str**: name of a single variable in the data file.
+            - **list of str**: multiple variable names, used when data from multiple instruments are stored in
+              separate variables rather than a 2-D array.
+            - **callable**: a function applied to the loaded data object. Useful for unit conversions or combining
+              source variables, e.g. `"time": lambda data: data["doy"] + data["hour"] / 24`.
         deployment_type : str, optional
             Must be "fixed" (the only supported value). self.z will be converted to a constant numpy array of
             instrument deployment depths or measurement cell heights.

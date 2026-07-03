@@ -86,15 +86,20 @@ class Met(BaseInstrument):
 
             ```
             {
-                "t": "temperature variable name" or ["var 1", "var 2", ...],
-                "p": "pressure variable name" or ["var 1", "var 2", ...],
-                "rh": "relative humidity name" or ["var 1", "var 2", ...],
-                "time": "time variable name" or ["var 1", "var 2", ...],
+                "t": "temperature variable name",
+                "p": "pressure variable name",
+                "rh": "relative humidity name",
+                "time": "time variable name",
             }
             ```
 
-            Lists are used when data from multiple instruments are stored in
-            separate variables rather than a 2-D array.
+            Each value in the mapping may take one of three forms:
+
+            - **str**: name of a single variable in the data file.
+            - **list of str**: multiple variable names, used when data from multiple instruments are stored in
+              separate variables rather than a 2-D array.
+            - **callable**: a function applied to the loaded data object. Useful for unit conversions or combining
+              source variables, e.g. `"time": lambda data: data["doy"] + data["hour"] / 24`.
         deployment_type : str, optional
             Must be "fixed" (the only supported value). self.z will be converted to a constant numpy array of
             instrument deployment depths or measurement cell heights.
