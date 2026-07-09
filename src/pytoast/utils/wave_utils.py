@@ -274,15 +274,14 @@ def wave_stats(
     Syy = (E / 2) * (2 * n * np.sin(dir_rad) ** 2 + (2 * n - 1))
     Sxy = E * n * np.sin(dir_rad) * np.cos(dir_rad)
 
-    # Orbital velocity, basically following Wiberg & Sherwood (2008) but excluding
-    # the factor of sqrt(2) (see Madsen 1994)
+    # Orbital velocity, following Wiberg & Sherwood (2008)
     # Time domain calculation
     u_prime = u - np.nanmean(u)
     v_prime = v - np.nanmean(v)
-    u_orb_var = np.sqrt(np.nanvar(u_prime) + np.nanvar(v_prime))
+    u_orb_var = np.sqrt(2 * (np.nanvar(u_prime) + np.nanvar(v_prime)))
 
     # Spectral calculation
-    u_orb_spec = np.sqrt(np.sum((P_uu + P_vv) * df))
+    u_orb_spec = np.sqrt(2 * np.sum((P_uu + P_vv) * df))
 
     # Setting up output dictionary and storing the spectral output
     out = {}
