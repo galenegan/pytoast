@@ -1,12 +1,14 @@
+import os
+
 import numpy as np
 import numpy.testing as npt
 import pytest
-
-from pytoast.ocean.adcp import ADCP
-from pytoast.utils.rotate_utils import coord_transform_4_beam_nortek, coord_transform_4_beam_rdi
 from testhelpers.rotate_utils import nortek_4beam_T, rdi_4beam_T
 from testhelpers.stub_utils import make_adcp
 from testhelpers.synth_utils import KAPPA, generate_profile_burst
+
+from pytoast.ocean.adcp import ADCP
+from pytoast.utils.rotate_utils import coord_transform_4_beam_nortek, coord_transform_4_beam_rdi
 
 
 def _xyz_burst(u, v, w):
@@ -211,15 +213,24 @@ def test_4beam_spectral_recovers_eps():
         seed=0,
     )
     adcp = make_adcp(fs=16, z=z, num_beams=4)
-    eps_out = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
+    eps_out, plot_files = ADCP.dissipation(
+        adcp, _xyz_burst(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0, plot=True
+    )
     npt.assert_allclose(eps_out, truth["epsilon"], rtol=0.1)
 
-    eps_out_beam = ADCP.dissipation(adcp, _beam_burst_nortek(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
+    # With plot=True, a PNG is saved for each height with a valid dissipation estimate
+    valid_heights = np.flatnonzero(~np.isnan(eps_out))
+    assert set(plot_files) == set(valid_heights.tolist())
+    for path in plot_files.values():
+        assert path.endswith(".png")
+        assert os.path.getsize(path) > 0
+
+    eps_out_beam, _ = ADCP.dissipation(adcp, _beam_burst_nortek(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
     npt.assert_allclose(eps_out_beam, eps_out, rtol=1e-8)
 
     # And with RDI
     adcp = make_adcp(fs=16, z=z, num_beams=4, manufacturer="rdi", transformation_matrix=rdi_4beam_T(25.0))
-    out_rdi = ADCP.dissipation(adcp, _beam_burst_rdi(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
+    out_rdi, _ = ADCP.dissipation(adcp, _beam_burst_rdi(u, v, w), method="4beam_spectral", f_min=1.0, f_max=4.0)
     npt.assert_allclose(out_rdi, eps_out_beam, rtol=1e-10, atol=1e-10)
 
 
@@ -236,9 +247,11 @@ def test_5th_beam_spectral_recovers_eps():
         seed=0,
     )
     adcp = make_adcp(fs=16, z=z, num_beams=5)
-    eps_out = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="5th_beam_spectral", f_min=1.0, f_max=4.0)
+    eps_out, _ = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="5th_beam_spectral", f_min=1.0, f_max=4.0)
     npt.assert_allclose(eps_out, truth["epsilon"], rtol=0.1)
-    eps_out_beam = ADCP.dissipation(adcp, _beam_burst_nortek(u, v, w), method="5th_beam_spectral", f_min=1.0, f_max=4.0)
+    eps_out_beam, _ = ADCP.dissipation(
+        adcp, _beam_burst_nortek(u, v, w), method="5th_beam_spectral", f_min=1.0, f_max=4.0
+    )
     npt.assert_allclose(eps_out_beam, eps_out, rtol=1e-8)
 
 
@@ -256,9 +269,11 @@ def test_structure_function_runs():
     )
 
     adcp = make_adcp(fs=16, z=z, num_beams=5)
-    eps_out = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="structure_function")
-    eps_out_beam = ADCP.dissipation(adcp, _beam_burst_nortek(u, v, w), method="structure_function")
+    eps_out, plot_files = ADCP.dissipation(adcp, _xyz_burst(u, v, w), method="structure_function", plot=True)
+    eps_out_beam, _ = ADCP.dissipation(adcp, _beam_burst_nortek(u, v, w), method="structure_function")
     npt.assert_allclose(eps_out, eps_out_beam, rtol=1e-8)
+    # structure_function does not produce spectral plots
+    assert plot_files == {}
 
 
 def test_dissipation_invalid_method_raises():

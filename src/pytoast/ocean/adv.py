@@ -12,7 +12,7 @@ from pytoast.utils.rotate_utils import (
     apply_flow_rotation,
     coord_transform_3_beam_nortek,
 )
-from pytoast.utils.spectral_utils import csd, get_frequency_range, psd
+from pytoast.utils.spectral_utils import csd, get_frequency_range, plot_spectral_fit, psd
 from pytoast.utils.wave_utils import get_wavenumber, wave_stats
 
 
@@ -1097,9 +1097,9 @@ class ADV(BaseInstrument):
         sin_phi = np.sin(phi)  # (Nphi,)
 
         # Want shape (Ntheta, Nphi)
-        G_squared = (sin_theta**2)[:, np.newaxis] * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[np.newaxis, :] + (
-            cos_theta**2
-        )[:, np.newaxis] / sig3**2
+        G_squared = (sin_theta**2)[:, np.newaxis] * (cos_phi**2 / sig1**2 + sin_phi**2 / sig2**2)[
+            np.newaxis, :
+        ] + (cos_theta**2)[:, np.newaxis] / sig3**2
 
         # Also shape (Ntheta, Nphi)
         P11 = (1 / G_squared) * (
@@ -1158,8 +1158,13 @@ class ADV(BaseInstrument):
         return J11, J22, J33
 
     def dissipation(
-        self, burst_data: dict[str, np.ndarray], f_low: float, f_high: float, **kwargs: Any
-    ) -> dict[str, np.ndarray]:
+        self,
+        burst_data: dict[str, np.ndarray],
+        f_low: float,
+        f_high: float,
+        plot: bool = False,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         """
         Estimate the dissipation rate of TKE using the Gerbi et al. (2009) spectral curve fitting method. This is nearly
         equivalent to the Feddersen et al. (2007) method, but it uses a more efficient numerical integration and
@@ -1171,6 +1176,9 @@ class ADV(BaseInstrument):
             Lower frequency bound (Hz) for inertial subrange where -5/3 law applies
         f_high : float
             Upper frequency bound (Hz) for inertial subrange where -5/3 law applies
+        plot : bool, optional
+            If True, save a PNG of the vertical-velocity frequency spectrum and its -5/3 curve fit at each
+            height with a valid (non-NaN) dissipation estimate. Defaults to False.
         **kwargs
             Additional arguments passed to spectral_utils.psd.
             See spectral_utils.psd for parameter definitions.
@@ -1183,6 +1191,11 @@ class ADV(BaseInstrument):
             * `eps` (float) : dissipation rate of TKE (m^2/s^3)
             * `eps_noise` (float) : intercept from dissipation linear regression
             * `eps_quality_flag` (int) : 1 for good eps estimate, 0 for bad eps estimate. Defined based on Gerbi Eq. 11
+
+            If `plot` is True, also includes:
+
+            * `plot_files` (dict) : mapping of height index to the saved PNG path, with one entry for each
+              height with a valid dissipation estimate.
 
         References
         ----------
@@ -1197,7 +1210,7 @@ class ADV(BaseInstrument):
         def spectral_fit(u, v, w, f_low, f_high, **kwargs):
             """Carries out the spectral curve fit."""
             if np.all(np.isnan(u)) or np.all(np.isnan(v)) or np.all(np.isnan(w)):
-                return np.nan, np.nan, 0
+                return np.nan, np.nan, 0, None
             omega_range = [2 * np.pi * f_low, 2 * np.pi * f_high]
             alpha = 1.5
 
@@ -1228,7 +1241,7 @@ class ADV(BaseInstrument):
             noise = intercept
 
             if eps23 < 0:
-                return np.nan, np.nan, 0
+                return np.nan, np.nan, 0, None
             else:
                 eps = eps23 ** (3 / 2)
                 if noise < J33 * alpha * (eps ** (2 / 3)) * (omega_range[0] ** (-5 / 3)):
@@ -1236,23 +1249,43 @@ class ADV(BaseInstrument):
                 else:
                     quality_flag = 0
 
-            return eps, noise, quality_flag
+            file_name = None
+            if plot:
+                omega_fit = np.linspace(np.nanmin(omega_inertial), np.nanmax(omega_inertial), 100)
+                y_fit = eps23 * J33 * alpha * omega_fit ** (-5 / 3) + noise
+                file_name = plot_spectral_fit(
+                    x=omega_inertial,
+                    y=Pw_inertial,
+                    x_fit=omega_fit,
+                    y_fit=y_fit,
+                    eps=eps,
+                    xlabel=r"Angular frequency $\omega$ (rad/s)",
+                    ylabel=r"Vertical velocity spectrum $P_w(\omega)$",
+                )
+
+            return eps, noise, quality_flag, file_name
 
         u_full, v_full, w_full = get_uvw(burst_data)
 
-        out = {}
+        out: dict[str, Any] = {}
         n_heights = self.n_heights
         out["eps"] = np.empty((n_heights,))
         out["eps_noise"] = np.empty((n_heights,))
         out["eps_quality_flag"] = np.empty((n_heights,), dtype=int)
+        plot_files: dict[int, str] = {}
         for height_idx in range(n_heights):
             u = u_full[height_idx, :]
             v = v_full[height_idx, :]
             w = w_full[height_idx, :]
-            (eps, noise, quality_flag) = spectral_fit(u, v, w, f_low, f_high, **kwargs)
+            eps, noise, quality_flag, file_name = spectral_fit(u, v, w, f_low, f_high, **kwargs)
             out["eps"][height_idx] = eps
             out["eps_noise"][height_idx] = noise
             out["eps_quality_flag"][height_idx] = quality_flag
+            if file_name is not None:
+                plot_files[height_idx] = file_name
+
+        if plot:
+            out["plot_files"] = plot_files
 
         return out
 
