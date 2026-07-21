@@ -17,7 +17,7 @@ RC_PARAMS = {
 }
 
 plt.rcParams.update(RC_PARAMS)
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 
 
 def get_window_len(N: int, num_windows: int) -> int:
