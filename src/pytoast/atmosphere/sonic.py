@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import scipy.signal as sig
@@ -227,7 +227,7 @@ class Sonic(BaseInstrument):
         henjes_correction: bool,
         plot: bool = False,
         **kwargs: Any,
-    ) -> Tuple[np.ndarray, dict[int, str]]:
+    ) -> tuple[np.ndarray, dict[int, str]]:
         """Estimate the dissipation rate of TKE via spectral curve fit to the streamwise wavenumber spectrum.
 
         Choice of constant is consistent with Edson and Fairall (1998), and the path length correction of Henjes et al
@@ -273,7 +273,7 @@ class Sonic(BaseInstrument):
             f_high: float,
             henjes_correction: bool = True,
             **kwargs: Any,
-        ) -> Tuple[float, Optional[str]]:
+        ) -> tuple[float, str | None]:
             c1 = 0.53
             u_prime = sig.detrend(u, type="linear")
             u_bar = np.nanmean(u)
