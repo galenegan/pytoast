@@ -15,9 +15,8 @@ RC_PARAMS = {
     "axes.grid": False,
 }
 
-plt.rcParams.update(RC_PARAMS)
-# matplotlib.use("Agg")
-
+for _key, _val in RC_PARAMS.items():
+    plt.rcParams[_key] = _val
 
 def get_window_len(N: int, num_windows: int) -> int:
     """
