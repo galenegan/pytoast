@@ -1,7 +1,23 @@
+import tempfile
+from typing import Any, cast
 
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy.signal as sig
 
+RC_PARAMS = {
+    "axes.labelsize": 16,
+    "font.size": 13,
+    "legend.fontsize": 12,
+    "xtick.labelsize": 14,
+    "ytick.labelsize": 14,
+    "text.usetex": False,
+    "font.family": "sans-serif",
+    "axes.grid": False,
+}
+
+# Annoying cast() required for mypy
+plt.rcParams.update(cast(Any, RC_PARAMS))
 
 def get_window_len(N: int, num_windows: int) -> int:
     """
@@ -22,9 +38,7 @@ def get_window_len(N: int, num_windows: int) -> int:
     return int(2 * N / (num_windows + 1))
 
 
-def get_frequency_range(
-    f: np.ndarray, f_low: float | None = None, f_high: float | None = None
-) -> tuple[int, int]:
+def get_frequency_range(f: np.ndarray, f_low: float | None = None, f_high: float | None = None) -> tuple[int, int]:
     """
     Index range into ``f`` covering [f_low, f_high].
 
@@ -171,3 +185,69 @@ def csd(
     )
 
     return f, Pxy
+
+
+def plot_spectral_fit(
+    x: np.ndarray,
+    y: np.ndarray,
+    x_fit: np.ndarray,
+    y_fit: np.ndarray,
+    eps: float,
+    xlabel: str = r"Wavenumber $k$ (rad/m)",
+    ylabel: str = r"Spectral density",
+    title: str | None = None,
+    out_file: str | None = None,
+) -> str:
+    """
+    Save a log-log plot of a spectral curve fit to a PNG file.
+
+    Draws the observed spectrum as scattered points together with the fitted -5/3 curve.
+    The caller supplies the data points and the pre-computed fit line, so this function is
+    agnostic to the specific model or independent variable (wavenumber or angular frequency).
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Independent variable of the observed data points over the fit range (e.g. wavenumber
+        in rad/m or angular frequency in rad/s).
+    y : np.ndarray
+        Observed spectral density at ``x``.
+    x_fit : np.ndarray
+        Independent variable of the fitted curve (e.g. a linspace over the fit range).
+    y_fit : np.ndarray
+        Fitted spectral density evaluated at ``x_fit``.
+    eps : float
+        Dissipation rate estimate (m^2/s^3), shown in the legend label.
+    xlabel : str, optional
+        Label for the x-axis. Defaults to a wavenumber label.
+    ylabel : str, optional
+        Label for the y-axis. Defaults to a generic spectral density label.
+    title : str, optional
+        Axis title. If None, no title is drawn.
+    out_file : str, optional
+        Destination PNG path. If None, a temporary file (suffix ".png") is created.
+
+    Returns
+    -------
+    str
+        Path to the saved PNG file.
+    """
+    if out_file is None:
+        out_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+
+    fig, ax = plt.subplots(figsize=(5, 4))
+    ax.plot(x, y, "o", label="Data", alpha=0.5)
+    ax.plot(x_fit, y_fit, linewidth=2, label=f"Fit (eps={eps:.3e})")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_yscale("log")
+    if title is not None:
+        ax.set_title(title)
+    ax.legend()
+    ax.xaxis.set_major_formatter("{x:.1f}")
+    ax.xaxis.set_minor_formatter("{x:.1f}")
+    fig.tight_layout(pad=0.5)
+    fig.savefig(out_file, dpi=300)
+    plt.close(fig)
+
+    return out_file

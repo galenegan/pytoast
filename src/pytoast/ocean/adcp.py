@@ -14,7 +14,7 @@ from pytoast.utils.rotate_utils import (
     coord_transform_4_beam_rdi,
     min_angle,
 )
-from pytoast.utils.spectral_utils import psd
+from pytoast.utils.spectral_utils import plot_spectral_fit, psd
 
 
 class ADCP(BaseInstrument):
@@ -708,8 +708,9 @@ class ADCP(BaseInstrument):
         f_max: float | None = None,
         spectral_r2_min: float = 0.9,
         sf_kwargs: dict | None = None,
+        plot: bool = False,
         **kwargs: Any,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, dict[int, str]]:
         """Estimate the dissipation rate of TKE for a given burst.
 
         Parameters
@@ -744,6 +745,10 @@ class ADCP(BaseInstrument):
                 beams : List[str]
                     Beam names (e.g., ["u1", "u2"]) to average over. Defaults to self.beam_keys
 
+        plot : bool, optional
+            If True, save a PNG of the wavenumber spectrum and its -5/3 curve fit at each height with a
+            valid (non-NaN) dissipation estimate. Only applies to the `4beam_spectral` and
+            `5th_beam_spectral` methods. Defaults to False.
         kwargs : dict
             Additional keyword arguments to pass to the spectral utils.
 
@@ -751,6 +756,9 @@ class ADCP(BaseInstrument):
         -------
         eps : np.ndarray
             Vertical profile of dissipation for the burst period
+        plot_files : dict
+            Mapping of height index to the saved PNG path, containing one entry for each height with a
+            valid dissipation estimate. Empty if `plot` is False or for the `structure_function` method.
 
         References
         ----------
@@ -779,6 +787,7 @@ class ADCP(BaseInstrument):
         C_u = 0.5
         C_w = 0.67
 
+        plot_files: dict[int, str] = {}
         beam_angle_rad = np.deg2rad(self.beam_angle)
         if method == "4beam_spectral":
             C = (
@@ -816,10 +825,22 @@ class ADCP(BaseInstrument):
                     idx_fit &= k <= 2 * np.pi * f_max / u_bar[height_idx]
                 X = C * k ** (-5 / 3)
                 y = P_T_k
-                slope, _, rvalue, *_ = linregress(X[idx_fit], y[idx_fit])
-                if rvalue ** 2 < spectral_r2_min:
+                slope, intercept, rvalue, *_ = linregress(X[idx_fit], y[idx_fit])
+                if rvalue**2 < spectral_r2_min:
                     continue
                 eps_out[height_idx] = slope ** (3 / 2)
+                if plot:
+                    k_fit = np.linspace(np.nanmin(k[idx_fit]), np.nanmax(k[idx_fit]), 100)
+                    y_fit = slope * C * k_fit ** (-5 / 3) + intercept
+                    plot_files[height_idx] = plot_spectral_fit(
+                        x=k[idx_fit],
+                        y=y[idx_fit],
+                        x_fit=k_fit,
+                        y_fit=y_fit,
+                        eps=eps_out[height_idx],
+                        xlabel=r"Wavenumber $k$ (rad/m)",
+                        ylabel=r"Beam-sum spectrum $P(k)$",
+                    )
         elif method == "5th_beam_spectral":
             u5 = burst_data["u5"]
             u5_bar = np.mean(u5, axis=1, keepdims=True)
@@ -836,10 +857,22 @@ class ADCP(BaseInstrument):
                     idx_fit &= k >= 2 * np.pi * f_min / u_bar[height_idx]
                 if f_max:
                     idx_fit &= k <= 2 * np.pi * f_max / u_bar[height_idx]
-                slope, _, rvalue, *_ = linregress(X[idx_fit], y[idx_fit])
-                if rvalue ** 2 < spectral_r2_min:
+                slope, intercept, rvalue, *_ = linregress(X[idx_fit], y[idx_fit])
+                if rvalue**2 < spectral_r2_min:
                     continue
                 eps_out[height_idx] = slope ** (3 / 2)
+                if plot:
+                    k_fit = np.linspace(np.nanmin(k[idx_fit]), np.nanmax(k[idx_fit]), 100)
+                    y_fit = slope * C_w * k_fit ** (-5 / 3) + intercept
+                    plot_files[height_idx] = plot_spectral_fit(
+                        x=k[idx_fit],
+                        y=y[idx_fit],
+                        x_fit=k_fit,
+                        y_fit=y_fit,
+                        eps=eps_out[height_idx],
+                        xlabel=r"Wavenumber $k$ (rad/m)",
+                        ylabel=r"Vertical beam spectrum $P(k)$",
+                    )
 
         elif method == "structure_function":
             if self.z is None:
@@ -891,7 +924,7 @@ class ADCP(BaseInstrument):
             # Averaging over beams
             eps_out = np.nanmean(eps, axis=1)
 
-        return eps_out
+        return eps_out, plot_files
 
     @property
     def beam_keys(self) -> list[str]:

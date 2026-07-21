@@ -1,7 +1,10 @@
+import os
+
 import numpy.testing as npt
 import pytest
 
 from pytoast.utils.spectral_utils import *
+
 
 def test_window_len():
     N = 1024
@@ -11,12 +14,15 @@ def test_window_len():
     window_len = get_window_len(N, num_windows=1)
     assert window_len == N
 
+
 @pytest.mark.parametrize("N,num_windows", [(1024, 8), (2000, 4), (500, 1), (10000, 16)])
 def test_window_len_formula(N, num_windows):
     assert get_window_len(N, num_windows) == int(2 * N / (num_windows + 1))
 
+
 def test_window_len_zero_windows():
     assert get_window_len(1000, 0) == 2000
+
 
 def test_frequency_range():
     f = np.linspace(0, 10, 100)
@@ -35,11 +41,13 @@ def test_frequency_range():
     assert start_idx == 0
     assert end_idx == 0
 
+
 def test_frequency_range_both_bounds_inside():
     f = np.linspace(0, 10, 100)
     start_idx, end_idx = get_frequency_range(f, f_low=3.0, f_high=7.0)
     assert start_idx == np.nanargmin(np.abs(f - 3.0))
     assert end_idx == np.nanargmin(np.abs(f - 7.0))
+
 
 def test_frequency_range_reversed():
     f = np.linspace(0, 10, 100)
@@ -48,6 +56,7 @@ def test_frequency_range_reversed():
     assert start_idx == np.nanargmin(np.abs(f - 7.0))
     assert end_idx == np.nanargmin(np.abs(f - 3.0))
 
+
 def test_frequency_range_bounds_outside():
     f = np.linspace(0, 10, 100)
     start_idx, _ = get_frequency_range(f, f_low=15.0)
@@ -55,6 +64,7 @@ def test_frequency_range_bounds_outside():
 
     _, end_idx = get_frequency_range(f, f_high=-5.0)
     assert end_idx == 0
+
 
 class TestPSD:
     def test_psd_sine_defaults(self):
@@ -72,8 +82,8 @@ class TestPSD:
         y = np.sin(2 * np.pi * t)
         f1, P1 = psd(y, fs=25)
         f2, P2 = psd(y, fs=25, onesided=False)
-        npt.assert_array_equal(f1[:-1], f2[:len(f1) - 1])
-        npt.assert_array_equal(P1[1:-1], P2[1:len(P1) - 1] * 2)
+        npt.assert_array_equal(f1[:-1], f2[: len(f1) - 1])
+        npt.assert_array_equal(P1[1:-1], P2[1 : len(P1) - 1] * 2)
 
     def test_psd_parseval(self):
         rng = np.random.default_rng(0)
@@ -155,3 +165,29 @@ class TestCSD:
         _, Pyy = psd(y, fs=1.0)
         coherence = np.abs(Pxy) ** 2 / (Pxx * Pyy)
         assert np.mean(coherence) < 0.5
+
+
+class TestPlotSpectralFit:
+    def _fake_fit(self):
+        k = np.logspace(-1, 1, 20)
+        eps23 = 4.0
+        intercept = 1e-3
+        y = 0.53 * eps23 * k ** (-5 / 3) + intercept
+        k_fit = np.linspace(k.min(), k.max(), 100)
+        y_fit = 0.53 * eps23 * k_fit ** (-5 / 3) + intercept
+        return k, y, k_fit, y_fit, eps23 ** (3 / 2)
+
+    def test_returns_existing_png_at_requested_path(self, tmp_path):
+        k, y, k_fit, y_fit, eps = self._fake_fit()
+        out_file = str(tmp_path / "fit.png")
+        path = plot_spectral_fit(k, y, k_fit, y_fit, eps=eps, out_file=out_file)
+        assert path == out_file
+        assert path.endswith(".png")
+        assert os.path.getsize(path) > 0
+
+    def test_auto_tempfile_branch(self):
+        k, y, k_fit, y_fit, eps = self._fake_fit()
+        path = plot_spectral_fit(k, y, k_fit, y_fit, eps=eps)
+        assert path.endswith(".png")
+        assert os.path.getsize(path) > 0
+        os.remove(path)

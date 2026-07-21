@@ -9,7 +9,7 @@ from pytoast.utils.burst_utils import get_uvw
 from pytoast.utils.constants import GRAVITATIONAL_ACCELERATION as g
 from pytoast.utils.constants import T0
 from pytoast.utils.rotate_utils import apply_flow_rotation
-from pytoast.utils.spectral_utils import csd, get_frequency_range, psd
+from pytoast.utils.spectral_utils import csd, get_frequency_range, plot_spectral_fit, psd
 
 
 class Sonic(BaseInstrument):
@@ -225,8 +225,9 @@ class Sonic(BaseInstrument):
         f_low: float,
         f_high: float,
         henjes_correction: bool,
+        plot: bool = False,
         **kwargs: Any,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, dict[int, str]]:
         """Estimate the dissipation rate of TKE via spectral curve fit to the streamwise wavenumber spectrum.
 
         Choice of constant is consistent with Edson and Fairall (1998), and the path length correction of Henjes et al
@@ -243,6 +244,9 @@ class Sonic(BaseInstrument):
             Upper bound (Hz) of inertial subrange where the curve fit is carried out
         henjes_correction : bool
             If True, apply the Henjes et al. path length correction to the spectral curve fit
+        plot : bool, optional
+            If True, save a PNG of the wavenumber spectrum and its -5/3 curve fit at each height with a
+            valid (non-NaN) dissipation estimate. Defaults to False.
         kwargs : dict
             Additional keyword arguments to pass to `spectral_utils.psd`
 
@@ -250,6 +254,9 @@ class Sonic(BaseInstrument):
         -------
         eps : np.ndarray
             Dissipation rate of TKE at each height
+        plot_files : dict
+            Mapping of height index to the saved PNG path, containing one entry for each height with a
+            valid dissipation estimate. Empty if `plot` is False.
 
         References
         ----------
@@ -266,7 +273,7 @@ class Sonic(BaseInstrument):
             f_high: float,
             henjes_correction: bool = True,
             **kwargs: Any,
-        ) -> float:
+        ) -> tuple[float, str | None]:
             c1 = 0.53
             u_prime = sig.detrend(u, type="linear")
             u_bar = np.nanmean(u)
@@ -298,28 +305,46 @@ class Sonic(BaseInstrument):
             else:
                 X = c1 * k[good_data] ** (-5 / 3)
                 y = G[good_data]
-                slope, *_ = linregress(X, y)
+                slope, intercept, *_ = linregress(X, y)
                 eps23 = slope
                 if eps23 < 0:
                     eps = np.nan
                 else:
                     eps = eps23 ** (3 / 2)
-            return eps
+
+            if plot and not np.isnan(eps):
+                k_lin = np.linspace(np.nanmin(k[good_data]), np.nanmax(k[good_data]), 100)
+                y_fit = c1 * eps23 * k_lin ** (-5 / 3) + intercept
+                file_name = plot_spectral_fit(
+                    x=k[good_data],
+                    y=G[good_data],
+                    x_fit=k_lin,
+                    y_fit=y_fit,
+                    eps=eps,
+                    xlabel=r"Wavenumber $k$ (rad/m)",
+                    ylabel=r"Streamwise spectrum $G(k)$",
+                )
+                return eps, file_name
+            else:
+                return eps, None
 
         u_full, _, _ = get_uvw(burst_data)
         n_heights = self.n_heights
         eps = np.empty((n_heights,))
+        plot_files: dict[int, str] = {}
         for height_idx in range(n_heights):
             u = u_full[height_idx, :]
-            eps[height_idx] = spectral_fit(
+            eps[height_idx], file_name = spectral_fit(
                 u,
                 henjes_correction=henjes_correction,
                 f_low=f_low,
                 f_high=f_high,
                 **kwargs,
             )
+            if file_name is not None:
+                plot_files[height_idx] = file_name
 
-        return eps
+        return eps, plot_files
 
     def covariance(
         self,

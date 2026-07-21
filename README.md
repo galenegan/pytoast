@@ -7,12 +7,33 @@
 
 ## Overview
 
-`pytoast` is a library for physical oceanographers and meteorologists processing field observations, with a focus on
-turbulence statistics. It provides classes for common ocean and atmospheric sensors -- Acoustic Doppler Velocimeters
-(ADV), Acoustic Doppler Current Profilers (ADCP), sonic anemometers, CTDs, and bulk meteorological instruments -- along
-with a shared preprocessing pipeline (despiking, coordinate rotations) and derived calculations. These include TKE
-dissipation, Reynolds stresses with wave-turbulence decomposition, directional wave statistics, seawater and air
-thermodynamics (TEOS-10), and boundary-layer flux parameterizations (both air-sea and bottom boundary layer).
+### What is it?
+
+`pytoast` is a library for physical oceanographers and meteorologists
+processing field observations, with a focus on turbulence statistics. It
+provides classes for common ocean and atmospheric sensors -- Acoustic Doppler
+Velocimeters (ADV), Acoustic Doppler Current Profilers (ADCP), sonic
+anemometers, CTDs, and bulk meteorological instruments -- along with a shared
+preprocessing pipeline (despiking, coordinate rotations) and derived
+calculations. These include TKE dissipation, Reynolds stresses with
+wave-turbulence decomposition, directional wave statistics, seawater and air
+thermodynamics (TEOS-10), and boundary-layer flux parameterizations (both
+air-sea and bottom boundary layer).
+
+### What is it not? 
+
+`pytoast` is not designed for loading/parsing *raw* instrument data; a package
+like [DOLfYN](https://dolfyn.readthedocs.io/en/stable/index.html) will serve
+you better for that. Data parsing is designed to be flexible, but it will work
+best if your variables are already stored in a key-value format (e.g., MATLAB
+struct, Python dictionary `.npy`, NetCDF) or header-column format (e.g., CSV
+or DAT files).
+
+The code is also not opinionated about the *right* way to process data. There
+is no automated logic that, for example, decides on the best frequency range
+for a spectral curve fit or a wave-turbulence decomposition. Be sure to set
+function keyword arguments thoughtfully; the defaults may not be appropriate
+for your data.
 
 ---
 

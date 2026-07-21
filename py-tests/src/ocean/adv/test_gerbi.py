@@ -1,10 +1,12 @@
+import os
 import types
+
 import numpy as np
 import numpy.testing as npt
 from scipy.special import gamma
+from testhelpers.synth_utils import generate_wave_turb_burst
 
 from pytoast.ocean.adv import ADV
-from testhelpers.synth_utils import generate_wave_turb_burst
 
 
 def _make_adv(fs, n_heights=1):
@@ -52,3 +54,12 @@ def test_dissipation_recovers_prescribed_eps():
     out = ADV.dissipation(adv, burst, f_low=0.3, f_high=3.0)
     npt.assert_allclose(out["eps"][0], eps_true, rtol=0.1)
     assert out["eps_quality_flag"][0] == 1
+    assert "plot_files" not in out
+
+    # With plot=True, a PNG is saved for each height with a valid dissipation estimate
+    out_plot = ADV.dissipation(adv, burst, f_low=0.3, f_high=3.0, plot=True)
+    valid_heights = np.flatnonzero(~np.isnan(out_plot["eps"]))
+    assert set(out_plot["plot_files"]) == set(valid_heights.tolist())
+    for path in out_plot["plot_files"].values():
+        assert path.endswith(".png")
+        assert os.path.getsize(path) > 0

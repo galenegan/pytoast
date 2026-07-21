@@ -1,10 +1,13 @@
 import glob
+import os
+from pathlib import Path
+
 import numpy as np
 import numpy.testing as npt
 import pytest
-from pathlib import Path
-from testhelpers.synth_utils import generate_wave_turb_burst
 from testhelpers.stub_utils import eq_except, make_sonic
+from testhelpers.synth_utils import generate_wave_turb_burst
+
 from pytoast.atmosphere.sonic import Sonic
 from pytoast.utils.base_instrument import ZConvention
 
@@ -71,7 +74,7 @@ class TestDissipation:
 
         sonic = make_sonic(fs)
         burst_data = {"u1": u.reshape(1, -1), "u2": v.reshape(1, -1), "u3": w.reshape(1, -1), "coords": "xyz"}
-        eps_calc = Sonic.dissipation(sonic, burst_data, f_low=2, f_high=10, henjes_correction=False)
+        eps_calc, _ = Sonic.dissipation(sonic, burst_data, f_low=2, f_high=10, henjes_correction=False)
 
         # Accounting for different Kolmogorov constants in the synthetic spectra vs Edson method
         eps_calc *= 0.53 / (1.5 * 18 / 55)
@@ -91,7 +94,17 @@ class TestDissipation:
 
         sonic = make_sonic(fs)
         burst_data = {"u1": u.reshape(1, -1), "u2": v.reshape(1, -1), "u3": w.reshape(1, -1), "coords": "xyz"}
-        eps_calc = Sonic.dissipation(sonic, burst_data, f_low=2, f_high=10, henjes_correction=True)
+        eps_calc, plot_files = Sonic.dissipation(
+            sonic, burst_data, f_low=2, f_high=10, henjes_correction=True, plot=True
+        )
+
+        # With plot=True, a PNG is saved for each height with a valid dissipation estimate
+        assert isinstance(plot_files, dict)
+        valid_heights = np.flatnonzero(~np.isnan(eps_calc))
+        assert set(plot_files) == set(valid_heights.tolist())
+        for path in plot_files.values():
+            assert path.endswith(".png")
+            assert os.path.getsize(path) > 0
 
         # Accounting for different Kolmogorov constants in the synthetic spectra vs Edson method
         eps_calc *= 0.53 / (1.5 * 18 / 55)
