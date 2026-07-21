@@ -1,4 +1,5 @@
 import tempfile
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,8 +16,8 @@ RC_PARAMS = {
     "axes.grid": False,
 }
 
-for _key, _val in RC_PARAMS.items():
-    plt.rcParams[_key] = _val
+# Annoying cast() required for mypy
+plt.rcParams.update(cast(Any, RC_PARAMS))
 
 def get_window_len(N: int, num_windows: int) -> int:
     """
